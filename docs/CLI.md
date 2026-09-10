@@ -54,10 +54,12 @@ CLI, inspect remote runs:
 
 ```sh
 gh run list --repo foxhole-team/foxhole-openwrt-client --workflow ci.yml
+gh run list --repo foxhole-team/foxhole-openwrt-client --workflow release.yml
 gh run view RUN_ID --repo foxhole-team/foxhole-openwrt-client --exit-status
 ```
 
-To request checks or an unsigned build on a reviewed, published ref:
+Each `dev` push runs checks and builds the candidate. To request checks or
+an independent unsigned build on a reviewed, published ref:
 
 ```sh
 gh workflow run ci.yml --repo foxhole-team/foxhole-openwrt-client --ref REVIEWED_REF
@@ -65,4 +67,13 @@ gh workflow run build-apk.yml --repo foxhole-team/foxhole-openwrt-client --ref R
 ```
 
 Dispatch acceptance is not build success. Inspect the resulting run; the
-APK workflow uploads artifacts and does not publish a release.
+manual APK workflow does not replace the required successful `dev` push.
+After promotion, `release.yml` verifies the signed `main` and copies the
+identical candidate. Download it for local GPG signing:
+
+```sh
+gh run download RUN_ID --repo foxhole-team/foxhole-openwrt-client --name openwrt-release-MAIN_SHA --dir /tmp/foxhole-release
+```
+
+Verify provenance and checksums before signing; see the
+[release procedure](RELEASE.md). Workflows never publish a release.

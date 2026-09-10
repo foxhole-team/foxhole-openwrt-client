@@ -2,6 +2,9 @@
 
 ## 0.1.0-r41 — public beta 1.0 (unreleased)
 
+- Automatic dev checks and APK candidate builds; signed main requires a
+  successful dev run with the same source tree and preserves its artifacts.
+- Pinned owner verification key and local GPG release signing procedure.
 - Shared FoxHole branding, separate English/Russian READMEs, concise English
   architecture diagrams, CLI, recovery and release documentation.
 - Checksum-pinned GitHub installation example with download/tamper tests;

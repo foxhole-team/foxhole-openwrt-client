@@ -3,11 +3,16 @@ name: verify
 on:
   workflow_dispatch:
   pull_request:
+    branches: [main, dev]
   push:
     branches: [main, dev]
 
 permissions:
   contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   public-check:
@@ -36,3 +41,8 @@ jobs:
         run: sh -n install.sh
       - name: Working tree integrity
         run: git diff --exit-code
+
+  apk-candidate:
+    needs: public-check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    uses: ./.github/workflows/build-apk.yml

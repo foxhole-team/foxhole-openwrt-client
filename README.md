@@ -90,8 +90,9 @@ npm run build:source
 ```
 
 No frontend npm dependencies are required. GitHub Actions checks push/PR
-changes; a separate manual workflow builds unsigned APKs with the pinned
-Linux SDK. See [checks, build and release](docs/RELEASE.md),
+changes and builds unsigned APKs after successful `dev` checks. Signed
+`main` accepts a successful `dev` candidate with identical source files.
+GPG release signatures are made locally. See [checks, build and release](docs/RELEASE.md),
 [CLI](docs/CLI.md) and [architecture with two diagrams](docs/ARCHITECTURE.md).
 
 ---

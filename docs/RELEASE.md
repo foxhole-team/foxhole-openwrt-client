@@ -28,12 +28,34 @@ the container or run on a router.
 
 | Workflow | Trigger | Checks / output |
 | --- | --- | --- |
-| [verify](../.github/workflows/ci.yml) | Pull request; push to `main` or `dev`; manual | Host checks, documentation, installer regressions, source archive, clean diff. |
-| [build-unsigned-apk](../.github/workflows/build-apk.yml) | Manual | Pinned Linux SDK build; unsigned APK bundle retained for seven days. |
+| [verify](../.github/workflows/ci.yml) | Pull request to `main`/`dev`; push to either branch; manual | Host checks; a `dev` push then builds the APK candidate. |
+| [build-unsigned-apk](../.github/workflows/build-apk.yml) | Called by the `dev` gate; manual | Pinned SDK build, source ZIP, checksums and source identity. |
+| [release-candidate](../.github/workflows/release.yml) | Push to `main`; manual on `main` | Verify the owner signature and preserve the identical successful `dev` candidate for local signing. |
 
-Workflows have read-only repository permissions and do not sign, publish
-or deploy. Remote run results must be checked separately; see [GitHub CLI](CLI.md).
-Ucode execution and clean-firmware traffic acceptance are separate gates.
+Promote the tested `dev` tree to `main` only after the complete `verify` run
+succeeds. The `main` tip must be GitHub-verified and carry a valid OpenPGP
+signature from the pinned owner signing subkey and primary key:
+
+```text
+Signing: 0B954B66780BDA4F5FC995224C80DC5BBBB25151
+Primary: 7D82C6B1AC24714024F37DFE1871E0B91FEAB141
+```
+
+The gate verifies that signature with the committed
+[public key](../config/release-signers.asc). It selects a successful `dev`
+push from the last 24 hours whose Git tree equals `main` and whose candidate
+is unexpired. Manual builds alone do not satisfy this gate.
+
+The candidate contains three unsigned APKs, `install.sh`, `sdk.config`,
+`feeds.buildinfo`, source ZIP and its hash, `CANDIDATE.json`, and `SHA256SUMS`.
+`main` verifies the exact file set, all hashes and source identity, then
+retains those bytes unchanged with a separate `RELEASE.json`. Artifacts are
+kept for seven days. `SHA256SUMS.asc` is absent until local hardware signing.
+
+Workflows have read-only repository permissions. They do not sign, tag,
+publish or deploy, and no private key is stored in CI. Inspect actual run
+results through the [GitHub CLI](CLI.md). Ucode execution and firmware
+traffic acceptance remain separate gates.
 
 ## APK build and firmware acceptance
 
@@ -64,19 +86,36 @@ precedence, WAN isolation and sustained load. RAM boot needs direct HTTPS.
 These firmware gates remain pending; compare independent APK builds before
 claiming binary reproducibility.
 
-## Signed release
+## Signed prototype prerelease
 
-After firmware acceptance and owner authorization:
+With owner authorization, a prototype prerelease can distribute reviewed
+source and unsigned APK candidates while firmware acceptance is pending.
+State that limitation in the release notes. GPG signs the source identity
+and release manifest; it does not create an APK v3 package signature or
+make an APK key trusted by the router. APK production trust is not yet
+configured. Keep the installer's signature checks enabled.
 
-1. Review the exported files; create and verify a signed tag on the reviewed
-   commit. Sign APKs with OpenWrt/APK-compatible tooling.
-2. Recompute `SHA256SUMS` after signing; include APKs, `install.sh` and source
-   ZIP. Detach-sign the manifest with the owner's hardware-backed key.
-3. Publish a GitHub prerelease with the artifacts, manifest and `.asc`
-   signature. Distribute verification fingerprints and APK trust-key setup
-   through an independent trusted channel; keep signing keys outside Git/CI.
-4. Fill in the README tag/manifest hash, keeping its installer digest equal
-   to the published script. Test installation without `--development` in a
-   fresh VM before advertising that release command.
+1. Download the successful `main` candidate; verify `RELEASE.json`, the
+   referenced `dev` run, source identity and every manifest entry.
+2. Create and verify a GPG-signed annotated tag on that `main` commit using
+   the owner's YubiKey. Never replace an existing tag or release.
+3. Stage the verified payload plus `RELEASE.json` and the public verification
+   key. Recompute `SHA256SUMS` for the staged release files; detach-sign it
+   locally as `SHA256SUMS.asc` and verify the signature.
+4. Create a draft GitHub prerelease, upload the complete asset set, download
+   it again and compare bytes. Publish the verified draft as a prerelease.
+   Keep the candidate manifest and signed release manifest distinguishable:
+   `RELEASE.json` records the original candidate manifest hash.
 
-Local preparation creates no signed tag, trust key or published release.
+Use release notes for concrete tag/hash installation commands. The README
+keeps placeholders: embedding the release manifest hash in a source ZIP
+covered by that same manifest would create a circular checksum dependency.
+
+## Installable release
+
+Complete the firmware gates above, sign APKs with OpenWrt/APK-compatible
+tooling, and independently distribute the APK trust key. Then recompute and
+GPG-sign the final manifest after APK signing. In a fresh VM, verify the
+published bundle and install without `--development` before advertising
+production installation. Prototype APKs remain for explicit isolated
+`--development` testing; GPG verification does not remove that distinction.

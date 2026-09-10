@@ -15,6 +15,7 @@ async function fixture(t) {
   for (const path of publicFiles) await writeFile(join(source, path), 'Public fixture\n');
   await writeFile(join(source, 'package', 'Makefile'), 'PKG_NAME:=foxhole-openwrt-client\n');
   await writeFile(join(source, 'LICENSES', 'example.txt'), 'License fixture\n');
+  await writeFile(join(source, 'config', 'release-signers.asc'), 'Public verification key fixture\n');
   for (const directory of ['media', 'docs', 'examples', '.github'])
     await writeFile(join(source, directory, 'example.txt'), 'Public fixture\n');
   return { directory, source, destination: join(directory, 'public') };
@@ -29,7 +30,9 @@ test('public export includes only the explicit source allowlist', async (t) => {
   const result = await exportPublic(item);
   assert.deepEqual((await readdir(item.destination)).sort(),
     [...publicFiles, ...publicDirectories.filter(name => !['tests', 'tools'].includes(name))].sort());
-  assert.equal(result.files.length, publicFiles.length + 7);
+  assert.equal(result.files.length, publicFiles.length + 8);
+  assert.equal(await readFile(join(item.destination, 'config', 'release-signers.asc'), 'utf8'),
+    'Public verification key fixture\n');
   assert.equal(await readFile(join(item.destination, 'package', 'Makefile'), 'utf8'),
     'PKG_NAME:=foxhole-openwrt-client\n');
 });

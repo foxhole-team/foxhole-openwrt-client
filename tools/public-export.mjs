@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 export const publicFiles = ['LICENSE', 'THIRD_PARTY_NOTICES.md',
   'README.md', 'CHANGELOG.md', 'SECURITY.md', '.gitattributes', '.gitignore',
   'install.sh', 'package.json', 'package-lock.json', 'AGENTS.md'];
-export const publicDirectories = ['package', 'LICENSES', 'media', 'docs',
+export const publicDirectories = ['package', 'LICENSES', 'media', 'docs', 'config',
   'examples', '.github', 'tests', 'tools'];
 const root = fileURLToPath(new URL('..', import.meta.url));
 const oldBrand = new RegExp(['dae', 'mon'].join(''), 'i');

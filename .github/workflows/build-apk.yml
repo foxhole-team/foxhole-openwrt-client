@@ -1,6 +1,7 @@
 name: build-unsigned-apk
 on:
   workflow_dispatch:
+  workflow_call:
 permissions:
   contents: read
 jobs:
@@ -11,14 +12,50 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.16.0
       - name: Build prerequisites
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential bison flex gawk gettext git libncurses-dev libssl-dev python3 python3-setuptools rsync unzip file time curl zstd
       - run: sh tools/build-openwrt.sh
+      - name: Record source and artifact identity
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          out=dist/openwrt-25.12.5-arm64
+          python3 tools/build-source.py --output "$out/foxhole-openwrt-client-source.zip"
+          git diff --exit-code
+          SOURCE_TREE="$(git rev-parse 'HEAD^{tree}')" OUT_DIR="$out" python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          record = {
+              "schema": 1,
+              "source_commit": os.environ["SOURCE_COMMIT"],
+              "source_tree": os.environ["SOURCE_TREE"],
+              "target": "openwrt-25.12.5-aarch64_generic",
+              "package_signatures": "unsigned",
+              "firmware_acceptance": "pending",
+          }
+          (Path(os.environ["OUT_DIR"]) / "CANDIDATE.json").write_text(
+              json.dumps(record, indent=2) + "\n"
+          )
+          PY
+          (
+            cd "$out"
+            sha256sum ./*.apk install.sh sdk.config feeds.buildinfo \
+              foxhole-openwrt-client-source.zip \
+              foxhole-openwrt-client-source.zip.sha256 CANDIDATE.json |
+              sed 's|  \./|  |' > SHA256SUMS
+            sha256sum --check --strict SHA256SUMS
+          )
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: unsigned-openwrt-25.12.5-arm64
+          name: openwrt-candidate-${{ github.sha }}
           path: dist/openwrt-25.12.5-arm64/
           if-no-files-found: error
           retention-days: 7
