@@ -1,0 +1,6 @@
+{
+  "server": "vps.example.invalid:443",
+  "auth": "REPLACE_WITH_OPERATOR_PROVISIONED_CREDENTIAL",
+  "tls": { "sni": "vpn.example.invalid", "insecure": false },
+  "transport": { "type": "udp" }
+}

@@ -1,0 +1,108 @@
+#!/bin/sh
+
+controller='/usr/libexec/foxhole-runtime'
+config='/tmp/foxhole/hysteria.json'
+tun='/sys/class/net/foxhole0'
+child=''
+reason='tunnel_start_failed'
+stopping=0
+
+stop_runtime() {
+	stopping=1
+	reason='runtime_stopped'
+	[ -z "$child" ] || kill "$child" 2>/dev/null
+}
+
+finish_runtime() {
+	trap - EXIT TERM INT
+	if [ -n "$child" ]; then
+		kill "$child" 2>/dev/null
+		wait "$child" 2>/dev/null
+	fi
+	"$controller" down "$reason" >/dev/null 2>&1
+}
+
+mode="$($controller mode)" || exit 1
+
+case "$mode" in
+	off)
+		"$controller" cleanup >/dev/null 2>&1
+		exit $?
+		;;
+	block)
+		trap stop_runtime TERM INT
+		trap finish_runtime EXIT
+		"$controller" apply blocked >/dev/null 2>&1 || exit 1
+		while [ "$stopping" -eq 0 ]; do
+			sleep 3600 &
+			child=$!
+			wait "$child"
+		done
+		exit 0
+		;;
+	tunnel) ;;
+	*) exit 1 ;;
+esac
+
+trap stop_runtime TERM INT
+trap finish_runtime EXIT
+
+"$controller" prepare >/dev/null 2>&1 || exit 1
+[ "$stopping" -eq 0 ] || exit 0
+/usr/bin/hysteria client -c "$config" >/dev/null 2>&1 &
+child=$!
+
+ready=0
+attempt=0
+while [ "$attempt" -lt 20 ]; do
+	[ "$stopping" -eq 0 ] || exit 0
+	if ! kill -0 "$child" 2>/dev/null; then
+		reason='tunnel_start_failed'
+		exit 1
+	fi
+	if [ -d "$tun" ]; then
+		ready=1
+		break
+	fi
+	attempt=$((attempt + 1))
+	sleep 1
+done
+
+if [ "$ready" -ne 1 ]; then
+	reason='tunnel_start_failed'
+	exit 1
+fi
+
+ready=0
+attempt=0
+while [ "$attempt" -lt 10 ]; do
+	[ "$stopping" -eq 0 ] || exit 0
+	if ! kill -0 "$child" 2>/dev/null; then
+		reason='tunnel_start_failed'
+		exit 1
+	fi
+	if "$controller" probe >/dev/null 2>&1; then
+		ready=1
+		break
+	fi
+	attempt=$((attempt + 1))
+	sleep 1
+done
+
+if [ "$ready" -ne 1 ]; then
+	reason='tunnel_start_failed'
+	exit 1
+fi
+
+if ! "$controller" apply connected >/dev/null 2>&1; then
+	reason='policy_apply_failed'
+	exit 1
+fi
+
+wait "$child"
+child=''
+if [ "$stopping" -eq 1 ]; then
+	exit 0
+fi
+reason='tunnel_exited'
+exit 1

@@ -1,0 +1,95 @@
+#!/usr/bin/ucode
+
+'use strict';
+
+import * as fs from 'fs';
+import * as uci from 'uci';
+import * as ubus from 'ubus';
+
+const MAX_BODY = 300000;
+const ACTIONS = [
+	'unlock', 'lock', 'state', 'telemetry', 'settings',
+	'server.test', 'server.save', 'server.get', 'server.start',
+	'server.stop', 'server.delete',
+	'client.save', 'client.update', 'client.access', 'client.get', 'client.delete',
+	'pin.change', 'device.resolve', 'device.list'
+];
+
+function reply(status, value, allow) {
+	print('Status: ', status, '\r\n');
+	print('Content-Type: application/json; charset=utf-8\r\n');
+	print('Cache-Control: no-store\r\n');
+	print('X-Content-Type-Options: nosniff\r\n');
+	print("Content-Security-Policy: default-src 'none'\r\n");
+	if (allow) print('Allow: POST\r\n');
+	print('\r\n', sprintf('%J', value));
+	exit(0);
+};
+
+function reject(status, code, allow) {
+	reply(status, { _foxhole_error: code }, allow);
+};
+
+function standalone_enabled() {
+	let cursor = null, value = '1';
+	try {
+		cursor = uci.cursor();
+		value = cursor.get('foxhole', 'panel', 'standalone') || '1';
+	} catch (_) {
+		value = '0';
+	}
+	try { if (cursor) cursor.unload(); } catch (_) {}
+	return value == '1';
+};
+
+let env = getenv();
+if (env.REQUEST_METHOD != 'POST')
+	reject('405 Method Not Allowed', 'unavailable', true);
+if (!match(env.CONTENT_TYPE || '', /^application\/json([ ;]|$)/i))
+	reject('415 Unsupported Media Type', 'unavailable');
+if (!match(env.CONTENT_LENGTH || '', /^[0-9]{1,6}$/))
+	reject('400 Bad Request', 'unavailable');
+let size = int(env.CONTENT_LENGTH, 10);
+if (size < 2 || size > MAX_BODY)
+	reject('413 Content Too Large', 'unavailable');
+
+let host = env.HTTP_HOST || '';
+if (!length(host) || length(host) > 255 ||
+	(!match(host, /^[a-zA-Z0-9.-]+(:[0-9]+)?$/) &&
+	 !match(host, /^\[[0-9a-fA-F:.]+\](:[0-9]+)?$/)))
+	reject('403 Forbidden', 'unavailable');
+let origin = env.HTTP_ORIGIN || '';
+let expected = (env.HTTPS == 'on' ? 'https://' : 'http://') + host;
+if (origin && origin != expected)
+	reject('403 Forbidden', 'unavailable');
+let site = env.HTTP_SEC_FETCH_SITE || '';
+if (site && site != 'same-origin' && site != 'none')
+	reject('403 Forbidden', 'unavailable');
+
+let raw = fs.stdin.read('all') || '';
+if (length(raw) != size || length(raw) > MAX_BODY)
+	reject('400 Bad Request', 'unavailable');
+let request = null;
+try { request = json(raw); } catch (_) {
+	reject('400 Bad Request', 'unavailable');
+}
+if (type(request) != 'object' || type(request.action) != 'string' ||
+	index(ACTIONS, request.action) < 0 ||
+	(request.payload != null && type(request.payload) != 'object'))
+	reject('400 Bad Request', 'unavailable');
+if (!standalone_enabled())
+	reject('403 Forbidden', 'luci_required');
+
+let connection = null, result = null, failed = false;
+try {
+	connection = ubus.connect();
+	if (connection)
+		result = connection.call('foxhole', request.action,
+			request.payload || {});
+	else failed = true;
+} catch (_) {
+	failed = true;
+}
+try { if (connection) connection.disconnect(); } catch (_) {}
+if (failed) reject('503 Service Unavailable', 'unavailable');
+reply('200 OK', result || {});

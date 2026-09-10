@@ -1,0 +1,18 @@
+#!/bin/sh /etc/rc.common
+USE_PROCD=1
+START=99
+STOP=07
+start_service() {
+ local id
+ [ -r /tmp/foxhole/inbound/clients ] || return 0
+ while read -r id; do
+  case "$id" in shared|client-????????????) ;; *) continue ;; esac
+  procd_open_instance "$id"
+  procd_set_param command /usr/bin/hysteria server -c \
+   "/tmp/foxhole/inbound/$id.json" --disable-update-check
+  procd_set_param env GOMEMLIMIT=32MiB GOGC=75
+  procd_set_param respawn 3600 5 5
+  procd_set_param term_timeout 5
+  procd_close_instance
+ done < /tmp/foxhole/inbound/clients
+}

@@ -1,0 +1,909 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#000000">
+  <meta name="application-name" content="FoxHole OpenWRT Client">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <title>FoxHole OpenWRT Client</title>
+  <base href="/luci-static/resources/foxhole/">
+  <link rel="icon" href="./assets/foxhole.png" type="image/png">
+  <link rel="preload" href="./assets/foxhole.png?v=0.1.0-r41-ui1" as="image" type="image/png">
+  <link rel="preload" href="./assets/JetBrainsMono-Regular.ttf" as="font" type="font/ttf" crossorigin>
+  <link rel="preload" href="./assets/JetBrainsMono-Medium.ttf" as="font" type="font/ttf" crossorigin>
+  <link rel="preload" href="./assets/Tiny5-Regular.ttf" as="font" type="font/ttf" crossorigin>
+  <link rel="stylesheet" href="./app.css?v=0.1.0-r41-ui1">
+</head>
+<body>
+  <svg class="svg-sprite" aria-hidden="true">
+    <symbol id="icon-lock" viewBox="0 0 24 24">
+      <rect x="5" y="10" width="14" height="10" rx="2"/>
+      <path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/>
+    </symbol>
+    <symbol id="icon-plus" viewBox="0 0 24 24">
+      <path d="M12 5v14M5 12h14"/>
+    </symbol>
+    <symbol id="icon-router" viewBox="0 0 24 24">
+      <path d="M4 10h16v8H4zM8 10V7m8 3V7M7 14h.01M11 14h.01"/>
+    </symbol>
+    <symbol id="icon-settings" viewBox="0 0 24 24">
+      <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37c1 .608 2.296.07 2.572-1.065"/>
+      <path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0-6 0"/>
+    </symbol>
+    <symbol id="icon-network" viewBox="0 0 24 24">
+      <rect x="3" y="4" width="7" height="5" rx="1"/>
+      <rect x="14" y="15" width="7" height="5" rx="1"/>
+      <rect x="3" y="15" width="7" height="5" rx="1"/>
+      <path d="M6.5 9v3h11v3M6.5 12v3"/>
+    </symbol>
+    <symbol id="icon-server" viewBox="0 0 24 24">
+      <rect x="4" y="4" width="16" height="6" rx="1.5"/>
+      <rect x="4" y="14" width="16" height="6" rx="1.5"/>
+      <path d="M8 7h.01M8 17h.01M12 7h5M12 17h5"/>
+    </symbol>
+    <symbol id="icon-devices" viewBox="0 0 24 24">
+      <path d="M13 9a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-6a1 1 0 0 1-1-1V9M18 8V5a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h9M16 9h2"/>
+    </symbol>
+    <symbol id="icon-info" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9"/>
+      <path d="M12 10v6M12 7h.01"/>
+    </symbol>
+    <symbol id="icon-mobile" viewBox="0 0 24 24">
+      <rect x="7" y="2.5" width="10" height="19" rx="2"/>
+      <path d="M10.5 5h3M11 18.5h2"/>
+    </symbol>
+    <symbol id="icon-tablet" viewBox="0 0 24 24">
+      <rect x="5" y="2.5" width="14" height="19" rx="2"/>
+      <path d="M10.5 5h3M11 18.5h2"/>
+    </symbol>
+    <symbol id="icon-monitor" viewBox="0 0 24 24">
+      <rect x="3" y="4" width="18" height="13" rx="2"/>
+      <path d="M8 21h8M12 17v4"/>
+    </symbol>
+    <symbol id="icon-laptop" viewBox="0 0 24 24">
+      <rect x="4" y="4" width="16" height="12" rx="2"/>
+      <path d="M2 19h20M9 19h6"/>
+    </symbol>
+    <symbol id="icon-tv" viewBox="0 0 24 24">
+      <rect x="3" y="5" width="18" height="14" rx="2"/>
+      <path d="m8 2 4 3 4-3M9 22h6"/>
+    </symbol>
+    <symbol id="icon-gamepad" viewBox="0 0 24 24">
+      <path d="M8 7h8a5 5 0 0 1 4.6 7l-1.1 2.6a2 2 0 0 1-3.1.8L14 15h-4l-2.4 2.4a2 2 0 0 1-3.1-.8L3.4 14A5 5 0 0 1 8 7Z"/>
+      <path d="M7 11v4M5 13h4M16 12h.01M18 14h.01"/>
+    </symbol>
+    <symbol id="icon-camera" viewBox="0 0 24 24">
+      <path d="M4 8a2 2 0 0 1 2-2h2l1-2h6l1 2h2a2 2 0 0 1 2 2v10H4V8Z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </symbol>
+    <symbol id="icon-chevron" viewBox="0 0 24 24">
+      <path d="m9 6 6 6-6 6"/>
+    </symbol>
+    <symbol id="icon-back" viewBox="0 0 24 24">
+      <path d="M5 12h14M5 12l6 6M5 12l6-6"/>
+    </symbol>
+    <symbol id="icon-close" viewBox="0 0 24 24">
+      <path d="M18 6 6 18M6 6l12 12"/>
+    </symbol>
+    <symbol id="icon-copy" viewBox="0 0 24 24">
+      <rect x="8" y="8" width="11" height="11" rx="2"/>
+      <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>
+    </symbol>
+    <symbol id="icon-refresh" viewBox="0 0 24 24">
+      <path d="M20 7v5h-5M4 17v-5h5M6.1 6.1A8 8 0 0 1 20 12M4 12a8 8 0 0 0 13.9 5.9"/>
+    </symbol>
+    <symbol id="icon-check" viewBox="0 0 24 24">
+      <path d="m5 12 4 4 10-10"/>
+    </symbol>
+    <symbol id="icon-eye" viewBox="0 0 24 24">
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0-4 0M21 12c-2.4 4-5.4 6-9 6s-6.6-2-9-6c2.4-4 5.4-6 9-6s6.6 2 9 6"/>
+    </symbol>
+    <symbol id="icon-edit" viewBox="0 0 24 24">
+      <path d="M7 7H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-1M20.385 6.585a2.1 2.1 0 0 0-2.97-2.97L9 12v3h3l8.385-8.415M16 5l3 3"/>
+    </symbol>
+    <symbol id="icon-trash" viewBox="0 0 24 24">
+      <path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"/>
+    </symbol>
+    <symbol id="icon-shield" viewBox="0 0 24 24">
+      <path d="M12 3 5 6v5c0 4.6 2.8 8 7 10 4.2-2 7-5.4 7-10V6l-7-3Z"/>
+    </symbol>
+    <symbol id="icon-globe" viewBox="0 0 24 24">
+      <path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0-18 0M3.6 9h16.8M3.6 15h16.8M11.5 3a17 17 0 0 0 0 18M12.5 3a17 17 0 0 1 0 18"/>
+    </symbol>
+    <symbol id="icon-key" viewBox="0 0 24 24">
+      <circle cx="8" cy="15" r="4"/>
+      <path d="m11 12 8-8M15 8l2 2M17 6l2 2"/>
+    </symbol>
+    <symbol id="icon-activity" viewBox="0 0 24 24">
+      <path d="M3 12h4l2-6 4 12 2-6h6"/>
+    </symbol>
+    <symbol id="icon-moon" viewBox="0 0 24 24">
+      <path d="M12 3h.393a7.5 7.5 0 0 0 7.92 12.446A9 9 0 1 1 12 2.992V3"/>
+    </symbol>
+    <symbol id="icon-sun" viewBox="0 0 24 24">
+      <path d="M8 12a4 4 0 1 0 8 0a4 4 0 1 0-8 0M3 12h1M12 3v1M20 12h1M12 20v1M5.6 5.6l.7.7M18.4 5.6l-.7.7M17.7 17.7l.7.7M6.3 17.7l-.7.7"/>
+    </symbol>
+    <symbol id="icon-language" viewBox="0 0 24 24">
+      <path d="M9 6.371C9 10.789 6.761 13 4 13M4 6.371h7M5 9c0 2.144 2.252 3.908 6 4M12 20l4-9 4 9M19.1 18h-6.2M6.694 3l.793.582"/>
+    </symbol>
+    <symbol id="icon-download" viewBox="0 0 24 24">
+      <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2M7 11l5 5 5-5M12 4v12"/>
+    </symbol>
+    <symbol id="icon-upload" viewBox="0 0 24 24">
+      <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2M7 9l5-5 5 5M12 4v12"/>
+    </symbol>
+    <symbol id="icon-clock" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9"/>
+      <path d="M12 7v5l3 2"/>
+    </symbol>
+    <symbol id="icon-play" viewBox="0 0 24 24">
+      <path d="m8 5 11 7-11 7Z"/>
+    </symbol>
+    <symbol id="icon-stop" viewBox="0 0 24 24">
+      <rect x="6" y="6" width="12" height="12" rx="1"/>
+    </symbol>
+  </svg>
+
+  <section id="pin-gate" class="pin-gate" data-view="pin" aria-labelledby="pin-prompt">
+    <div class="pin-card">
+      <img class="pin-logo" src="./assets/foxhole.png?v=0.1.0-r41-ui1" width="512" height="512" alt="FoxHole OpenWRT Client">
+      <strong class="pin-brand">FoxHole OpenWRT Client</strong>
+      <p id="pin-prompt" class="muted pin-prompt" data-i18n="auth.pin_prompt"></p>
+      <form id="pin-form" data-pin-form autocomplete="off">
+        <div class="pin-entry" role="group" aria-labelledby="pin-prompt">
+          <div class="pin-dots" aria-hidden="true">
+            <span data-pin-dot></span>
+            <span data-pin-dot></span>
+            <span data-pin-dot></span>
+            <span data-pin-dot></span>
+          </div>
+          <input id="pin-input" class="pin-input" name="pin" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="one-time-code" aria-labelledby="pin-prompt">
+        </div>
+      </form>
+      <a class="icon-button pin-router-link" href="/cgi-bin/luci/" data-i18n-title="action.open_luci">
+        <svg aria-hidden="true"><use href="#icon-router"/></svg>
+        <span class="visually-hidden" data-i18n="action.open_luci"></span>
+      </a>
+    </div>
+  </section>
+
+  <div id="app-shell" class="app-shell" data-view="dashboard" hidden>
+    <header id="topbar" class="topbar" data-topbar>
+      <a class="brand" href="#dashboard" data-action="scroll-top" aria-label="FoxHole OpenWRT Client">
+        <img src="./assets/foxhole.png?v=0.1.0-r41-ui1" width="512" height="512" alt="">
+        <span>FoxHole OpenWRT Client</span>
+      </a>
+      <nav class="topbar-actions" data-i18n-aria-label="nav.primary">
+        <button id="add-button" class="icon-button vpn-button" type="button" data-action="open-add" data-i18n-title="action.add_vpn">
+          <svg aria-hidden="true"><use href="#icon-shield"/></svg>
+          <span data-i18n="action.vpn"></span>
+        </button>
+        <button id="lock-button" class="icon-button" type="button" data-action="lock" data-i18n-title="action.lock">
+          <svg aria-hidden="true"><use href="#icon-lock"/></svg>
+          <span class="visually-hidden" data-i18n="action.lock"></span>
+        </button>
+        <a id="luci-link" class="icon-button" href="/cgi-bin/luci/" data-i18n-title="action.open_luci">
+          <svg aria-hidden="true"><use href="#icon-router"/></svg>
+          <span class="visually-hidden" data-i18n="action.open_luci"></span>
+        </a>
+        <button id="settings-button" class="icon-button" type="button" data-action="open-settings" data-i18n-title="action.settings">
+          <svg aria-hidden="true"><use href="#icon-settings"/></svg>
+          <span class="visually-hidden" data-i18n="action.settings"></span>
+        </button>
+      </nav>
+    </header>
+
+    <main id="dashboard" class="content">
+      <section class="intro" data-router-status aria-labelledby="status-heading">
+        <h1 id="status-heading" class="pixel-heading">
+          <span class="heading-icon" aria-hidden="true"><svg><use href="#icon-activity"/></svg></span>
+          <span data-i18n="dashboard.status"></span>
+        </h1>
+        <div class="section-heading-actions">
+          <label class="period-control" data-period-control>
+            <span id="period-label" class="visually-hidden" data-i18n="chart.period"></span>
+            <select id="period-select" class="compact-select" data-period aria-labelledby="period-label">
+              <option value="24h" data-i18n="period.day"></option>
+              <option value="7d" data-i18n="period.week"></option>
+              <option value="30d" data-i18n="period.month"></option>
+            </select>
+          </label>
+          <button class="section-collapse-button" type="button" data-action="toggle-section" data-section-toggle="status" aria-expanded="true" aria-controls="status-section-body" data-i18n-title="action.collapse">
+            <svg aria-hidden="true"><use href="#icon-chevron"/></svg>
+            <span class="visually-hidden" data-i18n="action.collapse"></span>
+          </button>
+        </div>
+      </section>
+
+      <div id="status-section-body" class="section-collapse-body" data-section-body="status" data-router-status>
+        <section class="chart-grid section-collapse-inner" data-chart-grid data-i18n-aria-label="chart.group">
+        <article class="chart-card" data-chart-card="wrt">
+          <header class="card-heading">
+            <button class="chart-toggle" type="button" data-chart-toggle="wrt" aria-expanded="true" aria-controls="chart-panel-wrt">
+              <span class="mini-icon" aria-hidden="true"><svg><use href="#icon-router"/></svg></span>
+              <strong id="chart-title-wrt">WRT</strong>
+              <i class="chart-chevron" aria-hidden="true"></i>
+            </button>
+            <span class="chart-meta is-wrt" data-chart-meta="wrt">
+              <span><i data-i18n="router.cpu"></i> <b data-meta-cpu>—%</b></span>
+              <span><i data-i18n="router.ram"></i> <b data-meta-ram>—%</b></span>
+            </span>
+          </header>
+          <div id="chart-panel-wrt" class="chart-panel">
+            <div class="chart-frame">
+              <canvas id="chart-wrt" data-chart="wrt" data-action="open-router-stats" tabindex="0" role="button" width="720" height="250" aria-labelledby="chart-title-wrt"></canvas>
+              <p class="chart-empty" data-chart-empty="wrt" data-i18n="chart.waiting"></p>
+            </div>
+          </div>
+        </article>
+
+        <article class="chart-card" data-chart-card="network">
+          <header class="card-heading">
+            <button class="chart-toggle" type="button" data-chart-toggle="network" aria-expanded="true" aria-controls="chart-panel-network">
+              <span class="mini-icon" aria-hidden="true"><svg><use href="#icon-network"/></svg></span>
+              <strong id="chart-title-network" data-i18n="chart.wan"></strong>
+              <i class="chart-chevron" aria-hidden="true"></i>
+            </button>
+            <span class="chart-meta is-traffic" data-chart-meta="network">
+              <span data-i18n-aria-label="router.rx"><svg aria-hidden="true"><use href="#icon-download"/></svg><i data-meta-rx>—</i></span>
+              <span data-i18n-aria-label="router.tx"><svg aria-hidden="true"><use href="#icon-upload"/></svg><i data-meta-tx>—</i></span>
+            </span>
+          </header>
+          <div id="chart-panel-network" class="chart-panel">
+            <div class="chart-frame">
+              <canvas id="chart-network" data-chart="network" data-action="open-router-stats" tabindex="0" role="button" width="720" height="250" aria-labelledby="chart-title-network"></canvas>
+              <p class="chart-empty" data-chart-empty="network" data-i18n="chart.waiting"></p>
+            </div>
+          </div>
+        </article>
+
+        <article class="chart-card" data-chart-card="wan-latency">
+          <header class="card-heading">
+            <button class="chart-toggle" type="button" data-chart-toggle="wan-latency" aria-expanded="true" aria-controls="chart-panel-wan-latency">
+              <span class="mini-icon" aria-hidden="true"><svg><use href="#icon-globe"/></svg></span>
+              <strong id="chart-title-wan-latency" data-i18n="chart.wan_latency"></strong>
+              <i class="chart-chevron" aria-hidden="true"></i>
+            </button>
+            <span class="chart-meta is-latency" data-chart-meta="wan-latency">
+              <b data-meta-wan-address>—</b><b class="inline-country" data-meta-wan-country hidden></b>
+            </span>
+          </header>
+          <div id="chart-panel-wan-latency" class="chart-panel">
+            <div class="chart-frame">
+              <canvas id="chart-wan-latency" data-chart="wan-latency" data-action="open-router-stats" tabindex="0" role="button" width="720" height="250" aria-labelledby="chart-title-wan-latency"></canvas>
+              <p class="chart-empty" data-chart-empty="wan-latency" data-i18n="chart.waiting"></p>
+            </div>
+          </div>
+        </article>
+
+        <article class="chart-card" data-chart-card="vpn-latency">
+          <header class="card-heading">
+            <button class="chart-toggle" type="button" data-chart-toggle="vpn-latency" aria-expanded="true" aria-controls="chart-panel-vpn-latency">
+              <span class="mini-icon" aria-hidden="true"><svg><use href="#icon-shield"/></svg></span>
+              <strong id="chart-title-vpn-latency" data-i18n="chart.vpn_latency"></strong>
+              <i class="chart-chevron" aria-hidden="true"></i>
+            </button>
+            <span class="chart-meta is-latency" data-chart-meta="vpn-latency">
+              <b data-meta-vpn-address>—</b><b class="inline-country" data-meta-vpn-country hidden></b>
+            </span>
+          </header>
+          <div id="chart-panel-vpn-latency" class="chart-panel">
+            <div class="chart-frame">
+              <canvas id="chart-vpn-latency" data-chart="vpn-latency" data-action="open-router-stats" tabindex="0" role="button" width="720" height="250" aria-labelledby="chart-title-vpn-latency"></canvas>
+              <p class="chart-empty" data-chart-empty="vpn-latency" data-i18n="chart.waiting"></p>
+            </div>
+          </div>
+        </article>
+        </section>
+      </div>
+
+      <section class="entity-section" aria-labelledby="servers-heading">
+        <div class="section-heading">
+          <h2 id="servers-heading" class="pixel-heading">
+            <span class="heading-icon" aria-hidden="true"><svg><use href="#icon-server"/></svg></span>
+            <span data-i18n="servers.title"></span>
+          </h2>
+          <button class="section-collapse-button" type="button" data-action="toggle-section" data-section-toggle="servers" aria-expanded="true" aria-controls="servers-section-body" data-i18n-title="action.collapse">
+            <svg aria-hidden="true"><use href="#icon-chevron"/></svg>
+            <span class="visually-hidden" data-i18n="action.collapse"></span>
+          </button>
+        </div>
+        <div id="servers-section-body" class="section-collapse-body" data-section-body="servers">
+          <div id="server-list" class="entity-list section-collapse-inner" data-server-list aria-live="polite">
+            <div class="empty-state is-entity-empty" data-empty-state="servers">
+              <svg aria-hidden="true"><use href="#icon-info"/></svg>
+              <strong data-i18n="servers.empty_title"></strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="entity-section" aria-labelledby="clients-heading">
+        <div class="section-heading">
+          <h2 id="clients-heading" class="pixel-heading">
+            <span class="heading-icon" aria-hidden="true"><svg><use href="#icon-mobile"/></svg></span>
+            <span data-i18n="clients.title"></span>
+          </h2>
+          <button class="section-collapse-button" type="button" data-action="toggle-section" data-section-toggle="clients" aria-expanded="true" aria-controls="clients-section-body" data-i18n-title="action.collapse">
+            <svg aria-hidden="true"><use href="#icon-chevron"/></svg>
+            <span class="visually-hidden" data-i18n="action.collapse"></span>
+          </button>
+        </div>
+        <div id="clients-section-body" class="section-collapse-body" data-section-body="clients">
+          <div id="client-list" class="entity-list section-collapse-inner" data-client-list aria-live="polite">
+            <div class="empty-state is-entity-empty" data-empty-state="clients">
+              <svg aria-hidden="true"><use href="#icon-info"/></svg>
+              <strong data-i18n="clients.empty_title"></strong>
+            </div>
+          </div>
+        </div>
+      </section>
+      <footer class="app-footer">FoxHole OpenWRT Client</footer>
+    </main>
+  </div>
+
+  <dialog id="modal-shell" class="modal" aria-labelledby="modal-title">
+    <header class="modal-header">
+      <span class="modal-heading-icon" aria-hidden="true"><svg><use data-modal-icon href="#icon-shield"/></svg></span>
+      <h2 id="modal-title" tabindex="-1" data-modal-title data-i18n="modal.title"></h2>
+      <span class="inline-country" data-modal-country hidden></span>
+    </header>
+    <div id="modal-stage" class="modal-stage" data-modal-stage></div>
+    <footer class="modal-footer" data-modal-footer></footer>
+  </dialog>
+
+  <div id="toast" class="toast" data-toast popover="manual" role="status" aria-live="polite" hidden>
+    <span class="toast-icon" aria-hidden="true"><svg><use data-toast-icon href="#icon-check"/></svg></span>
+    <span data-toast-text></span>
+  </div>
+
+  <template id="tpl-add-choice" data-template="add-choice">
+    <div class="modal-panel" data-modal-view="add-choice" data-title-key="add.title">
+      <div class="choice-grid">
+        <button class="choice-card" type="button" data-action="add-server">
+          <span class="choice-icon" aria-hidden="true"><svg><use href="#icon-server"/></svg></span>
+          <strong data-i18n="add.server"></strong>
+          <svg class="choice-chevron" aria-hidden="true"><use href="#icon-chevron"/></svg>
+        </button>
+        <button class="choice-card" type="button" data-action="add-client">
+          <span class="choice-icon" aria-hidden="true"><svg><use href="#icon-mobile"/></svg></span>
+          <strong data-i18n="add.client"></strong>
+          <svg class="choice-chevron" aria-hidden="true"><use href="#icon-chevron"/></svg>
+        </button>
+      </div>
+      <button id="add-choice-routes" class="outline-button is-full add-choice-routes" type="button" data-action="open-exceptions">
+        <svg aria-hidden="true"><use href="#icon-globe"/></svg><span data-i18n="action.open_routes"></span>
+      </button>
+    </div>
+  </template>
+
+  <template id="tpl-server-config" data-template="server-config">
+    <div class="modal-panel" data-modal-view="server-config" data-title-key="server.add_title">
+      <form id="server-config-form" class="form-stack" data-server-form autocomplete="off">
+        <input type="hidden" name="serverId" data-server-id>
+        <label for="server-name-input" data-i18n="server.name_label"></label>
+        <input id="server-name-input" class="text-input" name="name" type="text" maxlength="13" autocomplete="off" data-server-name required>
+        <label for="server-config-input" data-i18n="server.config_label"></label>
+        <textarea id="server-config-input" class="config-input" name="config" rows="11" spellcheck="false" autocapitalize="off" autocomplete="off" data-server-config data-i18n-placeholder="server.config_placeholder" required></textarea>
+      </form>
+    </div>
+  </template>
+
+  <template id="tpl-server-control" data-template="server-control">
+    <div class="modal-panel" data-modal-view="server-control" data-title-key="server.control_title">
+      <div class="server-control-card">
+        <span class="choice-icon" aria-hidden="true"><svg><use href="#icon-server"/></svg></span>
+        <span class="server-control-copy server-title">
+          <strong data-server-control-name></strong>
+          <span class="inline-country" data-server-control-country hidden></span>
+        </span>
+        <span class="entity-status" data-server-control-status></span>
+      </div>
+      <div data-server-control-metrics></div>
+    </div>
+  </template>
+
+  <template id="tpl-client-device" data-template="client-device">
+    <div class="modal-panel" data-modal-view="client-device" data-title-key="client.add_title">
+      <form id="client-device-form" class="form-stack" data-client-form autocomplete="off" novalidate>
+        <div class="client-name-line">
+          <input id="client-name" class="text-input" name="name" type="text" maxlength="48" autocomplete="off" data-client-name data-i18n-placeholder="client.name_placeholder" required>
+          <div class="setting-picker client-type-picker" data-setting-picker data-popup>
+            <select id="client-device-type" name="deviceType" data-client-type hidden>
+              <option value="smartphone" data-i18n="client.smartphone"></option>
+              <option value="tablet" data-i18n="client.tablet"></option>
+              <option value="computer" data-i18n="client.computer"></option>
+            </select>
+            <button class="setting-picker-trigger client-type-trigger" type="button" data-action="toggle-popup" data-popup-trigger aria-expanded="false" data-i18n-aria-label="client.type_label">
+              <svg data-client-type-icon aria-hidden="true"><use href="#icon-mobile"/></svg>
+              <span class="setting-picker-value" data-setting-current></span>
+              <svg class="picker-chevron" aria-hidden="true"><use href="#icon-chevron"/></svg>
+            </button>
+            <span class="setting-picker-menu client-type-menu" role="listbox" data-setting-menu data-popup-menu hidden>
+              <button type="button" role="option" data-action="select-setting-option" data-value="smartphone" aria-selected="true"><svg aria-hidden="true"><use href="#icon-mobile"/></svg><span data-i18n="client.smartphone"></span></button>
+              <button type="button" role="option" data-action="select-setting-option" data-value="tablet" aria-selected="false"><svg aria-hidden="true"><use href="#icon-tablet"/></svg><span data-i18n="client.tablet"></span></button>
+              <button type="button" role="option" data-action="select-setting-option" data-value="computer" aria-selected="false"><svg aria-hidden="true"><use href="#icon-monitor"/></svg><span data-i18n="client.computer"></span></button>
+            </span>
+          </div>
+        </div>
+      </form>
+
+      <section class="client-result" data-client-result hidden aria-live="polite">
+        <div class="result-heading">
+          <span class="success-mark" aria-hidden="true"><svg><use href="#icon-check"/></svg></span>
+          <div class="client-result-title" data-client-result-title>
+            <strong data-client-result-name></strong>
+            <button class="icon-button compact-icon" type="button" data-action="edit-client-name" data-i18n-title="client.rename" data-i18n-aria-label="client.rename">
+              <svg aria-hidden="true"><use href="#icon-edit"/></svg>
+            </button>
+          </div>
+          <form class="client-rename-form" data-client-rename-form autocomplete="off" novalidate hidden>
+            <input class="text-input" type="text" name="name" maxlength="48" data-client-rename-input data-i18n-aria-label="client.name_label" required>
+            <button class="icon-button compact-icon" type="submit" data-i18n-title="action.save" data-i18n-aria-label="action.save"><svg aria-hidden="true"><use href="#icon-check"/></svg></button>
+            <button class="icon-button compact-icon" type="button" data-action="cancel-client-rename" data-i18n-title="action.back" data-i18n-aria-label="action.back"><svg aria-hidden="true"><use href="#icon-close"/></svg></button>
+          </form>
+        </div>
+        <div class="qr-frame" data-client-qr role="img" data-i18n-aria-label="client.qr_label"></div>
+        <label class="setting-row" data-client-lan-row hidden>
+          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-network"/></svg></span>
+          <span class="setting-copy"><strong data-i18n="client.allow_lan"></strong></span>
+          <span class="switch"><input type="checkbox" data-client-lan><i aria-hidden="true"></i></span>
+        </label>
+        <div class="config-output">
+          <div class="output-heading">
+            <span data-i18n="client.config_title"></span>
+            <div class="output-actions">
+              <button class="icon-button compact-icon" type="button" data-action="regenerate-client-config" data-i18n-title="client.regenerate" data-i18n-aria-label="client.regenerate">
+                <svg aria-hidden="true"><use href="#icon-refresh"/></svg>
+              </button>
+              <button class="icon-button compact-icon" type="button" data-action="copy-client-config" data-i18n-title="action.copy" data-i18n-aria-label="action.copy">
+                <svg aria-hidden="true"><use href="#icon-copy"/></svg>
+              </button>
+            </div>
+          </div>
+          <pre><code data-client-config></code></pre>
+        </div>
+      </section>
+    </div>
+  </template>
+
+  <template id="tpl-client-control" data-template="client-control">
+    <div class="modal-panel" data-modal-view="client-control" data-title-key="client.export_title">
+      <div class="server-control-card">
+        <span class="choice-icon" aria-hidden="true"><svg data-client-control-icon><use href="#icon-mobile"/></svg></span>
+        <span class="server-control-copy">
+          <strong data-client-control-name></strong>
+          <small data-client-control-type></small>
+        </span>
+        <span class="entity-status" data-i18n="client.inactive"></span>
+      </div>
+      <div class="metrics client-metrics">
+        <span class="metric"><small><svg aria-hidden="true"><use href="#icon-download"/></svg><span data-i18n="client.incoming"></span></small><strong data-client-incoming>0 B</strong></span>
+        <span class="metric"><small><svg aria-hidden="true"><use href="#icon-upload"/></svg><span data-i18n="client.outgoing"></span></small><strong data-client-outgoing>0 B</strong></span>
+        <span class="metric"><small><svg aria-hidden="true"><use href="#icon-clock"/></svg><span data-i18n="client.last_connection"></span></small><strong data-client-last-connection data-i18n="client.never"></strong></span>
+      </div>
+    </div>
+  </template>
+
+  <template id="tpl-settings-home" data-template="settings-home">
+    <div class="modal-panel" data-modal-view="settings-home" data-title-key="settings.title">
+      <form id="settings-form" class="settings-list" data-settings-form>
+        <div class="setting-row">
+          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-globe"/></svg></span>
+          <span class="setting-copy"><strong data-i18n="settings.local_scope"></strong></span>
+          <span class="setting-picker" data-setting-picker data-popup>
+            <select id="local-scope" name="localScope" data-setting="localScope" hidden>
+              <option value="all" data-i18n="scope.all"></option>
+              <option value="selected" data-i18n="scope.selected"></option>
+            </select>
+            <button class="setting-picker-trigger" type="button" data-action="toggle-popup" data-popup-trigger aria-expanded="false" data-i18n-aria-label="settings.local_scope">
+              <span class="asset-icon select-leading-icon" data-scope-icon data-asset-icon="world" aria-hidden="true"></span>
+              <span class="setting-picker-value" data-setting-current></span>
+              <svg aria-hidden="true"><use href="#icon-chevron"/></svg>
+            </button>
+            <span class="setting-picker-menu" role="listbox" data-setting-menu data-popup-menu hidden>
+              <button type="button" role="option" data-action="select-setting-option" data-value="all" aria-selected="true"><span class="asset-icon" data-asset-icon="world" aria-hidden="true"></span><span data-i18n="scope.all"></span></button>
+              <button type="button" role="option" data-action="select-setting-option" data-value="selected" aria-selected="false"><span class="asset-icon" data-asset-icon="devices" aria-hidden="true"></span><span data-i18n="scope.selected"></span></button>
+            </span>
+          </span>
+        </div>
+
+        <div class="setting-row">
+          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-network"/></svg></span>
+          <label class="setting-copy" for="local-rules">
+            <strong data-i18n="settings.local_rules"></strong>
+          </label>
+          <span class="switch"><input id="local-rules" name="localRules" type="checkbox" data-setting="localRules"><i aria-hidden="true"></i></span>
+        </div>
+
+        <div class="setting-row">
+          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-mobile"/></svg></span>
+          <label class="setting-copy" for="client-rules">
+            <strong data-i18n="settings.client_rules"></strong>
+          </label>
+          <span class="switch"><input id="client-rules" name="clientRules" type="checkbox" data-setting="clientRules"><i aria-hidden="true"></i></span>
+        </div>
+
+        <div class="setting-row">
+          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-shield"/></svg></span>
+          <label class="setting-copy" for="kill-switch">
+            <strong data-i18n="settings.kill_switch"></strong>
+          </label>
+          <span class="switch"><input id="kill-switch" name="killSwitch" type="checkbox" data-setting="killSwitch"><i aria-hidden="true"></i></span>
+        </div>
+
+        <button class="setting-row is-link" type="button" data-action="open-exceptions">
+          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-globe"/></svg></span>
+          <span class="setting-copy"><strong data-i18n="settings.exceptions"></strong></span>
+          <svg class="row-chevron" aria-hidden="true"><use href="#icon-chevron"/></svg>
+        </button>
+
+        <button class="setting-row is-link" type="button" data-action="open-interface-settings">
+          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-moon"/></svg></span>
+          <span class="setting-copy"><strong data-i18n="settings.interface"></strong></span>
+          <svg class="row-chevron" aria-hidden="true"><use href="#icon-chevron"/></svg>
+        </button>
+
+      </form>
+    </div>
+  </template>
+
+  <template id="tpl-interface-settings" data-template="interface-settings">
+    <div class="modal-panel" data-modal-view="interface-settings" data-title-key="settings.interface">
+      <div class="settings-list">
+        <div class="setting-row">
+          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-language"/></svg></span>
+          <span class="setting-copy"><strong data-i18n="settings.language"></strong></span>
+          <span class="setting-picker" data-setting-picker data-popup>
+            <select id="language-select" name="language" data-language hidden>
+              <option value="ru" data-i18n="language.ru"></option>
+              <option value="en" data-i18n="language.en"></option>
+            </select>
+            <button class="setting-picker-trigger" type="button" data-action="toggle-popup" data-popup-trigger aria-expanded="false" data-i18n-aria-label="settings.language">
+              <img class="select-flag" data-language-flag src="./assets/flags/ru.svg" width="16" height="12" alt="">
+              <span class="setting-picker-value" data-setting-current></span>
+              <svg aria-hidden="true"><use href="#icon-chevron"/></svg>
+            </button>
+            <span class="setting-picker-menu" role="listbox" data-setting-menu data-popup-menu hidden>
+              <button type="button" role="option" data-action="select-setting-option" data-value="ru" aria-selected="true"><img class="select-flag" src="./assets/flags/ru.svg" width="16" height="12" alt=""><span data-i18n="language.ru"></span></button>
+              <button type="button" role="option" data-action="select-setting-option" data-value="en" aria-selected="false"><img class="select-flag" src="./assets/flags/gb.svg" width="16" height="12" alt=""><span data-i18n="language.en"></span></button>
+            </span>
+          </span>
+        </div>
+        <div class="setting-row">
+          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-moon"/></svg></span>
+          <span class="setting-copy"><strong data-i18n="settings.theme"></strong></span>
+          <span class="setting-picker" data-setting-picker data-popup>
+            <select id="theme-select" name="theme" data-setting="theme" hidden>
+              <option value="dark" data-i18n="theme.dark"></option>
+              <option value="light" data-i18n="theme.light"></option>
+            </select>
+            <button class="setting-picker-trigger" type="button" data-action="toggle-popup" data-popup-trigger aria-expanded="false" data-i18n-aria-label="settings.theme">
+              <span class="asset-icon select-leading-icon" data-theme-icon data-asset-icon="moon" aria-hidden="true"></span>
+              <span class="setting-picker-value" data-setting-current></span>
+              <svg aria-hidden="true"><use href="#icon-chevron"/></svg>
+            </button>
+            <span class="setting-picker-menu" role="listbox" data-setting-menu data-popup-menu hidden>
+              <button type="button" role="option" data-action="select-setting-option" data-value="dark" aria-selected="true"><span class="asset-icon" data-asset-icon="moon" aria-hidden="true"></span><span data-i18n="theme.dark"></span></button>
+              <button type="button" role="option" data-action="select-setting-option" data-value="light" aria-selected="false"><span class="asset-icon" data-asset-icon="sun" aria-hidden="true"></span><span data-i18n="theme.light"></span></button>
+            </span>
+          </span>
+        </div>
+        <div class="setting-row">
+          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-activity"/></svg></span>
+          <label class="setting-copy" for="dark-charts"><strong data-i18n="settings.monochrome_charts"></strong></label>
+          <span class="switch"><input id="dark-charts" name="darkCharts" type="checkbox" data-setting="darkCharts"><i aria-hidden="true"></i></span>
+        </div>
+        <div class="setting-row">
+          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-router"/></svg></span>
+          <label class="setting-copy" for="hide-router-status"><strong data-i18n="settings.hide_router_status"></strong></label>
+          <span class="switch"><input id="hide-router-status" name="hideRouterStatus" type="checkbox" data-setting="hideRouterStatus"><i aria-hidden="true"></i></span>
+        </div>
+        <div class="setting-row">
+          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-monitor"/></svg></span>
+          <label class="setting-copy" for="foxhole-style"><strong data-i18n="settings.foxhole_style"></strong></label>
+          <span class="switch"><input id="foxhole-style" name="foxholeStyle" type="checkbox" data-setting="plainHeadings" data-setting-inverted><i aria-hidden="true"></i></span>
+        </div>
+        <button class="setting-row is-link" type="button" data-action="open-pin-change">
+          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-key"/></svg></span>
+          <span class="setting-copy"><strong data-i18n="settings.change_pin"></strong></span>
+          <svg class="row-chevron" aria-hidden="true"><use href="#icon-chevron"/></svg>
+        </button>
+      </div>
+    </div>
+  </template>
+
+  <template id="tpl-exceptions" data-template="exceptions">
+    <div class="modal-panel" data-modal-view="exceptions" data-title-key="exceptions.title">
+      <section class="settings-group" aria-labelledby="country-rule-title">
+        <div class="group-heading">
+          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-globe"/></svg></span>
+          <h3 id="country-rule-title" data-i18n="exceptions.country_title"></h3>
+        </div>
+        <form id="country-rule-form" class="form-stack country-rule-form" data-country-form>
+          <div class="country-rule-line">
+            <div class="country-picker" data-country-picker data-popup>
+              <button class="country-picker-trigger" type="button" data-action="toggle-popup" data-popup-trigger aria-expanded="false" aria-controls="country-options">
+                <span class="country-picker-value" data-country-selection data-i18n="exceptions.country_placeholder"></span>
+                <svg aria-hidden="true"><use href="#icon-chevron"/></svg>
+              </button>
+              <div id="country-options" class="country-picker-menu" role="listbox" data-country-menu data-popup-menu hidden>
+                <div class="country-options" data-country-options></div>
+              </div>
+            </div>
+            <div class="route-picker" data-route-picker data-popup>
+              <input type="hidden" name="route" value="direct" data-route-value data-country-route>
+              <button class="route-picker-trigger" type="button" data-action="toggle-popup" data-popup-trigger aria-expanded="false" data-i18n-aria-label="exceptions.route_label">
+                <svg data-route-icon aria-hidden="true"><use href="#icon-globe"/></svg>
+                <span data-route-current data-i18n="route.direct"></span>
+                <svg aria-hidden="true"><use href="#icon-chevron"/></svg>
+              </button>
+              <div class="route-picker-menu" role="listbox" data-route-menu data-popup-menu hidden>
+                <button type="button" role="option" data-action="select-route" data-route="vpn" aria-selected="false"><svg aria-hidden="true"><use href="#icon-shield"/></svg><span data-i18n="route.vpn"></span></button>
+                <button type="button" role="option" data-action="select-route" data-route="direct" aria-selected="true"><svg aria-hidden="true"><use href="#icon-globe"/></svg><span data-i18n="route.direct"></span></button>
+              </div>
+            </div>
+          </div>
+          <input name="country" type="hidden" data-country-input>
+          <button class="outline-button is-accent is-full" type="submit" data-action="add-country" data-country-add disabled><svg aria-hidden="true"><use href="#icon-plus"/></svg><span data-i18n="action.add_exception"></span></button>
+        </form>
+      </section>
+
+      <section class="settings-group" aria-labelledby="address-rule-title">
+        <div class="group-heading">
+          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-devices"/></svg></span>
+          <h3 id="address-rule-title" data-i18n="exceptions.address_title"></h3>
+        </div>
+        <form class="form-stack is-compact" data-selected-device-form>
+          <div class="device-rule-line" data-popup>
+            <div class="device-picker" data-device-picker>
+              <button class="device-picker-trigger" type="button" data-action="toggle-popup" data-popup-trigger aria-expanded="false">
+                <span class="device-picker-value" data-device-selection data-i18n="exceptions.device_placeholder"></span>
+                <svg aria-hidden="true"><use href="#icon-chevron"/></svg>
+              </button>
+            </div>
+            <div class="route-picker" data-route-picker data-popup>
+              <input id="selected-device-route" type="hidden" name="route" value="direct" data-route-value data-address-route>
+              <button class="route-picker-trigger" type="button" data-action="toggle-popup" data-popup-trigger aria-expanded="false" data-i18n-aria-label="exceptions.route_label">
+                <svg data-route-icon aria-hidden="true"><use href="#icon-globe"/></svg>
+                <span data-route-current data-i18n="route.direct"></span>
+                <svg aria-hidden="true"><use href="#icon-chevron"/></svg>
+              </button>
+              <div class="route-picker-menu" role="listbox" data-route-menu data-popup-menu hidden>
+                <button type="button" role="option" data-action="select-route" data-route="vpn" aria-selected="false"><svg aria-hidden="true"><use href="#icon-shield"/></svg><span data-i18n="route.vpn"></span></button>
+                <button type="button" role="option" data-action="select-route" data-route="direct" aria-selected="true"><svg aria-hidden="true"><use href="#icon-globe"/></svg><span data-i18n="route.direct"></span></button>
+              </div>
+            </div>
+            <div class="device-picker-menu" data-device-menu data-popup-menu hidden>
+              <div class="device-table-head" aria-hidden="true">
+                <span></span><b data-i18n="exceptions.device_name"></b><b data-i18n="exceptions.device_ip"></b><b data-i18n="exceptions.device_mac"></b>
+              </div>
+              <div class="device-table" data-dhcp-device-list></div>
+              <button class="device-manual" type="button" data-action="open-manual-address">
+                <svg aria-hidden="true"><use href="#icon-plus"/></svg>
+                <span data-i18n="exceptions.add_manually"></span>
+              </button>
+            </div>
+          </div>
+          <button class="outline-button is-accent is-full" type="submit" data-action="add-selected-devices" data-device-add disabled><svg aria-hidden="true"><use href="#icon-plus"/></svg><span data-i18n="action.add_route"></span></button>
+        </form>
+      </section>
+
+      <section class="settings-group" aria-labelledby="site-rule-title">
+        <div class="group-heading">
+          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-globe"/></svg></span>
+          <h3 id="site-rule-title" data-i18n="exceptions.site_title"></h3>
+        </div>
+        <form id="site-rule-form" class="form-stack is-compact" data-site-form autocomplete="off">
+          <div class="site-rule-line">
+            <input id="site-input" class="text-input" name="pattern" type="text" maxlength="253" autocapitalize="off" spellcheck="false" data-site-input data-i18n-placeholder="exceptions.site_placeholder" data-i18n-aria-label="exceptions.site_label" required>
+            <div class="route-picker" data-route-picker data-popup>
+              <input type="hidden" name="route" value="direct" data-route-value data-site-route>
+              <button class="route-picker-trigger" type="button" data-action="toggle-popup" data-popup-trigger aria-expanded="false" data-i18n-aria-label="exceptions.route_label">
+                <svg data-route-icon aria-hidden="true"><use href="#icon-globe"/></svg>
+                <span data-route-current data-i18n="route.direct"></span>
+                <svg aria-hidden="true"><use href="#icon-chevron"/></svg>
+              </button>
+              <div class="route-picker-menu" role="listbox" data-route-menu data-popup-menu hidden>
+                <button type="button" role="option" data-action="select-route" data-route="vpn" aria-selected="false"><svg aria-hidden="true"><use href="#icon-shield"/></svg><span data-i18n="route.vpn"></span></button>
+                <button type="button" role="option" data-action="select-route" data-route="direct" aria-selected="true"><svg aria-hidden="true"><use href="#icon-globe"/></svg><span data-i18n="route.direct"></span></button>
+              </div>
+            </div>
+          </div>
+          <button class="outline-button is-accent is-full" type="submit" data-action="add-site" data-site-add disabled><svg aria-hidden="true"><use href="#icon-plus"/></svg><span data-i18n="action.add_route"></span></button>
+        </form>
+      </section>
+
+      <section class="settings-group saved-rules-section" aria-labelledby="saved-rules-title">
+        <div class="saved-rules-toolbar">
+        <div class="section-heading saved-rules-heading">
+          <h3 id="saved-rules-title" class="pixel-heading">
+            <span class="heading-icon" aria-hidden="true"><svg><use href="#icon-network"/></svg></span>
+            <span data-i18n="exceptions.saved_rules"></span>
+          </h3>
+          <div class="section-heading-actions">
+            <label class="saved-rules-filter">
+              <span id="saved-rules-filter-label" class="visually-hidden" data-i18n="exceptions.filter_label"></span>
+              <select class="compact-select" data-rule-filter aria-labelledby="saved-rules-filter-label">
+                <option value="all" data-i18n="exceptions.filter_all"></option>
+                <option value="country" data-i18n="exceptions.filter_countries"></option>
+                <option value="address" data-i18n="exceptions.filter_devices"></option>
+                <option value="site" data-i18n="exceptions.filter_sites"></option>
+              </select>
+            </label>
+            <button class="section-collapse-button" type="button" data-action="toggle-section" data-section-toggle="saved-rules" aria-expanded="true" aria-controls="saved-rules-body" data-i18n-title="action.collapse">
+              <svg aria-hidden="true"><use href="#icon-chevron"/></svg>
+              <span class="visually-hidden" data-i18n="action.collapse"></span>
+            </button>
+          </div>
+        </div>
+              <div class="rule-table-head" data-rule-table-head>
+                <span data-i18n="exceptions.column_name"></span>
+                <span data-i18n="exceptions.column_route"></span>
+                <span data-i18n="exceptions.column_actions"></span>
+              </div>
+        </div>
+        <div id="saved-rules-body" class="section-collapse-body" data-section-body="saved-rules">
+          <div class="section-collapse-inner">
+            <div class="rule-table" data-rule-table="saved">
+              <div class="rule-list" data-saved-rule-list aria-live="polite"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </template>
+
+  <template id="tpl-manual-address" data-template="manual-address">
+    <div class="modal-panel" data-modal-view="manual-address" data-title-key="exceptions.manual_title">
+      <form class="form-stack" data-manual-device-form autocomplete="off">
+        <div class="manual-address-line">
+          <input class="text-input" name="value" type="text" inputmode="decimal" maxlength="18" autocapitalize="off" spellcheck="false" data-manual-value data-i18n-placeholder="exceptions.ip_placeholder" required>
+          <select class="compact-select" name="kind" data-manual-kind>
+            <option value="ip" data-i18n="exceptions.ip_address"></option>
+            <option value="mac" data-i18n="exceptions.mac_address"></option>
+          </select>
+        </div>
+        <div class="setting-row is-contained" data-manual-bind-row>
+          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-network"/></svg></span>
+          <label class="setting-copy" for="manual-bind-mac"><strong data-i18n="exceptions.bind_mac"></strong></label>
+          <span class="switch"><input id="manual-bind-mac" name="bindMac" type="checkbox" checked data-bind-mac><i aria-hidden="true"></i></span>
+        </div>
+        <div class="route-select-line">
+          <span data-i18n="exceptions.route_label"></span>
+          <div class="route-picker" data-route-picker data-popup>
+            <input id="manual-address-route" type="hidden" name="route" value="direct" data-route-value data-address-route>
+            <button class="route-picker-trigger" type="button" data-action="toggle-popup" data-popup-trigger aria-expanded="false" data-i18n-aria-label="exceptions.route_label">
+              <svg data-route-icon aria-hidden="true"><use href="#icon-globe"/></svg>
+              <span data-route-current data-i18n="route.direct"></span>
+              <svg aria-hidden="true"><use href="#icon-chevron"/></svg>
+            </button>
+            <div class="route-picker-menu" role="listbox" data-route-menu data-popup-menu hidden>
+              <button type="button" role="option" data-action="select-route" data-route="vpn" aria-selected="false"><svg aria-hidden="true"><use href="#icon-shield"/></svg><span data-i18n="route.vpn"></span></button>
+              <button type="button" role="option" data-action="select-route" data-route="direct" aria-selected="true"><svg aria-hidden="true"><use href="#icon-globe"/></svg><span data-i18n="route.direct"></span></button>
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+  </template>
+
+  <template id="tpl-network-management" data-template="network-management">
+    <div class="modal-panel" data-modal-view="network-management" data-title-key="networks.title">
+      <div class="tab-list" role="tablist" data-network-tabs>
+        <button id="tab-servers" class="tab-button is-active" type="button" role="tab" aria-selected="true" aria-controls="panel-servers" data-network-tab="servers"><svg aria-hidden="true"><use href="#icon-server"/></svg><span data-i18n="servers.title"></span><b data-server-count>0</b></button>
+        <button id="tab-clients" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-clients" data-network-tab="clients"><svg aria-hidden="true"><use href="#icon-mobile"/></svg><span data-i18n="clients.title"></span><b data-client-count>0</b></button>
+      </div>
+
+      <section id="panel-servers" class="management-panel" role="tabpanel" aria-labelledby="tab-servers" data-network-panel="servers">
+        <div class="management-list" data-management-servers>
+          <div class="empty-state is-compact" data-management-empty="servers">
+            <svg aria-hidden="true"><use href="#icon-server"/></svg>
+            <span data-i18n="servers.empty_title"></span>
+          </div>
+        </div>
+      </section>
+
+      <section id="panel-clients" class="management-panel" role="tabpanel" aria-labelledby="tab-clients" data-network-panel="clients" hidden>
+        <div class="management-list" data-management-clients>
+          <div class="empty-state is-compact" data-management-empty="clients">
+            <svg aria-hidden="true"><use href="#icon-mobile"/></svg>
+            <span data-i18n="clients.empty_title"></span>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </template>
+
+  <template id="tpl-pin-change" data-template="pin-change">
+    <div class="modal-panel" data-modal-view="pin-change" data-title-key="pin_change.title">
+      <form id="pin-change-form" class="form-stack" data-pin-change-form autocomplete="off">
+        <p class="muted" data-pin-setup-copy data-i18n="pin_setup.description" hidden></p>
+        <label for="new-pin" data-i18n="pin_change.new_pin"></label>
+        <input id="new-pin" class="text-input" name="newPin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="new-password" data-new-pin required>
+        <label for="repeat-pin" data-i18n="pin_change.repeat_pin"></label>
+        <input id="repeat-pin" class="text-input" name="repeatPin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="new-password" data-repeat-pin required>
+      </form>
+    </div>
+  </template>
+
+  <template id="tpl-help" data-template="help">
+    <div class="modal-panel" data-modal-view="help" data-title-key="help.title">
+      <section class="help-topic">
+        <h3><svg aria-hidden="true"><use href="#icon-play"/></svg><span data-i18n="help.connect_title"></span></h3>
+        <ol>
+          <li data-i18n="help.connect_add"></li>
+          <li data-i18n="help.connect_save"></li>
+          <li data-i18n="help.connect_start"></li>
+        </ol>
+        <p class="muted" data-i18n="help.test_note"></p>
+      </section>
+      <section class="help-topic">
+        <h3><svg aria-hidden="true"><use href="#icon-globe"/></svg><span data-i18n="help.rules_title"></span></h3>
+        <ul>
+          <li data-i18n="help.rules_direct"></li>
+          <li data-i18n="help.rules_order"></li>
+          <li data-i18n="help.rules_dns"></li>
+          <li data-i18n="help.rules_country"></li>
+        </ul>
+      </section>
+      <section class="help-topic">
+        <h3><svg aria-hidden="true"><use href="#icon-shield"/></svg><span data-i18n="help.protection_title"></span></h3>
+        <p data-i18n="help.protection"></p>
+        <dl>
+          <div><dt>WAN</dt><dd data-i18n="help.wan_measurement"></dd></div>
+          <div><dt>VPN</dt><dd data-i18n="help.vpn_measurement"></dd></div>
+        </dl>
+      </section>
+      <section class="help-topic">
+        <h3><svg aria-hidden="true"><use href="#icon-key"/></svg><span data-i18n="help.access_title"></span></h3>
+        <ul>
+          <li data-i18n="help.access_pin"></li>
+          <li data-i18n="help.access_recovery"></li>
+          <li data-i18n="help.access_clients"></li>
+          <li data-i18n="help.access_client_port"></li>
+          <li data-i18n="help.hiddify"></li>
+        </ul>
+      </section>
+    </div>
+  </template>
+
+  <template id="tpl-confirm-delete" data-template="confirm-delete">
+    <div class="modal-panel" data-modal-view="confirm-delete" data-title-key="delete.title">
+      <p class="delete-name" data-delete-name></p>
+    </div>
+  </template>
+
+  <template id="tpl-confirm-regenerate" data-template="confirm-regenerate">
+    <div class="modal-panel" data-modal-view="confirm-regenerate" data-title-key="client.regenerate">
+      <p class="confirmation-copy" data-i18n="client.regenerate_confirm"></p>
+    </div>
+  </template>
+
+  <template id="tpl-router-stats" data-template="router-stats">
+    <div class="modal-panel" data-modal-view="router-stats" data-title-key="router.title">
+      <div class="router-metrics" data-router-metrics></div>
+      <section class="interface-stats">
+        <h3 data-i18n="chart.wan"></h3>
+        <table>
+          <thead><tr><th data-i18n="router.direction"></th><th data-i18n="router.total"></th><th data-i18n="router.average"></th><th data-i18n="router.peak"></th><th data-i18n="router.history"></th></tr></thead>
+          <tbody data-interface-stats="wan"></tbody>
+        </table>
+      </section>
+      <section class="interface-stats">
+        <h3 data-i18n="router.lan"></h3>
+        <table>
+          <thead><tr><th data-i18n="router.direction"></th><th data-i18n="router.total"></th><th data-i18n="router.average"></th><th data-i18n="router.peak"></th><th data-i18n="router.history"></th></tr></thead>
+          <tbody data-interface-stats="lan"></tbody>
+        </table>
+      </section>
+    </div>
+  </template>
+
+  <script src="./app.js?v=0.1.0-r41-ui1" type="module"></script>
+</body>
+</html>

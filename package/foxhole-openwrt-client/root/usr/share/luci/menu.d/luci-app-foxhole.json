@@ -1,0 +1,53 @@
+{
+  "admin/services/foxhole": {
+    "title": "FoxHole OpenWRT Client",
+    "order": 45,
+    "action": {
+      "type": "firstchild"
+    },
+    "depends": {
+      "acl": [
+        "luci-app-foxhole"
+      ]
+    }
+  },
+  "admin/services/foxhole/panel": {
+    "title": "Panel",
+    "order": 1,
+    "action": {
+      "type": "view",
+      "path": "foxhole/client"
+    },
+    "depends": {
+      "acl": [
+        "luci-app-foxhole"
+      ]
+    }
+  },
+  "admin/services/foxhole/access": {
+    "title": "Panel access",
+    "order": 2,
+    "action": {
+      "type": "view",
+      "path": "foxhole/settings"
+    },
+    "depends": {
+      "acl": [
+        "luci-app-foxhole"
+      ]
+    }
+  },
+  "admin/services/foxhole/pin": {
+    "title": "Change PIN",
+    "order": 3,
+    "action": {
+      "type": "view",
+      "path": "foxhole/pin"
+    },
+    "depends": {
+      "acl": [
+        "luci-app-foxhole-pin"
+      ]
+    }
+  }
+}

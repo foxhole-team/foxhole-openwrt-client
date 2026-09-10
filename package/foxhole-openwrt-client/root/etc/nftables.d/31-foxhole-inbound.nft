@@ -1,0 +1,1 @@
+set foxhole_inbound_ports { type inet_service; }

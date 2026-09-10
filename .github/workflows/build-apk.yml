@@ -1,0 +1,24 @@
+name: build-unsigned-apk
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bison flex gawk gettext git libncurses-dev libssl-dev python3 python3-setuptools rsync unzip file time curl zstd
+      - run: sh tools/build-openwrt.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: unsigned-openwrt-25.12.5-arm64
+          path: dist/openwrt-25.12.5-arm64/
+          if-no-files-found: error
+          retention-days: 7

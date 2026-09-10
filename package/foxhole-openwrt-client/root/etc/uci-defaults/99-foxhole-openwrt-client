@@ -1,0 +1,26 @@
+#!/bin/sh
+
+mkdir -p /etc/foxhole /tmp/foxhole
+chmod 700 /etc/foxhole /tmp/foxhole
+
+uci -q get foxhole.panel.standalone >/dev/null || {
+	uci set foxhole.panel.standalone='1'
+	uci commit foxhole
+}
+
+panel_index='foxhole.html'
+legacy_index='luci-static/resources/foxhole/shell.html'
+old_indexes="$(uci -q get uhttpd.main.index_page)"
+uci -q delete uhttpd.main.index_page
+uci add_list uhttpd.main.index_page="$panel_index"
+for page in $old_indexes; do
+	[ "$page" = "$panel_index" ] || \
+	[ "$page" = "$legacy_index" ] || \
+		uci add_list uhttpd.main.index_page="$page"
+done
+case " $old_indexes " in
+	*' index.html '*) ;;
+	*) uci add_list uhttpd.main.index_page='index.html' ;;
+esac
+uci commit uhttpd
+exit 0

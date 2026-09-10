@@ -1,0 +1,12 @@
+{
+  "listenerMode": "shared",
+  "endpointHost": "router.example.invalid",
+  "template": { "listen": ":443", "tls": {
+    "cert": "/etc/foxhole/tls/server.crt",
+    "key": "/etc/foxhole/tls/server.key"
+  } },
+  "public": { "server": "router.example.invalid:443",
+    "tls": { "sni": "vpn.example.invalid" } },
+  "allowedLan": [],
+  "sharedAllowLan": false
+}

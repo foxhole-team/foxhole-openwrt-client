@@ -1,0 +1,86 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+managed_file='/var/run/foxhole.dnsmasq'
+action="$1"
+changed=0
+failed=0
+seen=0
+dnsmasq_ubus=''
+
+[ "$action" = 'setup' ] || [ "$action" = 'cleanup' ] || exit 1
+[ "$action" != 'setup' ] || [ -s "$managed_file" ] || exit 1
+
+instance_confdir() {
+	local section="$1"
+	local config_file
+
+	[ -n "$dnsmasq_ubus" ] ||
+		dnsmasq_ubus="$(ubus call service list '{"name":"dnsmasq"}')"
+	config_file="$(printf '%s' "$dnsmasq_ubus" |
+		jsonfilter -e "@.dnsmasq.instances.${section}.command" |
+		awk '{gsub(/\\\//,"/");gsub(/[][",]/,"");
+		for(i=1;i<=NF;i++)if($i=="-C"){print $(i+1);exit}}')"
+	[ -n "$config_file" ] || return 1
+	awk -F= '/^conf-dir=/{print $2; exit}' "$config_file"
+}
+
+has_mount() {
+	local section="$1"
+	local value
+	for value in $(uci -q get "dhcp.${section}.addnmount"); do
+		[ "$value" != "$managed_file" ] || return 0
+	done
+	return 1
+}
+
+setup_instance() {
+	local section="$1"
+	local confdir
+
+	seen=1
+	confdir="$(instance_confdir "$section")"
+	if [ -z "$confdir" ]; then
+		failed=1
+		return
+	fi
+	if ! has_mount "$section"; then
+		uci add_list "dhcp.${section}.addnmount=${managed_file}"
+		changed=1
+	fi
+	ln -sf "$managed_file" "${confdir}/foxhole" || failed=1
+	chmod 640 "$managed_file" "${confdir}/foxhole" 2>/dev/null
+	chown root:dnsmasq "$managed_file" 2>/dev/null
+	chown -h root:dnsmasq "${confdir}/foxhole" 2>/dev/null
+}
+
+cleanup_instance() {
+	local section="$1"
+	local confdir
+
+	seen=1
+	confdir="$(instance_confdir "$section")"
+	[ -z "$confdir" ] || rm -f "${confdir}/foxhole"
+	if has_mount "$section"; then
+		uci del_list "dhcp.${section}.addnmount=${managed_file}"
+		changed=1
+	fi
+}
+
+config_load dhcp
+if [ "$action" = 'setup' ]; then
+	config_foreach setup_instance dnsmasq
+else
+	config_foreach cleanup_instance dnsmasq
+fi
+
+[ "$seen" -eq 1 ] || exit 1
+[ "$failed" -eq 0 ] || exit 1
+
+if [ "$changed" -eq 1 ]; then
+	uci commit dhcp || exit 1
+fi
+/etc/init.d/dnsmasq restart >/dev/null 2>&1 || exit 1
+
+exit 0

@@ -1,0 +1,474 @@
+#!/usr/bin/ucode
+
+'use strict';
+
+import * as fs from 'fs';
+import * as ubus from 'ubus';
+import * as uci from 'uci';
+import * as model from '/usr/share/foxhole/model.uc';
+import * as runtime from '/usr/share/foxhole/runtime-model.uc';
+
+const STATE_PATH = '/etc/foxhole/state.json';
+const STATUS_PATH = '/tmp/foxhole/runtime.json';
+const CONFIG_PATH = '/tmp/foxhole/hysteria.json';
+const POLICY_PATH = '/tmp/foxhole/policy.nft';
+const DNSMASQ_PATH = '/var/run/foxhole.dnsmasq';
+const COUNTRY_DIR = '/tmp/foxhole/countries';
+const IP = '/usr/libexec/ip-full';
+const NFT = '/usr/sbin/nft';
+const DNS_HELPER = '/usr/libexec/foxhole-dnsmasq';
+const MAX_STATE = 262144;
+const MAX_COUNTRY = 16 * 1024 * 1024;
+const MAX_PREFIXES = 200000;
+const COUNTRY_TTL = 86400;
+const COUNTRY_URL = 'https://raw.githubusercontent.com/' +
+	'ipverse/country-ip-blocks/master/country/';
+const PROBE_URL = 'https://cloudflare.com/cdn-cgi/trace';
+
+const ERRORS = [
+	'storage_error', 'invalid_state', 'server_not_found',
+	'client_rules_unsupported', 'site_pattern_unsupported',
+	'invalid_interface', 'invalid_dns_uid', 'runtime_missing',
+	'resolve_failed', 'country_fetch_failed',
+	'country_data_invalid', 'country_data_too_large',
+	'dnsmasq_nftset_required', 'policy_invalid',
+	'policy_apply_failed', 'route_apply_failed',
+	'dnsmasq_apply_failed', 'tunnel_missing',
+	'tunnel_start_failed', 'tunnel_exited', 'runtime_stopped'
+];
+
+function error_code(error) {
+	let code = type(error) == 'string' ? error : error?.message;
+	return index(ERRORS, code) >= 0 ? code : 'storage_error';
+};
+
+function fail(code) {
+	die(index(ERRORS, code) >= 0 ? code : 'storage_error');
+};
+
+function ensure_dirs() {
+	try { fs.mkdir('/tmp/foxhole', 0o700); } catch (_) {}
+	try { fs.mkdir(COUNTRY_DIR, 0o700); } catch (_) {}
+};
+
+function read_json(path, limit) {
+	let info = fs.stat(path);
+	if (!info || info.type != 'file' || info.size < 2 ||
+	    info.size > limit) return null;
+	let raw = fs.readfile(path, limit);
+	if (raw == null || length(raw) != info.size) return null;
+	try { return json(raw); } catch (_) { return null; }
+};
+
+function write_file(path, value, mode) {
+	ensure_dirs();
+	let temp = path + '.new';
+	if (fs.writefile(temp, value) != length(value) ||
+	    !fs.chmod(temp, mode) || !fs.rename(temp, path))
+		fail('storage_error');
+};
+
+function write_json(path, value, mode) {
+	write_file(path, sprintf('%J', value), mode);
+};
+
+function unlink(path) {
+	try { fs.unlink(path); } catch (_) {}
+};
+
+function state_record() {
+	let state = read_json(STATE_PATH, MAX_STATE);
+	if (!state) fail('invalid_state');
+	try { return model.validate_state(state); } catch (_) {
+		fail('invalid_state');
+	}
+};
+
+function status_record(state, phase, connected, enforced, error) {
+	let active = connected ? state.activeServerId || null : null;
+	return {
+		schema: 1,
+		mode: 'runtime',
+		phase,
+		connected: connected == true,
+		enforced: enforced == true,
+		activeServerId: active,
+		desiredServerId: state.activeServerId || null,
+		interface: connected ? runtime.constants().tunName : null,
+		error: error || null,
+		since: time()
+	};
+};
+
+function write_status(state, phase, connected, enforced, error) {
+	write_json(STATUS_PATH,
+		status_record(state, phase, connected, enforced, error), 0o600);
+};
+
+function command(argv, timeout, code) {
+	if (system(argv, timeout || 10000) != 0) fail(code);
+};
+
+function command_quiet(value, timeout) {
+	return system(value + ' >/dev/null 2>&1', timeout || 5000);
+};
+
+function endpoint_parts(endpoint) {
+	let found = match(endpoint, /^\[([0-9a-fA-F:.]+)\]:(.+)$/);
+	if (found) return { host: found[1], port: found[2], ip: true };
+	let parts = split(endpoint, ':');
+	if (length(parts) != 2) fail('resolve_failed');
+	let bytes = iptoarr(parts[0]);
+	return { host: parts[0], port: parts[1], ip: length(bytes || []) == 4 };
+};
+
+function resolve_endpoint(endpoint) {
+	let item = endpoint_parts(endpoint);
+	if (item.ip) return { server: endpoint, sni: null };
+	let handle = null, output = '';
+	try {
+		handle = fs.popen('nslookup ' + item.host + ' 2>/dev/null', 'r');
+		if (handle) output = handle.read('all') || '';
+	} catch (_) {}
+	try { if (handle) handle.close(); } catch (_) {}
+	let first6 = null;
+	for (let line in split(output, '\n')) {
+		let found = match(line, /^Address:[ \t]+([^ \t]+)$/);
+		if (!found) continue;
+		let address = found[1], bytes = iptoarr(address);
+		if (length(bytes || []) == 4)
+			return { server: address + ':' + item.port, sni: item.host };
+		if (length(bytes || []) == 16 && !first6) first6 = address;
+	}
+	if (first6)
+		return { server: '[' + first6 + ']:' + item.port,
+			sni: item.host };
+	fail('resolve_failed');
+};
+
+function lan_interfaces() {
+	let values = [], seen = {};
+	let add = value => {
+		if (type(value) != 'string' || seen[value] ||
+		    !match(value, /^[a-zA-Z0-9_.:-]{1,32}$/)) return;
+		seen[value] = true;
+		push(values, value);
+	};
+	let cursor = null;
+	try {
+		cursor = uci.cursor();
+		let explicit = cursor.get('foxhole', 'panel', 'lan_devices');
+		if (explicit != null) {
+			if (type(explicit) != 'array') explicit = [explicit];
+			for (let device in explicit) {
+				if (!match(device, /^[a-zA-Z0-9_.:-]{1,32}$/) ||
+				    !fs.stat('/sys/class/net/' + device))
+					fail('invalid_interface');
+				add(device);
+			}
+			cursor.unload();
+			if (!length(values)) fail('invalid_interface');
+			return values;
+		}
+		let value = cursor.get('network', 'lan', 'device');
+		if (type(value) == 'array') for (let item in value) add(item);
+		else add(value);
+	} catch (error) {
+		if (error?.message == 'invalid_interface' ||
+		    error == 'invalid_interface') fail('invalid_interface');
+	}
+	try { if (cursor) cursor.unload(); } catch (_) {}
+	let connection = null;
+	try {
+		connection = ubus.connect();
+		let status = connection?.call('network.interface.lan',
+			'status', {});
+		add(status?.l3_device);
+		add(status?.device);
+	} catch (_) {}
+	try { if (connection) connection.disconnect(); } catch (_) {}
+	if (!length(values)) add('br-lan');
+	return values;
+};
+
+function dns_uid() {
+	let raw = fs.readfile('/etc/passwd', 65536) || '';
+	for (let line in split(raw, '\n')) {
+		let found = match(line, /^dnsmasq:[^:]*:([0-9]+):/);
+		if (found) {
+			let value = int(found[1], 10);
+			if (value > 0 && value <= 65535) return value;
+		}
+	}
+	fail('invalid_dns_uid');
+};
+
+function dnsmasq_has_nftset() {
+	let handle = null, output = '';
+	try {
+		handle = fs.popen('dnsmasq --version 2>/dev/null', 'r');
+		if (handle) output = handle.read('all') || '';
+	} catch (_) {}
+	try { if (handle) handle.close(); } catch (_) {}
+	return match(' ' + output + ' ', /[ \n]nftset[ \n]/) != null;
+};
+
+function country_file(code) {
+	return COUNTRY_DIR + '/' + lc(code) + '.json';
+};
+
+function fetch_country(code) {
+	let path = country_file(code), info = fs.stat(path);
+	if (info && info.type == 'file' && info.size <= MAX_COUNTRY &&
+	    time() - info.mtime < COUNTRY_TTL) return path;
+	let temp = path + '.new';
+	unlink(temp);
+	let url = COUNTRY_URL + lc(code) + '/aggregated.json';
+	let result = system([
+		'uclient-fetch', '-q', '-Y', 'off', '-T', '12',
+		'-O', temp, url
+	], 15000);
+	if (result != 0) {
+		unlink(temp);
+		fail('country_fetch_failed');
+	}
+	info = fs.stat(temp);
+	if (!info || info.type != 'file' || info.size < 2 ||
+	    info.size > MAX_COUNTRY || !fs.chmod(temp, 0o600) ||
+	    !fs.rename(temp, path)) {
+		unlink(temp);
+		fail('country_data_invalid');
+	}
+	return path;
+};
+
+function country_prefixes(state) {
+	let output = { v4: [], v6: [] }, seen = {}, count = 0;
+	if (!state.settings.localRules) return output;
+	for (let item in state.countries) {
+		if (item.route != 'direct') continue;
+		let data = read_json(fetch_country(item.code), MAX_COUNTRY);
+		if (!data || data.countryCode != item.code ||
+		    type(data.prefixes?.ipv4) != 'array' ||
+		    type(data.prefixes?.ipv6) != 'array')
+			fail('country_data_invalid');
+		for (let family in ['ipv4', 'ipv6']) {
+			let width = family == 'ipv4' ? 4 : 16;
+			let target = family == 'ipv4' ? output.v4 : output.v6;
+			for (let prefix in data.prefixes[family]) {
+				if (type(prefix) != 'string' || index(prefix, '/') < 0)
+					fail('country_data_invalid');
+				let value;
+				try { value = model.normalize_address(prefix); } catch (_) {
+					fail('country_data_invalid');
+				}
+				if (length(iptoarr(split(value, '/')[0]) || []) != width)
+					fail('country_data_invalid');
+				if (!seen[value]) {
+					seen[value] = true;
+					push(target, value);
+					if (++count > MAX_PREFIXES)
+						fail('country_data_too_large');
+				}
+			}
+		}
+	}
+	return output;
+};
+
+function effective_sites(state) {
+	return state.settings.localRules ? state.sites : [];
+};
+
+function policy_files(state, emergency) {
+	let sites = emergency ? [] : effective_sites(state);
+	if (length(sites) && !dnsmasq_has_nftset())
+		fail('dnsmasq_nftset_required');
+	let countries = emergency ? { v4: [], v6: [] } :
+		country_prefixes(state);
+	let cursor = uci.cursor();
+	let dnsViaTunnel = cursor.get('foxhole', 'panel', 'dns_via_tunnel') != '0';
+	cursor.unload();
+	let nft = runtime.nft_config(state, {
+		interfaces: lan_interfaces(),
+		dnsUid: dns_uid(),
+		bootstrap: emergency == true,
+		dnsViaTunnel,
+		country4: countries.v4,
+		country6: countries.v6
+	});
+	let dns = runtime.dnsmasq_config(sites);
+	write_file(POLICY_PATH, nft, 0o600);
+	write_file(DNSMASQ_PATH, dns, 0o640);
+	command([NFT, '-c', '-f', POLICY_PATH], 15000,
+		'policy_invalid');
+	return { sites: length(sites) };
+};
+
+function probe() {
+	let proxy = 'http://' + runtime.constants().proxyListen;
+	let handle = null, output = '';
+	try {
+		handle = fs.popen('http_proxy=' + proxy + ' https_proxy=' + proxy +
+			' no_proxy= uclient-fetch -4 -q -Y on -O - -T 4 ' +
+			PROBE_URL + ' 2>/dev/null | head -c 2048', 'r');
+		if (handle) output = handle.read('all') || '';
+	} catch (_) {}
+	try { if (handle) handle.close(); } catch (_) {}
+	if (!match('\n' + output + '\n', /\nip=[^\n]+\n/))
+		fail('tunnel_start_failed');
+};
+
+function run_ip(arguments, code) {
+	command([ IP, ...arguments ], 10000, code);
+};
+
+function clear_rules(arguments) {
+	for (let count = 0; count < 16; count++)
+		if (system([ IP, ...arguments ], 3000) != 0) return;
+	fail('route_apply_failed');
+};
+
+function apply_routes(connected) {
+	let commands = runtime.route_commands(connected);
+	clear_rules(commands.delete4);
+	clear_rules(commands.delete6);
+	run_ip(commands.route4, 'route_apply_failed');
+	run_ip(commands.route6, 'route_apply_failed');
+	run_ip(commands.rule4, 'route_apply_failed');
+	run_ip(commands.rule6, 'route_apply_failed');
+};
+
+function configure_dns(sites) {
+	let action = sites ? 'setup' : 'cleanup';
+	command([ DNS_HELPER, action ], 20000, 'dnsmasq_apply_failed');
+};
+
+function apply_policy(state, connected, emergency) {
+	if (connected && !fs.stat('/sys/class/net/' +
+	    runtime.constants().tunName)) fail('tunnel_missing');
+	// The TUN return path is asymmetric under policy routing.
+	if (connected && fs.writefile('/proc/sys/net/ipv4/conf/' +
+	    runtime.constants().tunName + '/rp_filter', '2\n') != 2)
+		fail('route_apply_failed');
+	let policy = policy_files(state, emergency);
+	command([ NFT, '-f', POLICY_PATH ], 15000,
+		'policy_apply_failed');
+	apply_routes(connected);
+	configure_dns(policy.sites);
+};
+
+function prepare() {
+	let state = state_record();
+	let server = runtime.active_server(state);
+	if (!server) fail('server_not_found');
+	if (!fs.stat('/dev/net/tun') || !fs.stat('/usr/bin/hysteria') ||
+	    !fs.stat(IP) || !fs.stat(NFT)) fail('runtime_missing');
+	if (state.settings.killSwitch) apply_policy(state, false, true);
+	let resolved = resolve_endpoint(server.endpoint);
+	let cursor = uci.cursor();
+	let preserveSocks = cursor.get('foxhole', 'panel',
+		'preserve_loopback_socks') == '1';
+	let mtu = int(cursor.get('foxhole', 'panel', 'tun_mtu') || '1500');
+	cursor.unload();
+	let plan = runtime.hysteria_config(state, resolved,
+		{ preserveSocks, mtu });
+	policy_files(state);
+	write_json(CONFIG_PATH, plan.config, 0o600);
+	write_status(state, 'connecting', false, state.settings.killSwitch, null);
+};
+
+function cleanup_policy() {
+	command_quiet(NFT + ' delete table inet foxhole', 5000);
+	command_quiet(DNS_HELPER + ' cleanup', 10000);
+	let commands = runtime.route_commands(false);
+	clear_rules(commands.delete4);
+	clear_rules(commands.delete6);
+	system([ IP, ...commands.flush4 ], 3000);
+	system([ IP, ...commands.flush6 ], 3000);
+	unlink(POLICY_PATH);
+	unlink(DNSMASQ_PATH);
+};
+
+function cleanup_secret() {
+	unlink(CONFIG_PATH);
+};
+
+function apply(mode) {
+	let state = state_record();
+	let connected = mode == 'connected';
+	if (!connected && mode != 'blocked') fail('invalid_state');
+	if (connected && !runtime.active_server(state))
+		fail('server_not_found');
+	apply_policy(state, connected);
+	write_status(state, connected ? 'connected' : 'blocked',
+		connected, true, null);
+};
+
+function cleanup() {
+	let state = state_record();
+	cleanup_policy();
+	cleanup_secret();
+	write_status(state, 'disconnected', false, false, null);
+};
+
+function down(reason) {
+	let state = state_record();
+	reason = index(ERRORS, reason) >= 0 ? reason : 'tunnel_exited';
+	cleanup_secret();
+	if (state.settings.killSwitch) {
+		let previous = read_json(STATUS_PATH, 8192);
+		write_status(state, 'blocked', false, previous?.enforced, null);
+		apply_policy(state, false, true);
+		if (previous?.error && reason == 'tunnel_start_failed')
+			reason = previous.error;
+		let unexpected = state.activeServerId != null &&
+			reason != 'runtime_stopped';
+		write_status(state, unexpected ? 'error' : 'blocked',
+			false, true, unexpected ? reason : null);
+		return;
+	}
+	cleanup_policy();
+	let unexpected = state.activeServerId != null &&
+		reason != 'runtime_stopped';
+	write_status(state, unexpected ? 'error' : 'disconnected',
+		false, false, unexpected ? reason : null);
+};
+
+function mode() {
+	let state = state_record();
+	if (runtime.active_server(state)) return 'tunnel';
+	return state.settings.killSwitch ? 'block' : 'off';
+};
+
+function status() {
+	let state = state_record();
+	let value = read_json(STATUS_PATH, 8192);
+	if (!value) value = status_record(state,
+		state.activeServerId ? 'connecting' : 'disconnected',
+		false, false, null);
+	print(sprintf('%J', value));
+};
+
+let action = ARGV[0] || '';
+try {
+	switch (action) {
+	case 'mode': print(mode()); break;
+	case 'prepare': prepare(); break;
+	case 'probe': probe(); break;
+	case 'apply': apply(ARGV[1]); break;
+	case 'cleanup': cleanup(); break;
+	case 'down': down(ARGV[1] || 'tunnel_exited'); break;
+	case 'status': status(); break;
+	default: fail('invalid_state');
+	}
+} catch (error) {
+	let code = error_code(error);
+	if (action != 'probe') {
+		try {
+			let state = state_record();
+			write_status(state, 'error', false, false, code);
+		} catch (_) {}
+	}
+	exit(1);
+}

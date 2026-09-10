@@ -1,0 +1,5 @@
+config foxhole 'panel'
+	option mode 'runtime'
+	option telemetry_interval '5'
+	option bootstrap_pin '1234'
+	option standalone '1'

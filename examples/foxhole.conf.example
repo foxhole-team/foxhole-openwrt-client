@@ -1,0 +1,7 @@
+# Copy to /etc/config/foxhole and review every value before applying.
+config foxhole 'panel'
+	option mode 'runtime'
+	option telemetry_interval '15'
+	option standalone '0'
+	option dns_via_tunnel '1'
+	option tun_mtu '1400'

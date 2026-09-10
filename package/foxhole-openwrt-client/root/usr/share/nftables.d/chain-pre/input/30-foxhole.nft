@@ -1,0 +1,2 @@
+iifname "foxhole0" ip saddr 198.18.0.2 ip daddr 198.18.0.1 meta l4proto tcp accept comment "FoxHole TUN stack"
+iifname "foxhole0" ip6 saddr fdfe:dcba:9876::2 ip6 daddr fdfe:dcba:9876::1 meta l4proto tcp accept comment "FoxHole TUN stack"

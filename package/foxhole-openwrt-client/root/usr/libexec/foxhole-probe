@@ -1,0 +1,139 @@
+#!/usr/bin/ucode
+
+'use strict';
+
+import * as fs from 'fs';
+import * as uci from 'uci';
+import * as probe from '/usr/share/foxhole/probe.uc';
+import * as runtime_model from '/usr/share/foxhole/runtime-model.uc';
+
+const TRACE_URL = 'https://cloudflare.com/cdn-cgi/trace';
+const OUTPUT = '/tmp/foxhole/probe-output';
+
+function clock() {
+	let raw = fs.readfile('/proc/uptime', 128);
+	return raw ? +split(raw, ' ')[0] : null;
+};
+
+function run(command, timeout) {
+	let result = system([ '/bin/sh', '-c',
+		command + ' >' + OUTPUT + ' 2>/dev/null' ], timeout);
+	let output = result == 0 ? fs.readfile(OUTPUT, 2049) : null;
+	fs.unlink(OUTPUT);
+	return output && length(output) <= 2048 ? output : '';
+};
+
+function trace(proxy) {
+	let before = clock();
+	let environment = proxy ? 'http_proxy=' + proxy +
+		' https_proxy=' + proxy + ' no_proxy= ' : '';
+	let output = run(environment + 'uclient-fetch -4 -q -Y ' +
+		(proxy ? 'on' : 'off') + ' -O - -T ' + (proxy ? '4 ' : '2 ') +
+		TRACE_URL, proxy ? 6000 : 4000);
+	let after = clock();
+	let code = match('\n' + output + '\n', /\nloc=([A-Z]{2})\n/);
+	let address = match('\n' + output + '\n', /\nip=([^\n]+)\n/);
+	let bytes = address ? iptoarr(address[1]) : null;
+	if (!code || (length(bytes || []) != 4 && length(bytes || []) != 16))
+		return { address: null, country: null, latency: null };
+	return {
+		address: arrtoip(bytes), country: code[1],
+		latency: before != null && after != null && after >= before
+			? +sprintf('%.1f', (after - before) * 1000) : null
+	};
+};
+
+function wan() {
+	let device = null, gateway = null;
+	let routes = fs.readfile('/proc/net/route', 65536) || '';
+	for (let line in split(routes, '\n')) {
+		let fields = split(trim(line), /[ \t]+/);
+		if (length(fields) < 3 || fields[1] != '00000000' ||
+		    !match(fields[0], /^[a-zA-Z0-9_.:-]{1,32}$/) ||
+		    !match(fields[2], /^[0-9a-fA-F]{8}$/)) continue;
+		let value = int(fields[2], 16);
+		device = fields[0];
+		gateway = sprintf('%d.%d.%d.%d', value & 255,
+			(value >> 8) & 255, (value >> 16) & 255,
+			(value >> 24) & 255);
+		break;
+	}
+	if (!device) {
+		let cursor = uci.cursor();
+		device = cursor.get('network', 'wan', 'device');
+		cursor.unload();
+		if (type(device) != 'string' ||
+		    !match(device, /^[a-zA-Z0-9_.:-]{1,32}$/)) device = 'wan';
+	}
+	return { device, gateway: gateway || null };
+};
+
+function write_cache(value) {
+	let temp = probe.cache_path + '.new';
+	let raw = sprintf('%J', value);
+	let handle = fs.open(temp, 'w', 0o600);
+	if (!handle) return false;
+	let written = handle.write(raw);
+	handle.close();
+	if (written != length(raw) || !fs.chmod(temp, 0o600)) return false;
+	return fs.rename(temp, probe.cache_path);
+};
+
+function collect() {
+	let now = time(), cache = probe.read_json(probe.cache_path);
+	if (probe.fresh(cache?.startedAt, now, probe.interval - 1)) return;
+	cache = cache?.schema == 1 ? cache : { schema: 1 };
+	cache.startedAt = now;
+	if (!write_cache(cache)) return;
+	let runtime = probe.runtime_snapshot();
+	let current = runtime?.value;
+	let network = wan();
+	let previous = cache.wan?.device == network.device &&
+		cache.wan?.gateway == network.gateway ? cache.wan : {};
+	let country = probe.fresh(previous.countryAt, now,
+		probe.country_ttl) ? previous.country : null;
+	let countryAt = country ? previous.countryAt : null;
+	let countryAttempt = previous.countryAttempt;
+	if (!country && !probe.fresh(countryAttempt, now,
+	    probe.country_retry - 1)) {
+		countryAttempt = now;
+		country = trace(null).country;
+		countryAt = country ? time() : null;
+	}
+	let output = network.gateway ? run(sprintf('ping -I %s -c 1 -W 1 %s',
+		network.device, network.gateway), 2000) : '';
+	let delay = match(output, /time=([0-9]+([.][0-9]+)?)[ ]*ms/);
+	cache.wan = {
+		...network, country, countryAt, countryAttempt,
+		sampledAt: time(), latency: delay ? +delay[1] : null
+	};
+	cache.vpn = null;
+	if (current?.connected && current.activeServerId &&
+	    current.activeServerId == current.desiredServerId) {
+		let result = trace('http://' +
+			runtime_model.constants().proxyListen);
+		cache.vpn = {
+			...result, sampledAt: time(),
+			serverId: current.activeServerId,
+			generation: runtime.generation
+		};
+	}
+	// A restart during I/O must not publish the previous tunnel.
+	if (probe.runtime_snapshot()?.generation != runtime?.generation)
+		cache.vpn = null;
+	write_cache(cache);
+};
+
+function sample() {
+	fs.mkdir('/tmp/foxhole', 0o700);
+	let lock = fs.open('/tmp/foxhole/probe.lock', 'a+', 0o600);
+	if (!lock) return;
+	if (lock.lock('xn')) {
+		try { collect(); } catch (_) {}
+		fs.unlink(OUTPUT);
+		lock.lock('u');
+	}
+	lock.close();
+};
+
+try { sample(); } catch (_) { exit(1); }

@@ -1,0 +1,57 @@
+#!/usr/bin/ucode
+import * as fs from 'fs';
+import * as probe from '/usr/share/foxhole/probe.uc';
+import * as history from '/usr/share/foxhole/history.uc';
+
+function counter(device, name) {
+	if (!match(device || '', /^[a-zA-Z0-9_.:-]{1,32}$/)) return null;
+	let raw = fs.readfile('/sys/class/net/' + device + '/statistics/' + name);
+	return raw == null ? null : +trim(raw);
+};
+
+try { fs.mkdir('/tmp/foxhole', 0o700); } catch (_) {}
+try { fs.mkdir('/etc/foxhole', 0o700); } catch (_) {}
+let lock = fs.open('/tmp/foxhole/history.lock', 'a+');
+if (!lock?.lock('x')) exit(1);
+let rows = history.read();
+let now = time() * 1000;
+if (length(rows) && now - rows[length(rows) - 1].t < 14000 &&
+    ARGV[0] != 'checkpoint') exit(0);
+let cache = probe.read_json(probe.cache_path);
+let runtime = probe.runtime_snapshot();
+let vpn = probe.vpn_sample(cache, runtime, time());
+let memory = fs.readfile('/proc/meminfo') || '';
+let total = +(match(memory, /MemTotal:\s+([0-9]+)/)?.[1] || 0);
+let available = +(match(memory, /MemAvailable:\s+([0-9]+)/)?.[1] || 0);
+let cpu = split(trim(split(fs.readfile('/proc/stat'), '\n')[0]), /\s+/);
+let cpuTotal = 0;
+for (let i = 1; i < length(cpu); i++) cpuTotal += +cpu[i];
+let cpuIdle = +cpu[4] + +(cpu[5] || 0);
+let previous = probe.read_json('/tmp/foxhole/history-cpu.json');
+fs.writefile('/tmp/foxhole/history-cpu.json',
+	sprintf('%J', { total: cpuTotal, idle: cpuIdle }));
+let percent = history.cpu_percent(previous, { total: cpuTotal, idle: cpuIdle });
+let wan = cache?.wan?.device;
+let row = {
+	t: now, measurementVersion: 2, cpu: percent,
+	ram: total ? +sprintf('%.1f', 100 * (total - available) / total) : null,
+	wanRx: counter(wan, 'rx_bytes'), wanTx: counter(wan, 'tx_bytes'),
+	wanCountry: cache?.wan?.country,
+	wanLatency: probe.fresh(cache?.wan?.sampledAt, time(), 45) ?
+		cache.wan.latency : null,
+	vpnRx: counter('foxhole0', 'rx_bytes'),
+	vpnTx: counter('foxhole0', 'tx_bytes'),
+	vpnCountry: vpn?.country, vpnLatency: vpn?.latency,
+	vpnServerId: runtime?.value?.desiredServerId
+};
+push(rows, row);
+history.write(rows);
+let checkpoint = fs.stat(history.archive);
+if (ARGV[0] == 'checkpoint' || !checkpoint ||
+    time() - checkpoint.mtime >= 3600) {
+	// Hourly compressed checkpoints bound flash wear.
+	let code = system('umask 077; gzip -c ' + history.path +
+		' > ' + history.archive + '.new && mv ' + history.archive +
+		'.new ' + history.archive, 10000);
+	if (code != 0) exit(1);
+}

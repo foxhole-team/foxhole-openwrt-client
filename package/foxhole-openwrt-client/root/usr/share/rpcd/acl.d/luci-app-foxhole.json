@@ -1,0 +1,52 @@
+{
+  "luci-app-foxhole": {
+    "description": "FoxHole OpenWrt panel",
+    "read": {
+      "ubus": {
+        "foxhole": [
+          "unlock",
+          "lock",
+          "state",
+          "telemetry",
+          "server.test",
+          "server.get",
+          "client.get",
+          "device.resolve",
+          "device.list"
+        ]
+      },
+      "uci": [
+        "foxhole"
+      ]
+    },
+    "write": {
+      "ubus": {
+        "foxhole": [
+          "settings",
+          "server.save",
+          "server.delete",
+          "client.save",
+          "server.start",
+          "server.stop",
+          "client.update",
+          "client.access",
+          "client.delete",
+          "pin.change"
+        ]
+      },
+      "uci": [
+        "foxhole"
+      ]
+    }
+  },
+  "luci-app-foxhole-pin": {
+    "description": "Change FoxHole panel PIN",
+    "write": {
+      "ubus": {
+        "foxhole.admin": [
+          "set_pin"
+        ]
+      }
+    }
+  }
+}
