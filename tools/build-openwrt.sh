@@ -12,7 +12,16 @@ out=${1:-"$root/dist/openwrt-25.12.5-arm64"}
 case "$out" in /*) ;; *) out="$PWD/$out" ;; esac
 [ ! -e "$out" ] || { echo 'Output directory must be new' >&2; exit 1; }
 scratch=$(mktemp -d /tmp/foxhole-sdk.XXXXXX)
-trap 'rm -rf "$scratch"' EXIT
+cleanup() {
+  status=$?
+  trap - EXIT
+  # Go module cache directories are read-only after extraction.
+  if ! chmod -R u+w "$scratch" || ! rm -rf "$scratch"; then
+    [ "$status" -ne 0 ] || status=1
+  fi
+  exit "$status"
+}
+trap cleanup EXIT
 sdk_url=https://downloads.openwrt.org/releases/25.12.5/targets/armsr/armv8/openwrt-sdk-25.12.5-armsr-armv8_gcc-14.3.0_musl.Linux-x86_64.tar.zst
 sdk_hash=1b0316604a3e820b2b008a1baff3f9dac6716af942bef800930e58c7de98c98b
 go_url=https://go.dev/dl/go1.25.0.linux-amd64.tar.gz
@@ -35,9 +44,25 @@ export FOXHOLE_GO="$scratch/go/bin/go"
 cd "$scratch/sdk"
 ./scripts/feeds update -a
 ./scripts/feeds install -f -p foxhole hysteria hysteria-ram foxhole-openwrt-client
-printf '\n# CONFIG_SIGNED_PACKAGES is not set\n' >> .config
+cat > .config <<'EOF'
+# CONFIG_ALL is not set
+# CONFIG_ALL_NONSHARED is not set
+# CONFIG_ALL_KMODS is not set
+# CONFIG_SIGNED_PACKAGES is not set
+CONFIG_PACKAGE_hysteria=m
+CONFIG_PACKAGE_hysteria-ram=m
+CONFIG_PACKAGE_foxhole-openwrt-client=m
+EOF
 make defconfig
+for option in ALL ALL_NONSHARED ALL_KMODS SIGNED_PACKAGES; do
+  if grep -Eq "^CONFIG_$option=[ym]$" .config; then
+    echo "Unexpected SDK option: $option" >&2
+    exit 1
+  fi
+done
+grep -Eq '^CONFIG_PACKAGE_kmod-tun=[ym]$' .config
 for package in hysteria hysteria-ram foxhole-openwrt-client; do
+  grep -qx "CONFIG_PACKAGE_$package=m" .config
   make -j2 "package/feeds/foxhole/$package/compile" CONFIG_SIGNED_PACKAGES= V=s
 done
 mkdir -p "$out"

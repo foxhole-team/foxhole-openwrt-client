@@ -71,6 +71,13 @@ and source date. SDK, compiler and Hysteria digests are checked; automatic
 Go toolchain switching is disabled. Retain SDK configuration, feed revisions,
 dependency versions and hashes; live router dependency feeds are mutable.
 
+SDK-wide package and kernel-module selection is disabled. The three
+deliverable packages select their dependencies through `make defconfig`;
+the build verifies those selections, including `kmod-tun`. This avoids
+packaging unrelated kernel modules. Dependencies still build from source;
+measure duration from completed CI runs rather than the job timeout.
+Cleanup makes temporary Go module caches writable and retains build failures.
+
 Copy the checkout and APK bundle to a disposable OpenWrt 25.12 ARM64 VM
 with matching kernel/feeds and initialized networking. Test each mode on a
 fresh VM, using the manifest hash obtained from the build host:
