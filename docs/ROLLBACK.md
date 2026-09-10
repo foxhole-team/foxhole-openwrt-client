@@ -1,38 +1,26 @@
-# Rollback / Откат
+# Rollback
 
-Keep LAN/console access and save an ordinary OpenWrt backup **off-router**
-before installation. The installer additionally prints a private staging
-directory with `sysupgrade-before.tar.gz`, DHCP and optional FoxHole data.
-It is in `/tmp`: reboot erases it. Copy it off-router before rebooting.
+Save an OpenWrt backup off-router and retain LAN/console access before
+installation. The installer also preserves `sysupgrade-before.tar.gz`,
+DHCP and optional FoxHole data in its printed private `/tmp` directory.
+Copy these off-router before reboot; `/tmp` is volatile.
 
-1. Stop the installed services:
-   `/etc/init.d/foxhole-runtime stop`,
-   `/etc/init.d/foxhole-inbound stop`,
-   `/etc/init.d/foxhole-history stop`.
-2. If removing the package, run `apk del foxhole-openwrt-client` while its
-   removal hooks still exist. Do not delete package files manually.
-   Retain an engine used by other packages.
-3. Restore the ordinary OpenWrt backup through LuCI, or use
-   `sysupgrade -r /tmp/KNOWN_GOOD_BACKUP.tar.gz` on the same compatible
-   firmware. This restores configuration, not old package binaries.
-4. Reinstall the previous pinned APKs from your saved trusted bundle if
-   needed. Restore the optional FoxHole data backup separately only when
-   returning to a compatible FoxHole version. Never unpack unknown archives.
-5. Reboot after saving backups off-router, then check DHCP, DNS, LAN
-   access, VPN routes and WAN isolation.
+1. Stop the services:
 
-A failed install may already have changed packages; a preserved backup is
-recovery material, not an automatic transaction rollback. On loss of LAN
-access use the device's OpenWrt failsafe/console recovery procedure.
+   ```sh
+   /etc/init.d/foxhole-runtime stop
+   /etc/init.d/foxhole-inbound stop
+   /etc/init.d/foxhole-history stop
+   ```
 
-## Русский
+2. Remove the panel with `apk del foxhole-openwrt-client` while its removal
+   hooks exist. Retain an engine required by other packages.
+3. Restore a compatible OpenWrt backup through LuCI or
+   `sysupgrade -r /tmp/KNOWN_GOOD_BACKUP.tar.gz`.
+4. Reinstall previous APKs from a trusted bundle if needed: configuration
+   restore does not restore package binaries. Restore FoxHole data only
+   into a compatible version.
+5. Reboot and verify DHCP, DNS, LAN management, VPN routing and WAN isolation.
 
-Сначала сохраните штатный бэкап OpenWrt **на другом устройстве**.
-Дополнительный бэкап установщика находится в `/tmp` и пропадёт при ребуте.
-
-Остановите три службы выше; при удалении используйте пакетный менеджер,
-чтобы выполнились штатные обработчики очистки. Восстановите совместимый
-бэкап через LuCI или `sysupgrade -r`. Он возвращает настройки, но не
-предыдущие APK: их при необходимости переустановите из доверенного бандла.
-Перезагрузите роутер и проверьте сеть. При недоступной LAN нужен failsafe
-или консоль. Автоматический откат при ошибке установки не гарантируется.
+Installation is not transactional: failure may leave package changes.
+Lost LAN access requires the device's failsafe/console recovery procedure.

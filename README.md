@@ -1,129 +1,103 @@
-<p align="center"><img src="media/logo.png" width="140" alt="FoxHole"></p>
+<p align="center">
+  <img src="media/fhg.gif" alt="FoxHole OpenWrt Client" width="180" height="180">
+</p>
+
+<p align="center">
+  <a href="README.md"><img src="https://img.shields.io/badge/🇬🇧-English-ff7a00?style=flat-square" alt="English"></a>
+  <a href="docs/README.ru.md"><img src="https://img.shields.io/badge/🇷🇺-Русский-ff7a00?style=flat-square" alt="Русский"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/foxhole-team/foxhole-openwrt-client/releases"><img src="https://img.shields.io/badge/status-public_beta_1.0-ff7a00?style=flat-square" alt="Public beta 1.0"></a>
+</p>
 
 # FoxHole OpenWrt Client
 
-**Public beta 1.0** · [English](#english) · [Русский](#русский)
+![Platform](https://img.shields.io/badge/platform-OpenWrt-00B5E2?style=flat-square&logo=openwrt&logoColor=white)
+![Engine](https://img.shields.io/badge/engine-Hysteria_2-555?style=flat-square)
+[![License](https://img.shields.io/badge/license-GPL--3.0--or--later-007ec6?style=flat-square)](LICENSE)
+
+**FoxHole OpenWrt Client** provides a Hysteria 2 tunnel, routing policy and a
+LuCI management panel for OpenWrt routers. It runs upstream Hysteria
+independently of FoxHole Core and FoxHole DB. This is a prototype under
+development.
+
+## Capabilities
+
+| Component | Function |
+| --- | --- |
+| Tunnel | Supervised Hysteria 2 TUN; profile import as URI or JSON. |
+| Routing | Device, domain and country rules; direct/VPN paths and LAN kill switch. |
+| Incoming VPN | Optional Hysteria listeners with credentials and LAN access policy. |
+| Monitoring | Traffic, CPU, RAM, WAN/VPN latency and 30-day local history. |
+| Interface | LuCI and standalone panel; English and Russian. |
 
 ![FoxHole dashboard](media/dashboard.png)
 
-## English
+The retained reference screenshot predates the CPU calculation fix; its
+readings are not measurements of the current build.
 
-A Hysteria 2 client and LuCI panel for OpenWrt: supervised TUN, device/site/
-country routing, LAN kill switch, optional incoming VPN users and 30-day
-history. This is a third-party package, not part of the official OpenWrt feed.
+## Installation
 
-### Install
+Target: **OpenWrt 25.12.x, ARM64, `aarch64_generic`, APK**. Run as root over
+LAN with HTTPS downloads available and the release APK signing key trusted.
 
-Current installer target: **OpenWrt 25.12 ARM64 / aarch64_generic (APK)**.
-Build or obtain a reviewed release bundle first. Public release artifacts
-and signing trust are not published by local repository preparation.
+One-command installation from GitHub, **after a signed release is published**:
+replace `RELEASE_TAG` and `MANIFEST_SHA256` with the reviewed tag and the
+independently authenticated SHA-256 of its `SHA256SUMS`. The embedded hash
+pins this installer before execution; APK hashes come from that manifest.
 
 ```sh
-# Check the bundle and dependency resolution; no package installation.
-sh install.sh --bundle /tmp/foxhole-release --manifest-sha256 TRUSTED_SHA256
-
-# Install persistently in FLASH (default).
-sh install.sh --bundle /tmp/foxhole-release --manifest-sha256 TRUSTED_SHA256 --apply
-
-# Explicit alternative: store only the Hysteria binary in RAM.
-sh install.sh --bundle /tmp/foxhole-release --manifest-sha256 TRUSTED_SHA256 --ram --apply
+(set -eu; url='https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/RELEASE_TAG'; f=$(mktemp /tmp/foxhole-install.XXXXXX); trap 'rm -f "$f"' EXIT; uclient-fetch -q -T 60 -O "$f" "$url/install.sh"; printf '%s  %s\n' 'e55e281adb962145a9adf7dc145adbcab08adac00b8b4644d3c4cc34ca249c55' "$f" | sha256sum -c -; sh "$f" --base-url "$url" --manifest-sha256 MANIFEST_SHA256 --apply)
 ```
 
-There is **no automatic flash → RAM fallback**. Flash mode requires at
-least 32 MiB free overlay and 48 MiB available RAM during preflight. RAM
-mode requires 4 MiB overlay and 96 MiB available RAM. These are minimum
-installation headroom checks, not throughput guarantees. RAM mode downloads
-the checksum-pinned engine again after reboot; settings remain on flash.
-Low memory causes refusal, not a forced installation.
+| Storage | Free overlay | Available RAM | Reboot behavior |
+| --- | ---: | ---: | --- |
+| Flash, default | 32 MiB | 48 MiB | Engine persists. |
+| `--ram` | 4 MiB | 96 MiB | Engine downloads again with a pinned checksum. |
 
-`--base-url https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/TAG`
-can replace `--bundle` once that signed release exists. Verify the signed
-SHA256SUMS through an independently trusted key; supply its SHA-256 as
-`TRUSTED_SHA256`. Do not pipe an unverified download into a root shell.
-`--development` is only for explicitly approved unsigned test bundles.
+These are installation thresholds. Settings stay on flash in both modes;
+there is no automatic fallback. Remove `--apply` for validation: it updates
+APK indexes and simulates dependencies without installing packages.
+See [CLI commands](docs/CLI.md), [release procedure](docs/RELEASE.md)
+and [rollback](docs/ROLLBACK.md).
 
-### Configure
+## Operation and limits
 
-- Keep web/SSH management LAN-only. The package does not harden an existing
-  WAN policy for you. Change the initial `1234` PIN on first login.
-- Import a private Hysteria profile through the panel.
-  [Examples](examples/) are inactive templates, not working credentials.
-- Optional incoming router users default to UDP/443 and need separately
-  provisioned TLS and a reachable endpoint. Shared-port users have one LAN
-  ACL; per-user LAN access requires separate listener ports.
-- Incoming users follow country exceptions through the active VPN when
-  client routing is enabled. **When upstream is disconnected, they exit
-  directly through the router.** The LAN kill switch is a separate policy.
-- Country/domain matching is imperfect: shared addresses and external
-  encrypted DNS can bypass domain classification.
-- WAN latency measures the gateway; VPN latency measures tunneled HTTPS
-  with connection/TLS overhead, not ICMP ping. History collects in the
-  background; hourly flash checkpoints may lose the last hour on power loss.
+Open **LuCI → Services → FoxHole**, replace the initial `1234` PIN and import
+a server profile. Installation also makes the panel the default web index.
+Keep web/SSH management on trusted LANs. [Configuration templates](examples/)
+contain inactive placeholders.
 
-### Build and verify
+- Incoming users require TLS provisioning and a reachable UDP endpoint.
+  Shared UDP/443 has one LAN ACL; separate user ACLs require separate ports.
+  **Incoming users exit directly when the upstream VPN is disconnected.**
+  The LAN kill switch is a separate policy.
+- Domain classification depends on observed DNS; encrypted DNS and shared
+  addresses limit accuracy. WAN latency measures the gateway; VPN latency
+  measures a tunneled HTTPS request, including connection setup overhead.
+- History runs without the panel. Hourly flash checkpoints can lose up to
+  an hour on power loss.
+
+## Development and CI
+
+Node 22+, Python 3.11+ and Gitleaks 8.30.1:
 
 ```sh
 npm ci --ignore-scripts
 npm run check
 npm run build:source
-# Linux x86_64, OpenWrt build prerequisites:
-sh tools/build-openwrt.sh
 ```
 
-No frontend npm dependencies are downloaded. The source ZIP and SHA-256 are
-deterministic; SDK, feeds, compiler and Hysteria inputs are pinned.
-[Build, clean-install test and signed release gates](docs/RELEASE.md)
-distinguish local harness tests from real firmware acceptance.
-[Rollback](docs/ROLLBACK.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md).
-
-## Русский
-
-Клиент Hysteria 2 и панель LuCI для OpenWrt: TUN, правила устройств,
-сайтов и стран, kill switch для LAN, входящие VPN-клиенты и история
-за 30 дней. Это сторонний пакет, не официальный пакет репозитория OpenWrt.
-
-### Установка
-
-Установщик рассчитан на **OpenWrt 25.12 ARM64 / aarch64_generic (APK)**.
-Команды выше по умолчанию проверяют пакет; `--apply` устанавливает.
-**Без флага — всегда flash. Только `--ram` включает хранение бинарника
-Hysteria в RAM.** Автоматического переключения нет.
-
-Для flash нужны минимум 32 МиБ свободного overlay и 48 МиБ доступной RAM.
-Для RAM-режима — 4 МиБ overlay и 96 МиБ доступной RAM. Это пороги
-установки, а не гарантия производительности. Настройки сохраняются во flash,
-а бинарник RAM-режима скачивается заново после перезагрузки с проверкой
-закреплённой SHA-256. Нехватка оперативной памяти приводит к отказу.
-
-Используйте проверенный пакет и подписанный SHA256SUMS: его хеш передаётся
-в `--manifest-sha256`. Подписанные GitHub Releases требуют отдельной
-публикации; подготовка исходников их не создаёт. Флаг `--development`
-явно отключает проверку подписи APK и предназначен только для тестов.
-
-### Настройка и ограничения
-
-- Web/SSH оставьте доступными только из LAN; существующий WAN-файрвол
-  пакет автоматически не закрывает. Начальный PIN `1234` нужно заменить.
-- Профиль VPS импортируется в панели. В [examples](examples/) только
-  шаблоны; личные ключи, QR, сертификаты и бэкапы храните вне Git.
-- Входящие клиенты роутера используют UDP/443, но требуют настройки TLS
-  и доступного адреса. На общем порту LAN-ACL общий; отдельный доступ
-  в LAN для каждого клиента требует отдельных портов.
-- При включённых правилах клиентов используется активный VPN и исключения
-  стран. **Без соединения с VPS входящие клиенты выходят напрямую.**
-  Kill switch для LAN настраивается отдельно.
-- Задержка VPN измеряется запросом HTTPS через туннель, а не ICMP.
-  История собирается без открытой панели; при внезапном отключении питания
-  может потеряться последний час до сохранения на flash.
-
-[Сборка, чистая установка и выпуск](docs/RELEASE.md) ·
-[Откат](docs/ROLLBACK.md) · [Безопасность](SECURITY.md).
-
-Исходный снимок панели оставлен без изменений по запросу владельца.
-На нём оставлены видимые подписи адресов; показание CPU
-предшествует исправлению расчёта и не является измерением текущей версии.
+No frontend npm dependencies are required. GitHub Actions checks push/PR
+changes; a separate manual workflow builds unsigned APKs with the pinned
+Linux SDK. See [checks, build and release](docs/RELEASE.md),
+[CLI](docs/CLI.md) and [architecture with two diagrams](docs/ARCHITECTURE.md).
 
 ---
 
-[GitHub](https://github.com/foxhole-team/foxhole-openwrt-client) ·
-[GPL-3.0-or-later](LICENSE) · [Third-party notices](THIRD_PARTY_NOTICES.md)
+[Security](SECURITY.md) · [Changelog](CHANGELOG.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
+
+FoxHole: [Android](https://github.com/foxhole-team/foxhole-guard) ·
+[Core](https://github.com/foxhole-team/foxhole-core) ·
+[Data](https://github.com/foxhole-team/foxhole-db)

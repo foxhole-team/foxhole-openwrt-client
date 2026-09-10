@@ -58,6 +58,7 @@ try {
     syntax += 1;
   }
   process.stdout.write(`Syntax and comment checks: ${syntax} source files.\n`);
+  run(process.execPath, ['tools/check-docs.mjs']);
   const tests = paths.filter((path) => path.startsWith('tests/') && path.endsWith('.test.mjs'));
   run(process.execPath, ['--test', ...tests]);
   const gitleaks = spawnSync('gitleaks', ['version'], { encoding: 'utf8' });

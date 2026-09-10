@@ -357,7 +357,6 @@ test('FoxHole themes, WAN metadata and section controls are explicit', async () 
     /\.rule-inline-route \.route-picker-trigger \{[^}]*padding: 4px 6px/);
   assert.doesNotMatch(css,
     /\.setting-icon svg \{[^}]*height:/);
-  assert.match(css, /MONO \/ FOXHOLE-LIKE THEME/);
   assert.doesNotMatch(css, /html\.theme-ui-gray/);
   assert.match(css, /--primary-bg: #fff/);
   assert.match(css, /html\.theme-light[\s\S]*--primary-bg: #303842/);

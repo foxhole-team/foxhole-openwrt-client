@@ -12,7 +12,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const oldBrand = new RegExp(['dae', 'mon'].join(''), 'i');
 const privateName = ['priv', 'vpn', 'vps'].join('_');
 const prohibitedNames = /(?:^|\/)(?:\.git|\.DS_Store|node_modules|creds|certs|secrets|artifacts|backups|dist|__pycache__)(?:\/|$)|(?:^|\/)\.env(?:\.|$)|\.(?:key|pem|p12|pfx|crt|cer|ipk|apk|tar|gz|zip|log|pyc)$/i;
-const binaryExtensions = /\.(?:png|ttf|woff2?|ico)$/i;
+const binaryExtensions = /\.(?:png|gif|ttf|woff2?|ico)$/i;
 
 function fail(code) {
   throw new Error(code);

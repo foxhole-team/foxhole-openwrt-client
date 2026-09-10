@@ -34,6 +34,18 @@ test('public export includes only the explicit source allowlist', async (t) => {
     'PKG_NAME:=foxhole-openwrt-client\n');
 });
 
+test('public export preserves GIF assets and rejects arbitrary binaries', async (t) => {
+  const item = await fixture(t);
+  const gif = Buffer.from(
+    'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+  await writeFile(join(item.source, 'media', 'fhg.gif'), gif);
+  const result = await exportPublic(item);
+  assert.ok(result.files.includes('media/fhg.gif'));
+  assert.deepEqual(await readFile(join(item.destination, 'media', 'fhg.gif')), gif);
+  assert.throws(() => validatePublicFile('media/unknown.bin', gif),
+    /unexpected binary file/);
+});
+
 test('public export rejects symlinks before writing a destination', async (t) => {
   const item = await fixture(t);
   await symlink('../README.md', join(item.source, 'package', 'linked.txt'));
@@ -61,6 +73,8 @@ test('public export rejects credential files and legacy identifiers', async (t) 
     Buffer.from('/' + ['Users', 'example', 'private'].join('/'))), /private identifier/);
   assert.throws(() => validatePublicFile('package/example.js',
     Buffer.from(['-----BEGIN ', 'PRIVATE KEY-----'].join(''))), /credential material/);
-  assert.throws(() => validatePublicFile('package/example.png',
-    Buffer.from(['\0', 'dae', 'mon'].join(''))), /private identifier/);
+  for (const extension of ['png', 'gif']) {
+    assert.throws(() => validatePublicFile('package/example.' + extension,
+      Buffer.from(['\0', 'dae', 'mon'].join(''))), /private identifier/);
+  }
 });
