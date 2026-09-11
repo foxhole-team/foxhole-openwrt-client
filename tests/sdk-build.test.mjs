@@ -13,6 +13,7 @@ const mocks = {
   sha256sum: 'cat >/dev/null',
   zstd: 'exit 0',
   git: 'exit 0',
+  python3: 'exit 0',
   tar: `
     if [ "$1" = --zstd ]; then
       mkdir -p "$MOCK_ROOT/scratch/sdk/scripts"

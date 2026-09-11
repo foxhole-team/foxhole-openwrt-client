@@ -8,6 +8,8 @@ manifest_hash=''
 mode=flash
 apply=0
 development=0
+apk_key=foxhole-openwrt-apk.pem
+public_sha256=fa220a28fd8662fc5f617f46594bafe2415b4f605136570dc3c446caeb7d1ef1
 while [ "$#" -gt 0 ]; do
  case "$1" in
   --base-url) base_url=${2:?}; shift 2 ;;
@@ -55,7 +57,7 @@ if [ "$ram" -lt "$minimum_ram" ]; then
  echo "Mode $mode needs at least $minimum_ram KiB available RAM; nothing installed" >&2
  exit 1
 fi
-arch=$(apk --print-arch)
+arch=$(cat /etc/apk/arch)
 [ "$arch" = aarch64_generic ] || { echo 'This bundle requires aarch64_generic' >&2; exit 1; }
 
 stage=$(mktemp -d /tmp/foxhole-install.XXXXXX)
@@ -74,29 +76,81 @@ fetch() {
 }
 fetch SHA256SUMS
 printf '%s  %s\n' "$manifest_hash" "$stage/SHA256SUMS" | sha256sum -c - >/dev/null
+verify_manifest_entry() {
+ hash=$(awk -v name="$1" '$2==name {print $1}' "$stage/SHA256SUMS")
+ [ "${#hash}" = 64 ] || { echo 'Artifact missing from trusted manifest' >&2; exit 1; }
+ printf '%s  %s\n' "$hash" "$stage/$1" | sha256sum -c - >/dev/null
+}
+key_path="/etc/apk/keys/$apk_key"
+check_existing_key() {
+ if [ -e "$key_path" ] || [ -L "$key_path" ]; then
+  [ -f "$key_path" ] && [ ! -L "$key_path" ] && cmp -s "$stage/$apk_key" "$key_path" || {
+   echo 'Existing FoxHole APK key differs or is not a regular file; nothing replaced' >&2
+   exit 1
+  }
+ fi
+}
+if [ "$development" = 0 ]; then
+ fetch "$apk_key"
+ printf '%s  %s\n' "$public_sha256" "$stage/$apk_key" | sha256sum -c - >/dev/null
+ verify_manifest_entry "$apk_key"
+ check_existing_key
+ mkdir "$stage/keys"
+ for system_key in /etc/apk/keys/*; do
+  [ -f "$system_key" ] || continue
+  [ "${system_key##*/}" != "$apk_key" ] || continue
+  cp "$system_key" "$stage/keys/"
+ done
+ cp "$stage/$apk_key" "$stage/keys/$apk_key"
+fi
 panel=foxhole-openwrt-client-0.1.0-r41.apk
 engine=hysteria-ram-2.12.2-r1.apk
 [ "$mode" != flash ] || engine=hysteria-2.12.2-r2.apk
 for file in "$engine" "$panel"; do
  fetch "$file"
- hash=$(awk -v name="$file" '$2==name {print $1}' "$stage/SHA256SUMS")
- [ "${#hash}" = 64 ] || { echo 'Artifact missing from trusted manifest' >&2; exit 1; }
- printf '%s  %s\n' "$hash" "$stage/$file" | sha256sum -c - >/dev/null
+ verify_manifest_entry "$file"
 done
 trust=''
 if [ "$development" = 1 ]; then
  trust=--allow-untrusted
  echo 'Development artifacts: manifest pinned; package signatures bypassed explicitly'
+else
+ apk --keys-dir "$stage/keys" verify "$stage/$engine" "$stage/$panel"
 fi
+apk_add() {
+ if [ "$development" = 1 ]; then
+  apk add $trust "$@" "$stage/$engine" "$stage/$panel"
+ else
+  apk --keys-dir "$stage/keys" add "$@" "$stage/$engine" "$stage/$panel"
+ fi
+}
 apk update
-apk add --simulate $trust "$stage/$engine" "$stage/$panel"
+apk_add --simulate
 echo "Validated mode=$mode flash_kib=$flash available_ram_kib=$ram"
 [ "$apply" = 1 ] || { echo 'Check only; use --apply to install'; exit 0; }
 keep_stage=1
 sysupgrade -k -b "$stage/sysupgrade-before.tar.gz"
 cp -p /etc/config/dhcp "$stage/dhcp.before"
 if [ -d /etc/foxhole ]; then tar -czf "$stage/foxhole-before.tar.gz" -C /etc foxhole; fi
-if ! apk add $trust "$stage/$engine" "$stage/$panel"; then
+if [ "$development" = 0 ]; then
+ check_existing_key
+ if [ ! -e "$key_path" ]; then
+  mkdir -p /etc/apk/keys
+  key_tmp=$(mktemp /etc/apk/keys/.foxhole.XXXXXX)
+  if ! cp "$stage/$apk_key" "$key_tmp" || ! chmod 0644 "$key_tmp"; then
+   rm -f "$key_tmp"
+   exit 1
+  fi
+  # Publish complete bytes without replacing an existing key.
+  if ! ln -T "$key_tmp" "$key_path"; then
+   rm -f "$key_tmp"
+   echo 'Cannot install FoxHole APK key without replacing an existing entry' >&2
+   exit 1
+  fi
+  rm -f "$key_tmp"
+ fi
+fi
+if ! apk_add; then
  echo "Installation failed; preserve $stage for recovery. Existing VPN was not intentionally removed." >&2
  exit 1
 fi

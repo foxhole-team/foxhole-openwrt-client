@@ -15,7 +15,7 @@ sh install.sh --bundle /tmp/bundle --manifest-sha256 HASH --ram --apply
 
 | Option | Meaning |
 | --- | --- |
-| `--bundle DIR` | Local APKs and `SHA256SUMS`. |
+| `--bundle DIR` | Signed APKs, `foxhole-openwrt-apk.pem` and `SHA256SUMS`. |
 | `--base-url HTTPS_URL` | Release asset directory; mutually exclusive with `--bundle`. |
 | `--manifest-sha256 HASH` | Required authenticated manifest hash. |
 | `--apply` | Back up, then install; otherwise update APK indexes and simulate. |
@@ -69,7 +69,8 @@ gh workflow run build-apk.yml --repo foxhole-team/foxhole-openwrt-client --ref R
 Dispatch acceptance is not build success. Inspect the resulting run; the
 manual APK workflow does not replace the required successful `dev` push.
 After promotion, `release.yml` verifies the signed `main` and copies the
-identical candidate. Download it for local GPG signing:
+identical candidate, then prepares a prerelease draft. Download it for local
+APK and GPG signing:
 
 ```sh
 gh run download RUN_ID --repo foxhole-team/foxhole-openwrt-client --name openwrt-release-MAIN_SHA --dir /tmp/foxhole-release

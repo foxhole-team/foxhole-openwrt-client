@@ -19,7 +19,7 @@ cp /etc/config/network "$stage/network"
 cp /etc/config/dhcp "$stage/dhcp"
 cp /etc/config/firewall "$stage/firewall"
 sh "$root/install.sh" --bundle "$bundle" --manifest-sha256 "$manifest" \
-  --development --apply "$@"
+  --apply "$@"
 apk info -e foxhole-openwrt-client
 for service in foxhole-runtime foxhole-history foxhole-inbound; do
   /etc/init.d/"$service" enabled

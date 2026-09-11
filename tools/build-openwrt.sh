@@ -6,7 +6,7 @@ umask 022
   echo 'Build host must be Linux x86_64 (native or disposable container)' >&2
   exit 1
 }
-for tool in curl sha256sum tar zstd make git; do command -v "$tool" >/dev/null; done
+for tool in curl sha256sum tar zstd make git python3 openssl; do command -v "$tool" >/dev/null; done
 root=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 out=${1:-"$root/dist/openwrt-25.12.5-arm64"}
 case "$out" in /*) ;; *) out="$PWD/$out" ;; esac
@@ -74,6 +74,8 @@ test -f "$out/hysteria-ram-2.12.2-r1.apk"
 test -f "$out/hysteria-2.12.2-r2.apk"
 cp .config "$out/sdk.config"
 cp "$root/tools/feeds.conf" "$out/feeds.buildinfo"
+PYTHONDONTWRITEBYTECODE=1 python3 "$root/tools/check-apk-signing.py" \
+  --apk "$scratch/sdk/staging_dir/host/bin/apk" --input "$out"
 (cd "$out" && sha256sum ./*.apk install.sh sdk.config feeds.buildinfo |
   sed 's|  \./|  |' > SHA256SUMS)
 echo "Unsigned APK bundle: $out"

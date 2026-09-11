@@ -2,6 +2,12 @@
 
 ## 0.1.0-r41 — public beta 1.0 (unreleased)
 
+- P-256 APK signatures, pinned installer trust bootstrap and local release
+  preparation with unchanged-content verification and archived candidates.
+- Main automatically prepares a prerelease draft after its signature and
+  matching dev candidate pass; owner hardware signing remains local.
+- Real APK signing, unknown-key and tamper tests during SDK builds.
+- Installer reads OpenWrt package architecture from `/etc/apk/arch`.
 - SDK builds select only the three deliverable packages and dependencies;
   cleanup handles read-only Go caches and preserves compiler failures.
 - Automatic dev checks and APK candidate builds; signed main requires a

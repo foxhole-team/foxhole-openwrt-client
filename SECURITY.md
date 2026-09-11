@@ -13,6 +13,10 @@ credentials; removing a Git file does not revoke them.
   authentication. Change the initial PIN before normal operation.
 - Authenticate the checksum manifest independently and trust the release
   APK key. The README command also verifies the installer before execution.
+  The installer pins the public key, verifies APK signatures and adds trust
+  only during explicit installation, after the backup. It refuses a
+  conflicting existing key. Private package keys and owner GPG keys stay
+  outside Git and CI; only the P-256 public key is exported.
   `--development` bypasses APK signatures for explicit local testing only.
 - Incoming users fall back to direct egress when upstream disconnects.
   Shared UDP/443 has one LAN ACL, independently of the LAN kill switch.

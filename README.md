@@ -40,15 +40,18 @@ readings are not measurements of the current build.
 ## Installation
 
 Target: **OpenWrt 25.12.x, ARM64, `aarch64_generic`, APK**. Run as root over
-LAN with HTTPS downloads available and the release APK signing key trusted.
+LAN with HTTPS downloads available. The installer authenticates and installs
+the pinned FoxHole APK public key before adding packages.
 
 One-command installation from GitHub, **after a signed release is published**:
 replace `RELEASE_TAG` and `MANIFEST_SHA256` with the reviewed tag and the
 independently authenticated SHA-256 of its `SHA256SUMS`. The embedded hash
 pins this installer before execution; APK hashes come from that manifest.
+The public key has a separate embedded SHA-256 pin. Every APK signature is
+verified before installation; normal installation needs no trust bypass.
 
 ```sh
-(set -eu; url='https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/RELEASE_TAG'; f=$(mktemp /tmp/foxhole-install.XXXXXX); trap 'rm -f "$f"' EXIT; uclient-fetch -q -T 60 -O "$f" "$url/install.sh"; printf '%s  %s\n' 'e55e281adb962145a9adf7dc145adbcab08adac00b8b4644d3c4cc34ca249c55' "$f" | sha256sum -c -; sh "$f" --base-url "$url" --manifest-sha256 MANIFEST_SHA256 --apply)
+(set -eu; url='https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/RELEASE_TAG'; f=$(mktemp /tmp/foxhole-install.XXXXXX); trap 'rm -f "$f"' EXIT; uclient-fetch -q -T 60 -O "$f" "$url/install.sh"; printf '%s  %s\n' '0ef98c75377112087ef1c33e4cf5ec1521300bf3d0b9cf39bddff2238a9d6bf8' "$f" | sha256sum -c -; sh "$f" --base-url "$url" --manifest-sha256 MANIFEST_SHA256 --apply)
 ```
 
 | Storage | Free overlay | Available RAM | Reboot behavior |
@@ -92,7 +95,8 @@ npm run build:source
 No frontend npm dependencies are required. GitHub Actions checks push/PR
 changes and builds unsigned APKs after successful `dev` checks. Signed
 `main` accepts a successful `dev` candidate with identical source files.
-GPG release signatures are made locally. See [checks, build and release](docs/RELEASE.md),
+Main automatically prepares a release draft. APK signatures and owner GPG
+release signatures are made locally. See [checks, build and release](docs/RELEASE.md),
 [CLI](docs/CLI.md) and [architecture with two diagrams](docs/ARCHITECTURE.md).
 
 ---

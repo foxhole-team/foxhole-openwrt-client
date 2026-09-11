@@ -30,7 +30,7 @@ the container or run on a router.
 | --- | --- | --- |
 | [verify](../.github/workflows/ci.yml) | Pull request to `main`/`dev`; push to either branch; manual | Host checks; a `dev` push then builds the APK candidate. |
 | [build-unsigned-apk](../.github/workflows/build-apk.yml) | Called by the `dev` gate; manual | Pinned SDK build, source ZIP, checksums and source identity. |
-| [release-candidate](../.github/workflows/release.yml) | Push to `main`; manual on `main` | Verify the owner signature and preserve the identical successful `dev` candidate for local signing. |
+| [release-candidate](../.github/workflows/release.yml) | Push to `main`; manual on `main` | Verify the owner signature, preserve the successful `dev` candidate and prepare a draft for local signing. |
 
 Promote the tested `dev` tree to `main` only after the complete `verify` run
 succeeds. The `main` tip must be GitHub-verified and carry a valid OpenPGP
@@ -52,8 +52,10 @@ The candidate contains three unsigned APKs, `install.sh`, `sdk.config`,
 retains those bytes unchanged with a separate `RELEASE.json`. Artifacts are
 kept for seven days. `SHA256SUMS.asc` is absent until local hardware signing.
 
-Workflows have read-only repository permissions. They do not sign, tag,
-publish or deploy, and no private key is stored in CI. Inspect actual run
+Build and verification jobs have read-only permissions. A separate job can
+create an unpublished prerelease draft for `config/release-version.txt`; it
+refuses to replace an existing published release or a draft for another
+commit. CI does not hold private keys or publish releases. Inspect actual run
 results through the [GitHub CLI](CLI.md). Ucode execution and firmware
 traffic acceptance remain separate gates.
 
@@ -74,9 +76,13 @@ dependency versions and hashes; live router dependency feeds are mutable.
 SDK-wide package and kernel-module selection is disabled. The three
 deliverable packages select their dependencies through `make defconfig`;
 the build verifies those selections, including `kmod-tun`. This avoids
-packaging unrelated kernel modules. Dependencies still build from source;
+the SDK-wide selection of unrelated packages; target-selected modules can
+still remain in the SDK configuration. Dependencies still build from source;
 measure duration from completed CI runs rather than the job timeout.
 Cleanup makes temporary Go module caches writable and retains build failures.
+Before export, the SDK signs copies with a disposable test key, verifies all
+three signatures, rejects unknown keys and damaged APKs, and checks that
+signing preserves package content. Production candidates remain unsigned.
 
 Copy the checkout and APK bundle to a disposable OpenWrt 25.12 ARM64 VM
 with matching kernel/feeds and initialized networking. Test each mode on a
@@ -93,36 +99,61 @@ precedence, WAN isolation and sustained load. RAM boot needs direct HTTPS.
 These firmware gates remain pending; compare independent APK builds before
 claiming binary reproducibility.
 
-## Signed prototype prerelease
+## Package signing and owner GPG signatures
 
-With owner authorization, a prototype prerelease can distribute reviewed
-source and unsigned APK candidates while firmware acceptance is pending.
-State that limitation in the release notes. GPG signs the source identity
-and release manifest; it does not create an APK v3 package signature or
-make an APK key trusted by the router. APK production trust is not yet
-configured. Keep the installer's signature checks enabled.
+The committed [P-256 public key](../config/foxhole-openwrt-apk.pem) is the
+APK trust anchor. Its PEM SHA-256 is pinned in `install.sh`. The private key
+and encrypted recovery backup stay in the owner's vault, beside the Android
+signing material. They must never enter Git, workflow secrets or artifacts.
+The owner YubiKey signs Git commits, tags, and the final `SHA256SUMS`.
 
-1. Download the successful `main` candidate; verify `RELEASE.json`, the
-   referenced `dev` run, source identity and every manifest entry.
-2. Create and verify a GPG-signed annotated tag on that `main` commit using
-   the owner's YubiKey. Never replace an existing tag or release.
-3. Stage the verified payload plus `RELEASE.json` and the public verification
-   key. Recompute `SHA256SUMS` for the staged release files; detach-sign it
-   locally as `SHA256SUMS.asc` and verify the signature.
-4. Create a draft GitHub prerelease, upload the complete asset set, download
-   it again and compare bytes. Publish the verified draft as a prerelease.
-   Keep the candidate manifest and signed release manifest distinguishable:
-   `RELEASE.json` records the original candidate manifest hash.
+From a clean `main` checkout, use `apk-tools 3.0.5`, OpenSSL, Python and GPG:
+
+```sh
+python3 -B tools/prepare-release.py --candidate /tmp/foxhole-release --output /tmp/foxhole-signed --key "$FOXHOLE_APK_KEY" --apk "$APK_TOOL"
+git tag -s "v$(cat config/release-version.txt)" -m "FoxHole OpenWrt Client $(cat config/release-version.txt)"
+git verify-tag "v$(cat config/release-version.txt)"
+gpg --armor --detach-sign /tmp/foxhole-signed/SHA256SUMS
+gpg --verify /tmp/foxhole-signed/SHA256SUMS.asc /tmp/foxhole-signed/SHA256SUMS
+```
+
+The preparation tool verifies candidate hashes and source identity, then
+signs each APK separately. It verifies the signature and compares both
+versions after removing signatures and normalizing compression. This
+preserves package metadata, install scripts and file contents. Separate
+calls also avoid the multi-file signing state issue in apk-tools 3.0.5.
+The output includes `APK-SIGNATURES.json` and the complete original
+`unsigned-candidate.zip`, so source provenance remains independently
+checkable after package hashes change. The final manifest covers both.
+
+1. Verify signed APKs on a clean OpenWrt 25.12 target. The installer checks
+   the pinned key and package signatures, simulates dependencies, makes its
+   backup, then installs the key and packages. Check-only mode does not
+   change permanent trust. Existing different keys are never replaced.
+2. Push the verified signed tag. Upload the complete signed asset set to
+   the matching draft, then download it and compare every file and signature.
+3. Publish as a prerelease while firmware traffic/load/reboot acceptance is
+   pending. State the tested environment and remaining limits in the notes.
+
+GPG signatures authenticate the release; the P-256 key authenticates APKs.
+Normal installation requires neither `--development` nor `--allow-untrusted`.
+The explicit development option remains available for isolated unsigned
+candidate testing. It must not appear in signed-release install commands.
 
 Use release notes for concrete tag/hash installation commands. The README
-keeps placeholders: embedding the release manifest hash in a source ZIP
-covered by that same manifest would create a circular checksum dependency.
+keeps placeholders: a manifest hash embedded in a source ZIP covered by that
+same manifest would create a circular checksum dependency.
 
-## Installable release
+## Firmware acceptance
 
-Complete the firmware gates above, sign APKs with OpenWrt/APK-compatible
-tooling, and independently distribute the APK trust key. Then recompute and
-GPG-sign the final manifest after APK signing. In a fresh VM, verify the
-published bundle and install without `--development` before advertising
-production installation. Prototype APKs remain for explicit isolated
-`--development` testing; GPG verification does not remove that distinction.
+Signed flash and RAM packages were installed without a trust bypass in
+separate official OpenWrt 25.12.5 ARM64 rootfs containers. Package signature
+verification, dependency resolution, public-key installation and DHCP
+preservation passed. The flash Hysteria binary reported version 2.12.2.
+These containers did not run a complete procd/ubus boot; service lifecycle,
+VPN traffic and firmware reboot behavior were not validated by that test.
+
+Successful signature checks and package installation do not establish VPN
+compatibility. Complete clean-VM reboot, LAN egress, DNS/UDP, WAN isolation
+and sustained-load checks before advertising production readiness. Compare
+independent APK builds before claiming binary reproducibility.

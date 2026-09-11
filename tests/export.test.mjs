@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { generateKeyPairSync } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -80,4 +81,22 @@ test('public export rejects credential files and legacy identifiers', async (t) 
     assert.throws(() => validatePublicFile('package/example.' + extension,
       Buffer.from(['\0', 'dae', 'mon'].join(''))), /private identifier/);
   }
+});
+
+test('public APK key exception accepts only a P-256 public key', () => {
+  const path = 'config/foxhole-openwrt-apk.pem';
+  const { publicKey, privateKey } = generateKeyPairSync('ec', {
+    namedCurve: 'prime256v1'
+  });
+  const pem = Buffer.from(publicKey.export({ type: 'spki', format: 'pem' }));
+  assert.doesNotThrow(() => validatePublicFile(path, pem));
+  assert.throws(() => validatePublicFile('config/other.pem', pem), /prohibited path/);
+  assert.throws(() => validatePublicFile(path,
+    Buffer.from(privateKey.export({ type: 'pkcs8', format: 'pem' }))),
+  /credential material/);
+  assert.throws(() => validatePublicFile(path, Buffer.concat([pem, pem])),
+    /Invalid public APK key/);
+  const other = generateKeyPairSync('ec', { namedCurve: 'secp384r1' });
+  assert.throws(() => validatePublicFile(path,
+    Buffer.from(other.publicKey.export({ type: 'spki', format: 'pem' }))), /P-256/);
 });

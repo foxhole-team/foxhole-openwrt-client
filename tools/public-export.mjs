@@ -1,4 +1,5 @@
 import { constants } from 'node:fs';
+import { createPublicKey } from 'node:crypto';
 import { chmod, lstat, mkdir, open, readdir, realpath, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,7 +25,9 @@ function inside(parent, child) {
 }
 
 export function validatePublicFile(path, data) {
-  if (oldBrand.test(path) || path.includes(privateName) || prohibitedNames.test(path)) {
+  const apkKey = path === 'config/foxhole-openwrt-apk.pem';
+  if (oldBrand.test(path) || path.includes(privateName) ||
+    (prohibitedNames.test(path) && !apkKey)) {
     fail('Public export contains a prohibited path');
   }
   const text = data.toString('utf8');
@@ -34,6 +37,14 @@ export function validatePublicFile(path, data) {
   }
   if (/-----BEGIN (?:[A-Z ]*PRIVATE KEY|CERTIFICATE)-----/.test(text)) {
     fail('Public export contains credential material');
+  }
+  if (apkKey) {
+    if (!/^-----BEGIN PUBLIC KEY-----\n[A-Za-z0-9+/=\n]+\n-----END PUBLIC KEY-----\n$/.test(text))
+      fail('Invalid public APK key');
+    const key = createPublicKey(data);
+    if (key.asymmetricKeyType !== 'ec' ||
+      key.asymmetricKeyDetails.namedCurve !== 'prime256v1')
+      fail('Public APK key must use P-256');
   }
   if (binaryExtensions.test(path)) return;
   if (data.includes(0)) fail('Public export contains an unexpected binary file');

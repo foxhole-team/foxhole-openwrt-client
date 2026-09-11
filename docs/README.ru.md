@@ -39,16 +39,18 @@ Hysteria независимо от FoxHole Core и FoxHole DB. Это пока �
 ## Установка
 
 Целевая система: **OpenWrt 25.12.x, ARM64, `aarch64_generic`, APK**.
-Запуск от root через LAN; нужны HTTPS-загрузки и доверенный ключ подписи
-APK выбранного выпуска.
+Запуск от root через LAN; нужны HTTPS-загрузки. Установщик проверяет
+закреплённый публичный ключ FoxHole и добавляет его перед установкой пакетов.
 
 Установка из GitHub одной командой **после публикации подписанного выпуска**:
 замените `RELEASE_TAG` на проверенный тег, а `MANIFEST_SHA256` — на SHA-256
 его `SHA256SUMS`, подлинность которого подтверждена независимым способом.
 Встроенный хеш проверяет установщик до запуска; хеши APK берутся из манифеста.
+Для публичного ключа отдельно закреплён SHA-256. Подпись каждого APK
+проверяется до установки; отключать проверку доверия не требуется.
 
 ```sh
-(set -eu; url='https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/RELEASE_TAG'; f=$(mktemp /tmp/foxhole-install.XXXXXX); trap 'rm -f "$f"' EXIT; uclient-fetch -q -T 60 -O "$f" "$url/install.sh"; printf '%s  %s\n' 'e55e281adb962145a9adf7dc145adbcab08adac00b8b4644d3c4cc34ca249c55' "$f" | sha256sum -c -; sh "$f" --base-url "$url" --manifest-sha256 MANIFEST_SHA256 --apply)
+(set -eu; url='https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/RELEASE_TAG'; f=$(mktemp /tmp/foxhole-install.XXXXXX); trap 'rm -f "$f"' EXIT; uclient-fetch -q -T 60 -O "$f" "$url/install.sh"; printf '%s  %s\n' '0ef98c75377112087ef1c33e4cf5ec1521300bf3d0b9cf39bddff2238a9d6bf8' "$f" | sha256sum -c -; sh "$f" --base-url "$url" --manifest-sha256 MANIFEST_SHA256 --apply)
 ```
 
 | Хранение | Свободный overlay | Доступная RAM | После перезагрузки |
@@ -91,7 +93,8 @@ npm run build:source
 Frontend не требует npm-зависимостей. GitHub Actions проверяет изменения
 на push/PR и собирает неподписанные APK после успешных проверок `dev`.
 Подписанный `main` принимает успешный кандидат `dev` с теми же исходниками.
-GPG-подпись выпуска создаётся локально. См. [проверки, сборку и выпуск](RELEASE.md),
+`main` автоматически готовит черновик выпуска. Пакетные подписи и GPG-подпись
+владельца создаются локально. См. [проверки, сборку и выпуск](RELEASE.md),
 [CLI](CLI.md) и [архитектуру с двумя схемами](ARCHITECTURE.md).
 
 ---

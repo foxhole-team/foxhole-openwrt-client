@@ -18,7 +18,7 @@ jobs:
       - name: Build prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bison flex gawk gettext git libncurses-dev libssl-dev python3 python3-setuptools rsync unzip file time curl zstd
+          sudo apt-get install -y build-essential bison flex gawk gettext git libncurses-dev libssl-dev openssl python3 python3-setuptools rsync unzip file time curl zstd
       - run: sh tools/build-openwrt.sh
       - name: Record source and artifact identity
         env:

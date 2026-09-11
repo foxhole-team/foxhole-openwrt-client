@@ -15,13 +15,22 @@ concurrency:
 
 jobs:
   candidate:
-    if: github.ref == 'refs/heads/main' && github.repository == 'foxhole-team/foxhole-openwrt-client'
+    if: github.server_url == 'https://github.com' && github.ref == 'refs/heads/main' && github.repository == 'foxhole-team/foxhole-openwrt-client'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    outputs:
+      version: ${{ steps.version.outputs.value }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
+
+      - name: Read the release version
+        id: version
+        run: |
+          version="$(cat config/release-version.txt)"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]
+          echo "value=$version" >> "$GITHUB_OUTPUT"
 
       - name: Verify the signed main authority
         env:
@@ -167,3 +176,37 @@ jobs:
             RELEASE.json
           if-no-files-found: error
           retention-days: 7
+
+  draft:
+    needs: candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Prepare the release draft for local signing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SOURCE_COMMIT: ${{ github.sha }}
+          VERSION: ${{ needs.candidate.outputs.version }}
+        run: |
+          set -euo pipefail
+          tag="v$VERSION"
+          releases="$RUNNER_TEMP/releases.json"
+          gh api --paginate "repos/$GH_REPO/releases?per_page=100" --slurp > "$releases"
+          count="$(jq --arg tag "$tag" '[.[][] | select(.tag_name == $tag)] | length' "$releases")"
+          if [[ "$count" != 0 ]]; then
+            jq -e --arg tag "$tag" --arg sha "$SOURCE_COMMIT" \
+              '[.[][] | select(.tag_name == $tag)] | length == 1 and \
+              (.[0].draft == true and .[0].target_commitish == $sha)' "$releases"
+            exit 0
+          fi
+          notes="$RUNNER_TEMP/release-notes.md"
+          cat > "$notes" <<'EOF'
+          Public beta 1.0 prototype. Main and matching dev verification passed.
+          Release assets are awaiting local APK signing and owner YubiKey signatures.
+          Firmware traffic, load and reboot acceptance remain pending.
+          EOF
+          gh release create "$tag" --draft --prerelease --target "$SOURCE_COMMIT" \
+            --title "FoxHole OpenWrt Client $VERSION" --notes-file "$notes"

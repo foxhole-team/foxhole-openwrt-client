@@ -10,6 +10,7 @@ dist/
 .env.*
 *.key
 *.pem
+!config/foxhole-openwrt-apk.pem
 *.p12
 *.pfx
 *.crt
