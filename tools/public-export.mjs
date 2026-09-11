@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 export const publicFiles = ['LICENSE', 'THIRD_PARTY_NOTICES.md',
   'README.md', 'CHANGELOG.md', 'SECURITY.md', '.gitattributes', '.gitignore',
-  'install.sh', 'package.json', 'package-lock.json', 'AGENTS.md'];
+  'install.sh', 'package.json', 'package-lock.json'];
 export const publicDirectories = ['package', 'LICENSES', 'media', 'docs', 'config',
   'examples', '.github', 'tests', 'tools'];
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -26,7 +26,7 @@ function inside(parent, child) {
 
 export function validatePublicFile(path, data) {
   const apkKey = path === 'config/foxhole-openwrt-apk.pem';
-  if (oldBrand.test(path) || path.includes(privateName) ||
+  if (path.split('/').includes('AGENTS.md') || oldBrand.test(path) || path.includes(privateName) ||
     (prohibitedNames.test(path) && !apkKey)) {
     fail('Public export contains a prohibited path');
   }
@@ -78,6 +78,7 @@ export async function collectPublic(source = root) {
       if (!directory) fail('Public export expected a regular file');
       validatePublicFile(path, Buffer.alloc(0));
       for (const name of (await readdir(absolute)).sort()) {
+        if (name === 'AGENTS.md') continue;
         await visit(`${path}/${name}`, true);
       }
       return;

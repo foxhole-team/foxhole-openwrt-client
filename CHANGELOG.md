@@ -2,6 +2,7 @@
 
 ## 0.1.0-r41 — public beta 1.0 (unreleased)
 
+- Local agent instructions are excluded from Git and source archives.
 - P-256 APK signatures, pinned installer trust bootstrap and local release
   preparation with unchanged-content verification and archived candidates.
 - Main automatically prepares a prerelease draft after its signature and
@@ -28,5 +29,5 @@
 - CI, installer regressions, ucode models and deterministic source archive.
 - Original dashboard screenshot retained unchanged by owner request.
 
-No signed release, official feed admission or universal device compatibility
-is claimed. Complete clean-VM and load/reboot acceptance before release.
+Official feed admission and universal device compatibility are not claimed.
+Complete clean-VM and load/reboot acceptance before production use.

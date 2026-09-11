@@ -24,6 +24,8 @@ async function fixture(t) {
 
 test('public export includes only the explicit source allowlist', async (t) => {
   const item = await fixture(t);
+  await writeFile(join(item.source, 'AGENTS.md'), 'Local instructions only\n');
+  await writeFile(join(item.source, 'package', 'AGENTS.md'), 'Local instructions only\n');
   for (const path of ['private-notes', 'dist', '.git']) {
     await mkdir(join(item.source, path));
     await writeFile(join(item.source, path, 'private.txt'), 'Not exported\n');
@@ -32,6 +34,9 @@ test('public export includes only the explicit source allowlist', async (t) => {
   assert.deepEqual((await readdir(item.destination)).sort(),
     [...publicFiles, ...publicDirectories.filter(name => !['tests', 'tools'].includes(name))].sort());
   assert.equal(result.files.length, publicFiles.length + 8);
+  assert.ok(result.files.every(path => !path.split('/').includes('AGENTS.md')));
+  assert.throws(() => validatePublicFile('package/AGENTS.md', Buffer.from('Local only')),
+    /prohibited path/);
   assert.equal(await readFile(join(item.destination, 'config', 'release-signers.asc'), 'utf8'),
     'Public verification key fixture\n');
   assert.equal(await readFile(join(item.destination, 'package', 'Makefile'), 'utf8'),
