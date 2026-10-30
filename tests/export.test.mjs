@@ -15,6 +15,7 @@ async function fixture(t) {
   await writeFile(join(source, 'media', 'dashboard.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>');
   for (const path of publicFiles) await writeFile(join(source, path), 'Public fixture\n');
   await writeFile(join(source, 'package', 'Makefile'), 'PKG_NAME:=foxhole-openwrt-client\n');
+  await writeFile(join(source, 'native/transaction', 'README.md'), 'Public source build fixture\n');
   await writeFile(join(source, 'LICENSES', 'example.txt'), 'License fixture\n');
   await writeFile(join(source, 'config', 'release-signers.asc'), 'Public verification key fixture\n');
   for (const directory of ['media', 'docs', 'examples', '.github'])
@@ -32,8 +33,9 @@ test('public export includes only the explicit source allowlist', async (t) => {
   }
   const result = await exportPublic(item);
   assert.deepEqual((await readdir(item.destination)).sort(),
-    [...publicFiles, ...publicDirectories.filter(name => !['tests', 'tools'].includes(name))].sort());
-  assert.equal(result.files.length, publicFiles.length + 8);
+    [...publicFiles, ...publicDirectories.filter(name => !['tests', 'tools'].includes(name))
+      .map(name => name.split('/')[0])].sort());
+  assert.equal(result.files.length, publicFiles.length + 9);
   assert.ok(result.files.every(path => !path.split('/').includes('AGENTS.md')));
   assert.throws(() => validatePublicFile('package/AGENTS.md', Buffer.from('Local only')),
     /prohibited path/);

@@ -1,0 +1,26 @@
+title = "FoxHole public source checks"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+description = "Exact public oauth2 module checksum in patch context"
+condition = "AND"
+regexTarget = "secret"
+paths = ['''(?:^|/)package/hysteria/(?:patches/100-network-security\.patch|combined-source\.patch)$''']
+regexes = ['''^dnDm7JmhM45NNpd8FDDeLhK6FwqbOf4MLCM9zb1BOHI=$''']
+
+[[rules.allowlists]]
+description = "Exact public file inventory digests in source receipt"
+condition = "AND"
+regexTarget = "secret"
+paths = ['''(?:^|/)package/hysteria/security-source\.json$''']
+regexes = [
+  '''^e80ddc841facfc37db93de8e727865c784c44bef525df8d286de7d8ff653bcad$''',
+  '''^9ccae44ed95c995c8ebf5e24d84730c23f40fd6a3a664077777420418c9b618c$''',
+  '''^f1643fb76a0156e438de45419d9091e1d514372fc870d284a58b4dc60c0bef0a$''',
+  '''^d2dbf59135366415fcc6037c254cc87070ff9a87a224b09336d793b9e3c171d8$''',
+]

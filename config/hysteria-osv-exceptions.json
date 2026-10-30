@@ -1,0 +1,68 @@
+{
+  "exceptions": [
+    {
+      "advisory": "GO-2026-5841",
+      "advisorySha256": "c1b883b7f4e86a491500804c0ce6321f11c330539f531663b6be6ef5557e7aee",
+      "affectedPackages": [
+        "github.com/klauspost/compress/s2"
+      ],
+      "ecosystem": "Go",
+      "expires": "2026-11-12",
+      "package": "github.com/klauspost/compress",
+      "reason": "The advisory requires s2.NewDict and Dict.Encode with an attacker-supplied S2 dictionary. The actual CGO0 Linux AMD64 and ARM64 delivered closures import zstd through utls; neither imports s2, so the affected function cannot be called by these exact builds.",
+      "version": "v1.17.9"
+    },
+    {
+      "advisory": "GO-2026-5932",
+      "advisorySha256": "af9a70a4b88f383bf3ad4142f2dc7ab4358551622d16c636eb1b05f34a3d3a32",
+      "affectedPackages": [
+        "golang.org/x/crypto/openpgp",
+        "golang.org/x/crypto/openpgp/packet",
+        "golang.org/x/crypto/openpgp/armor",
+        "golang.org/x/crypto/openpgp/clearsign",
+        "golang.org/x/crypto/openpgp/errors",
+        "golang.org/x/crypto/openpgp/elgamal",
+        "golang.org/x/crypto/openpgp/s2k"
+      ],
+      "ecosystem": "Go",
+      "expires": "2026-11-12",
+      "package": "golang.org/x/crypto",
+      "reason": "All seven advisory-listed OpenPGP packages are absent from the actual CGO0 Linux AMD64 and ARM64 delivered closures. Other maintained crypto packages remain reachable and are not covered by this proposal.",
+      "version": "v0.57.0"
+    }
+  ],
+  "maxScanAgeHours": 24,
+  "moduleManifestSha256": "7b5ca14270995414d2467d32b26e8ffbe2f82dd1f7eafb7be54291304433012c",
+  "queryCount": 78,
+  "queryPayloadSha256": "225121041727ae3063792ef7c25bd396328d762f238f95c7c793966a556dab23",
+  "responseSha256": "ceae9ff2e27d79580fc4edc3084ae161bb0e3017be82f2429a55e1a54a66533f",
+  "runtimeVersion": "go1.26.10",
+  "schema": 1,
+  "scope": "CGO0 Linux Hysteria incoming server",
+  "sourceReceiptSha256": "4384fa5b283cde9a33ac2147756a4ce61e31708b9b1271e8c0929a330296181b",
+  "targets": [
+    {
+      "architecture": "amd64",
+      "binarySha256": "f3e2eb1ecb53a5b67a331da2c22980a16f86b528c3a17c4aae266fbfe5c24a9b",
+      "producerSha256": "d7ff760a553e6b75496e784b1a44b8f35ccf7711d9e9585a8a31ce518fefdb07",
+      "graphSha256": "f4e0e67b27e336ed69a24da5eb88c542ce0d2f931df8877fd137b66b9ea620d9",
+      "selectedFilesSha256": "14817aa975b9f560b4cc4dccbec173443a611371195cf544679f4f30241c65c9",
+      "packageCount": 522
+    },
+    {
+      "architecture": "arm64",
+      "binarySha256": "666dfb96d98b258c57164f5a17dddb0b7f12d7fe99f92a15d831aa85fdd6bed3",
+      "producerSha256": "f8849252b1b093790bfe7709517a1b784b2ea6fb3b785f64d248ab4d52899d71",
+      "graphSha256": "32e424a52960f315173753dba8614ac557fa8a6679974208ba6bf50a048b8f45",
+      "selectedFilesSha256": "d4e00a0cefad3a9627c2e296ba212a66020c6730bd083d3319cde531c782f4b9",
+      "packageCount": 520
+    }
+  ],
+  "advisoryAliasPairs": [
+    {
+      "advisory": "GHSA-259r-337f-4rfw",
+      "canonical": "GO-2026-5841",
+      "advisorySha256": "f465d95179ef8863232fe7b9135694c595b1b5d454370ca376b6fc726a04190f"
+    }
+  ]
+}

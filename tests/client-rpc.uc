@@ -1,7 +1,16 @@
+let engine_service = { guard_mutation: () => {}, stop_intent: () => {} };
+import * as mobile from '/workspace/package/foxhole-openwrt-client/root/usr/share/foxhole/mobile.uc';
 import * as model from '/workspace/package/foxhole-openwrt-client/root/usr/share/foxhole/model.uc';
 
 const STATE_PATH = '/in-memory/state';
+const MOBILE_PATH = '/in-memory/mobile';
+function read_json(_, __) { return null; };
 let state, writes = 0, session_calls = 0, reject_second_session = false;
+let revoke_code = 0, revocations = 0;
+function system(argv, _) {
+ if (argv[0] != '/usr/libexec/foxhole-inbound-revoke') die('unexpected_command');
+ revocations++; return revoke_code;
+};
 
 function clone(value) {
 	return json(sprintf('%J', value));
@@ -52,7 +61,7 @@ function reset() {
 		provisioned: false }];
 	writes = 0;
 	session_calls = 0;
-	reject_second_session = false;
+	reject_second_session = false; revoke_code = 0; revocations = 0;
 };
 
 function request(extra) {
@@ -159,6 +168,22 @@ test('inactive profiles remain inactive after a rename', () => {
 	equal(result.client.name, 'Travel phone');
 });
 
+test('legacy shared-profile deletion does not claim upstream credential revocation', () => {
+	let result = delete_client(request({}));
+	equal(revocations, 0); equal(length(state.clients), 0);
+	equal(result.clientRevocation.targetRevoked, false);
+});
+test('incoming delete waits for actual runtime revocation before persistence', () => {
+	state.clients[0].inbound = true;
+	let result = delete_client(request({}));
+	equal(revocations, 1); equal(writes, 1); equal(length(state.clients), 0);
+	equal(result.clientRevocation, { id: 'client-000000000001', applied: true, targetRevoked: true });
+});
+test('failed incoming revocation is an error and preserves the client', () => {
+	state.clients[0].inbound = true; revoke_code = 1;
+	rejects(() => delete_client(request({})), 'runtime_unavailable');
+	equal(revocations, 1); equal(writes, 0); equal(length(state.clients), 1);
+});
 print('1..', passed + failed, '\n');
 print('# client RPC tests: ', passed, ' passed, ', failed, ' failed\n');
 if (failed) exit(1);

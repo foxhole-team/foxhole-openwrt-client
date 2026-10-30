@@ -178,6 +178,9 @@ export function nft_config(state, options) {
 	push(lines, '\t}');
 
 	push(lines, '\tchain classify {');
+	// Only the owned, expiring provider lease sets this reserved bit.
+	rule(lines, 'meta mark & 0x08000000 != 0 meta mark set ' +
+		'(meta mark & 0xb7ffffff) | 0x20000000 counter accept');
 	rule(lines, 'ip daddr @bypass4 accept');
 	rule(lines, 'ip6 daddr @bypass6 accept');
 	if (state.settings.localRules) {
@@ -219,6 +222,8 @@ export function nft_config(state, options) {
 	push(lines, '\tchain guard_egress {');
 	rule(lines, 'type filter hook postrouting priority filter - 5; ' +
 		'policy accept;');
+	if (options.bootstrap)
+		rule(lines, 'meta mark & 0x50000000 == 0x40000000 counter drop');
 	rule(lines, 'meta mark & ' + MARK + ' != 0 oifname != "' +
 		TUN_NAME + '" counter drop');
 	push(lines, '\t}');

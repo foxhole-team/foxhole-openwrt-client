@@ -1,0 +1,107 @@
+#!/bin/sh
+set -eu
+umask 077
+
+file_info() {
+ ucode -e '
+  import * as fs from "fs";
+  let info = fs.lstat(ARGV[1]);
+  if (!info) exit(1);
+  let mode = sprintf("%o", info.mode & 07777);
+  switch (ARGV[0]) {
+   case "%u": print(info.uid); break;
+   case "%u:%a": print(info.uid + ":" + mode); break;
+   case "%u:%a:%h": print(info.uid + ":" + mode + ":" + info.nlink); break;
+   case "%u:%a:%h:%s": print(info.uid + ":" + mode + ":" + info.nlink + ":" + info.size); break;
+   case "%F:%u:%a": print(info.type + ":" + info.uid + ":" + mode); break;
+   default: exit(1);
+  }
+ ' -- "$1" "$2"
+}
+
+[ "$#" -eq 0 ] || exit 1
+
+directory='/etc/foxhole'
+identity="$directory/mobile-identity"
+certificate="$directory/mobile.crt"
+legacy_key="$directory/mobile.key"
+stage=''
+check=''
+
+cleanup() {
+	[ -z "$stage" ] || rm -rf "$stage"
+	[ -z "$check" ] || rm -rf "$check"
+}
+trap cleanup EXIT HUP INT TERM
+uid=$(id -u)
+[ ! -L "$directory" ] || exit 1
+if [ -e "$directory" ]; then
+	[ -d "$directory" ] && \
+		[ "$(file_info '%u:%a' "$directory")" = "$uid:700" ] || exit 1
+else
+	mkdir -m 700 "$directory"
+fi
+lock="$directory/mobile-identity.lock"
+[ ! -L "$lock" ] || exit 1
+if [ ! -e "$lock" ]; then
+	(set -C; : > "$lock")
+fi
+[ -f "$lock" ] && \
+	[ "$(file_info '%u:%a:%h:%s' "$lock")" = "$uid:600:1:0" ] || exit 1
+exec 9>>"$lock"
+flock -x 9
+[ "$(date +%Y)" -ge 2025 ] || exit 1
+
+verify_pair() {
+	[ -f "$1" ] && [ ! -L "$1" ] && \
+		[ -f "$2" ] && [ ! -L "$2" ] || return 1
+	[ "$(file_info '%u:%a:%h' "$2")" = "$uid:600:1" ] || return 1
+	check=$(mktemp -d "$directory/.mobile-check.XXXXXX") || return 1
+	if ! openssl x509 -in "$1" -noout -checkend 86400 \
+		>/dev/null 2>&1 || \
+	   ! openssl x509 -in "$1" -pubkey -noout \
+		>"$check/cert-public" 2>/dev/null || \
+	   ! openssl pkey -in "$2" -pubout \
+		>"$check/key-public" 2>/dev/null || \
+	   ! cmp -s "$check/cert-public" "$check/key-public"; then
+		rm -rf "$check"; check=''
+		return 1
+	fi
+	rm -rf "$check"; check=''
+}
+
+if [ -e "$identity" ] || [ -L "$identity" ]; then
+	[ -d "$identity" ] && [ ! -L "$identity" ] || exit 1
+	[ "$(file_info '%u:%a' "$identity")" = "$uid:700" ] || exit 1
+	[ ! -e "$legacy_key" ] && [ ! -L "$legacy_key" ] || exit 1
+	verify_pair "$identity/cert.pem" "$identity/key.pem" || exit 1
+else
+	if [ -e "$certificate" ] || [ -L "$certificate" ] || \
+	   [ -e "$legacy_key" ] || [ -L "$legacy_key" ]; then
+		verify_pair "$certificate" "$legacy_key"
+		exit $?
+	fi
+	stage=$(mktemp -d "$directory/.mobile-identity.XXXXXX")
+	openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+		-subj '/CN=FoxHole-Router' \
+		-addext 'basicConstraints=critical,CA:FALSE' \
+		-addext 'keyUsage=critical,digitalSignature,keyEncipherment' \
+		-addext 'extendedKeyUsage=serverAuth' \
+		-keyout "$stage/key.pem" -out "$stage/cert.pem" >/dev/null 2>&1
+	chmod 600 "$stage/key.pem"
+	chmod 644 "$stage/cert.pem"
+	verify_pair "$stage/cert.pem" "$stage/key.pem" || exit 1
+	# One locked directory publication keeps both files together.
+	mv -nT "$stage" "$identity"
+	[ ! -d "$stage" ] || exit 1
+	stage=''
+	verify_pair "$identity/cert.pem" "$identity/key.pem" || exit 1
+fi
+
+if [ -e "$certificate" ] || [ -L "$certificate" ]; then
+	[ -f "$certificate" ] && [ ! -L "$certificate" ] && \
+		cmp -s "$certificate" "$identity/cert.pem" || exit 1
+else
+	# A failed alias can retry the complete stored identity.
+	ln "$identity/cert.pem" "$certificate"
+fi

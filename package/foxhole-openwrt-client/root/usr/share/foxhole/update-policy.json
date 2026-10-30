@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "transactionAbi": 1,
+  "stateAbi": 1,
+  "osRelease": "25.12.5",
+  "targets": [
+    "x86/64",
+    "mediatek/filogic"
+  ],
+  "releaseTag": "v1.0.0",
+  "packageVersion": "1.0.0-r3"
+}

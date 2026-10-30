@@ -1,5 +1,68 @@
 # Changelog
 
+## 1.0.1 Public Beta - 2026-10-30
+
+- Update selectable Linux engines to FoxHole Core 1.0.1, including DNS policy, reload, import and bootstrap fixes.
+
+- Bind paired inbound profile exports to bounded app-only origin metadata;
+  retain native URI/QR formats and recheck pairing before marked replies.
+
+- Require explicit first-setup agreement in the CLI, web panel and both Android clients; preserve existing agreement and update-policy records.
+- Apply and recover BASE plus approved new modules through one authenticated native transaction while preserving the original unversioned world roots.
+
+- Package a separate GPL2 native transaction utility for the two supported
+  OpenWrt targets; bind explicit external artifacts and declare libgcc.
+- Keep complete corresponding source as a separate release asset, with
+  original notices and a recorded SDK build/install recipe in public source.
+
+- Recheck authenticated Core proof and live routing identities after policy
+  changes before reporting a connection; invalidate cached identities when probing.
+- Accept content and manifest based native legal metadata in both the SDK
+  and installed router registry, retaining archive based producer validation.
+
+- Preserve registered native completion during command readiness handoff;
+  validate owner and process generation without losing its exit status.
+
+- Add Japanese, German, French, Spanish and Chinese interface translations.
+- Reap owned native command children with blocked SIGCHLD and preserve
+  completed engine transactions during recovery reconciliation.
+
+- Build the optional Hysteria server with Go 1.26.10; advance FLASH/RAM package revisions to 2.12.2-r5/r4 and preserve separate source-test, compiler and target-runtime provenance.
+
+### Included features
+
+- Add signed FoxHole software updates from router Settings and both Android apps.
+  Keep selected protocol storage, profiles and pairing; automatic updates
+  are an explicit router setting and check once a day.
+
+- Build the separate Hysteria server with Go 1.26.10 and the pinned x/net 0.60
+  security repair; reject new UDP sends after session closure and retain
+  the combined patch, source hashes, fresh test receipt and original notices.
+
+- Add owned Core routing, protected profile admission, authenticated local
+  relays and exact VPN-bound proof; retain legacy Hysteria options.
+- Bind selectable protocol packages and flash/RAM installation to actual
+  native producers, authenticated dependency budgets and the existing kernel ABI.
+- Add private LAN TLS pairing with revocable phone credentials and a
+  one-use setup bootstrap that preserves an existing PIN.
+- Keep subscription source, selected node and exact admitted profile input
+  private; expose portable copies and genuine protocol capabilities.
+- Add bounded provider handoff leases and separate pinned HY2 remote setup.
+  Home automation remains disabled pending firmware and device acceptance.
+- Include native licenses, both RAM payloads and runtime memory evidence in
+  package budgets; reject foreign cache files and bound country downloads.
+- Prepare complete signed installation review bundles with all selected
+  assets; reject provisional laboratory memory policies for public bundles.
+- Admit genuine separate server producers in SDK builds and retain both
+  Core/server RAM packages without mixing the legacy RAM wrapper.
+- Retain original signed OpenWrt indexes and verify upstream identities
+  with native offline fetch before indexed installation; account for keys
+  and verification staging without re-signing upstream packages.
+- Verify installed native producers, binaries and capabilities before
+  writing the setup receipt; reject incomplete or mismatched evidence.
+- Select authenticated package checksums when replacing same-version
+  feature builds; retain complete payload and capability readback.
+
 ## 0.1.0-r41 — public beta 1.0 (unreleased)
 
 - Local agent instructions are excluded from Git and source archives.

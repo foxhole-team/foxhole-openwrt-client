@@ -1,0 +1,50 @@
+#!/usr/bin/ucode
+'use strict';
+
+import * as fs from 'fs';
+import * as store from '/usr/share/foxhole/private-store.uc';
+
+const VERSION = 1, PATH = '/etc/foxhole/license.json';
+const document_path = '/usr/share/foxhole/license-agreement.json';
+let before = fs.lstat(document_path), parent = fs.lstat('/usr/share/foxhole');
+if (before?.type != 'file' || before.uid != 0 || before.nlink != 1 ||
+    (before.mode & 0o022) || before.size < 1 || before.size > 32768 ||
+    parent?.type != 'directory' || parent.uid != 0 || (parent.mode & 0o022))
+ die('License agreement unavailable\n');
+let raw = fs.readfile(document_path, 32769), after = fs.lstat(document_path);
+if (raw == null || length(raw) != before.size ||
+    sprintf('%J', [before.dev,before.inode,before.mode,before.nlink,before.size,before.mtime,before.ctime]) !=
+    sprintf('%J', [after?.dev,after?.inode,after?.mode,after?.nlink,after?.size,after?.mtime,after?.ctime]))
+ die('License agreement changed\n');
+let document = json(raw);
+if (document.schema != 1 || document.version != VERSION || document.product != 'FoxHole OpenWRT Client')
+ die('Unsupported license agreement\n');
+if (ARGV[0] == '--show' && length(ARGV) <= 2) {
+ let language = ARGV[1] || 'en', text = document.locales[language];
+ if (!text || type(text.title) != 'string' || type(text.body) != 'string')
+  die('Unsupported agreement language\n');
+ print(text.title, '\n\n', text.body, '\n');
+ exit(0);
+}
+if (length(ARGV) != 2 || ARGV[0] != '--accept' || ARGV[1] != '' + VERSION || fs.stat('/proc/self')?.uid != 0)
+ die('Usage: foxhole-license --show [en|ru|de|fr|es|ja|zh] | --accept 1 (root)\n');
+store.directory('/etc/foxhole');
+store.target('/etc/foxhole/state.lock');
+let lock = fs.open('/etc/foxhole/state.lock', 'a+', 0o600);
+if (!lock || !lock.lock('x') || !store.file_metadata(fs.lstat('/etc/foxhole/state.lock')))
+ die('Private license lock unavailable\n');
+try {
+ let previous = store.read(PATH, 4096), record = previous == null ? null : json(previous);
+ if (record != null && (record.schema != 1 || type(record.licenseAccepted) != 'bool' ||
+     type(record.licenseVersion) != 'int' || record.licenseVersion != VERSION))
+  die('Existing license acceptance must be preserved\n');
+ let value = { schema: 1, licenseAccepted: true, licenseVersion: VERSION };
+ store.write(PATH, sprintf('%J', value));
+ if (sprintf('%J', json(store.read(PATH, 4096))) != sprintf('%J', value))
+  die('License acceptance readback failed\n');
+ lock.lock('u'); lock.close(); lock = null;
+ print(sprintf('%J', value), '\n');
+} catch (error) {
+ if (lock) { lock.lock('u'); lock.close(); }
+ die(error);
+}

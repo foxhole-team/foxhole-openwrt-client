@@ -11,8 +11,21 @@
           "server.test",
           "server.get",
           "client.get",
+          "client.status",
           "device.resolve",
-          "device.list"
+          "device.list",
+          "pair.unlock",
+          "pair.list",
+          "phone.status",
+          "phone.capabilities",
+          "phone.resolve",
+          "package.status",
+          "engines.status",
+          "engines.plan",
+          "engines.job",
+          "updates.status",
+          "updates.plan",
+          "updates.job"
         ]
       },
       "uci": [
@@ -31,7 +44,16 @@
           "client.update",
           "client.access",
           "client.delete",
-          "pin.change"
+          "pin.change",
+          "pair.create",
+          "pair.revoke",
+          "phone.provision",
+          "phone.handoff",
+          "setup.reset",
+          "engines.apply",
+          "updates.check",
+          "updates.apply",
+          "updates.settings"
         ]
       },
       "uci": [
@@ -45,6 +67,13 @@
       "ubus": {
         "foxhole.admin": [
           "set_pin"
+        ]
+      }
+    },
+    "read": {
+      "ubus": {
+        "foxhole": [
+          "package.status"
         ]
       }
     }

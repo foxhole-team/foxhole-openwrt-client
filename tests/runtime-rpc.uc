@@ -1,5 +1,9 @@
+let deferred_stop = false, stop_intents = 0, guard_calls = 0, busy_inside_lock = false;
+let engine_service = { guard_mutation: () => {guard_calls++; if(busy_inside_lock && guard_calls>1)die('engine_busy');}, stop_intent: () => {stop_intents++;},
+ defer_stop_for_update: () => deferred_stop };
 import * as model from '/workspace/package/foxhole-openwrt-client/root/usr/share/foxhole/model.uc';
 import * as runtime_model from '/workspace/package/foxhole-openwrt-client/root/usr/share/foxhole/runtime-model.uc';
+import * as core_model from '/workspace/package/foxhole-openwrt-client/root/usr/share/foxhole/core-model.uc';
 
 const STATE_PATH = '/in-memory/state';
 let state, writes, restarts, session_calls, reject_second_session;
@@ -67,6 +71,7 @@ function reset() {
 	restarts = 0;
 	session_calls = 0;
 	reject_second_session = false;
+	deferred_stop = false; stop_intents = 0; guard_calls = 0; busy_inside_lock = false;
 };
 
 function request(extra) {
@@ -149,6 +154,20 @@ test('stop clears desired server and restarts policy', () => {
 	equal(result.revision, 6);
 	equal(writes, 1);
 	equal(restarts, 1);
+});
+
+test('atomic package mutation defers native STOP but persists desired state and intent', () => {
+	state.activeServerId = 'server-000000000001'; deferred_stop = true;
+	let result = stop_server(request({}));
+	equal(state.activeServerId, null); equal(result.revision, 6);
+	equal(result.runtime.desiredServerId, null); equal(stop_intents, 1);
+	equal(restarts, 0); equal(writes, 1);
+});
+
+test('a queued start admitted before the lock rechecks updater busy under the lock', () => {
+ busy_inside_lock = true;
+ rejects(() => start_server(request({})), 'engine_busy');
+ equal(guard_calls, 2); equal(writes, 0); equal(restarts, 0);
 });
 
 test('stale revision cannot start or restart runtime', () => {

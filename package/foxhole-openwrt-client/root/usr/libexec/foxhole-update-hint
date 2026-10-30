@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+umask 077
+[ "$#" -eq 1 ] || exit 1
+output=$1
+case "$output" in /tmp/foxhole/update-job-*/release-hint.json) ;; *) exit 1 ;; esac
+case "$output" in *[!a-zA-Z0-9/_.-]*|*/../*|*/./*) exit 1 ;; esac
+[ ! -e "$output" ] && [ ! -L "$output" ] || exit 1
+partial=$(mktemp "${output}.part.XXXXXX")
+trap 'rm -f "$partial"' EXIT HUP INT TERM
+ulimit -f 512
+uclient-fetch -T 20 -O "$partial" 'https://api.github.com/repos/foxhole-team/foxhole-openwrt-client/releases/latest' >/dev/null 2>&1
+[ "$(wc -c < "$partial")" -le 262144 ] || exit 1
+ln -T "$partial" "$output"
+rm -f "$partial"

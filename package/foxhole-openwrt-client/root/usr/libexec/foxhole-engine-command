@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+umask 077
+output=${1:?private output}
+limit=${2:?bounded bytes}
+shift 2
+case "$output" in /tmp/foxhole/engine-command-*) ;; *) exit 1 ;; esac
+case "$output" in *[!a-zA-Z0-9/_.-]*|*/../*|*/./*) exit 1 ;; esac
+case "$limit" in ''|*[!0-9]*) exit 1 ;; esac
+[ "$limit" -gt 0 ] && [ "$limit" -le 8388608 ] || exit 1
+case "${1-}" in
+ /usr/bin/apk|/usr/bin/sha256sum|/bin/df) ;;
+ /usr/libexec/foxhole/engines/*/foxcore-cli)
+  printf '%s\n' "$1" | grep -Eq '^/usr/libexec/foxhole/engines/(vless|vmess|hysteria2|tuic|trojan|shadowsocks|wireguard|naive|anytls|shadowtls|socks|http)/[a-f0-9]{64}/foxcore-cli$' || exit 1 ;;
+ *) exit 1 ;;
+esac
+[ ! -e "$output" ] && [ ! -L "$output" ] || exit 1
+[ ! -e "$output.err" ] && [ ! -L "$output.err" ] || exit 1
+ulimit -f "$(( (limit + 511) / 512 ))"
+(set -C; "$@" > "$output" 2> "$output.err")

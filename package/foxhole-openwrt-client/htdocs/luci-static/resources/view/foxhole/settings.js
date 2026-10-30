@@ -9,15 +9,17 @@ function loadLocale(name) {
 	}).then(response => response.json());
 }
 
+const languages = ['ru', 'en', 'ja', 'de', 'fr', 'es', 'zh'];
+
 return view.extend({
 	load: function() {
-		return Promise.all([loadLocale('ru'), loadLocale('en')]);
+		return Promise.all(languages.map(loadLocale));
 	},
 
 	render: function(locales) {
 		const language = String(document.documentElement.lang || 'en')
-			.toLowerCase().startsWith('ru') ? 'ru' : 'en';
-		const dictionary = language === 'ru' ? locales[0] : locales[1];
+			.toLowerCase().split(/[-_]/)[0];
+		const dictionary = locales[languages.indexOf(language)] || locales[1];
 		const fallback = locales[1];
 		const text = key => dictionary[key] || fallback[key] || key;
 		let map, section, option;

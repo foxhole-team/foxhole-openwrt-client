@@ -1,0 +1,19 @@
+#!/usr/bin/ucode
+'use strict';
+
+import * as ubus from 'ubus';
+import * as mobile from '/usr/share/foxhole/mobile.uc';
+
+let connection = ubus.connect();
+if (!connection) exit(1);
+try {
+	let result = mobile.lan_listener(connection.call(
+		'network.interface.lan', 'status', {}));
+	connection.disconnect();
+	if (ARGV[0] == 'address') print(result.address);
+	else if (ARGV[0] == 'device') print(result.device);
+	else print(sprintf('%J', result));
+} catch (_) {
+	try { connection.disconnect(); } catch (_) {}
+	exit(1);
+}

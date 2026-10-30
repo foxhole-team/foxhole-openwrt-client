@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=hysteria-ram
 PKG_VERSION:=2.12.2
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=FoxHole Team
 
@@ -26,6 +26,7 @@ define Package/hysteria-ram/description
 endef
 
 define Build/Compile
+	$(error Historical RAM download is not qualified for Stable; use verified hysteria-server-ram inputs)
 endef
 
 define Package/hysteria-ram/install

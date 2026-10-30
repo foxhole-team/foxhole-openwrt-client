@@ -8,12 +8,6 @@ import shutil
 import subprocess
 import tempfile
 
-PACKAGES = (
-    'foxhole-openwrt-client-0.1.0-r41.apk',
-    'hysteria-2.12.2-r2.apk',
-    'hysteria-ram-2.12.2-r1.apk',
-)
-
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -23,8 +17,16 @@ def run(args):
     return subprocess.run(args, check=True, capture_output=True).stdout
 
 
+def package_names(source):
+    names = tuple(sorted(path.name for path in source.glob('*.apk')))
+    if not names or len(names) > 512:
+        raise ValueError('Bounded real APK candidates required')
+    return names
+
+
 def sign(apk, source, output, private, public):
-    for path in (private, public, *(source / name for name in PACKAGES)):
+    packages = package_names(source)
+    for path in (private, public, *(source / name for name in packages)):
         if path.is_symlink() or not path.is_file():
             raise ValueError('Signing inputs must be regular files')
     if private.stat().st_mode & 0o077:
@@ -38,7 +40,7 @@ def sign(apk, source, output, private, public):
         trust = work / 'keys'
         trust.mkdir()
         shutil.copyfile(public, trust / 'foxhole-openwrt-apk.pem')
-        for name in PACKAGES:
+        for name in packages:
             original, signed = source / name, output / name
             shutil.copyfile(original, signed)
             # apk-tools 3.0.5 retains signing state between files.
@@ -66,7 +68,7 @@ def sign(apk, source, output, private, public):
         'packages': records,
     }
     (output / 'APK-SIGNATURES.json').write_text(json.dumps(record, indent=2) + '\n')
-    print('Signed and verified three APKs; package content is unchanged.')
+    print(f'Signed and verified {len(packages)} APKs; package content is unchanged.')
 
 
 def main():

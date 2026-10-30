@@ -3,6 +3,7 @@ trap 'exit 0' TERM INT
 while :; do
  /usr/libexec/foxhole-probe >/dev/null 2>&1
  /usr/libexec/foxhole-history >/dev/null 2>&1
+ /usr/libexec/foxhole-update-job tick >/dev/null 2>&1
  sleep 15 &
  wait "$!"
 done

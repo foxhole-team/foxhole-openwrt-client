@@ -1,14 +1,15 @@
 import { constants } from 'node:fs';
-import { createPublicKey } from 'node:crypto';
+import { createHash, createPublicKey } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { chmod, lstat, mkdir, open, readdir, realpath, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const publicFiles = ['LICENSE', 'THIRD_PARTY_NOTICES.md',
-  'README.md', 'CHANGELOG.md', 'SECURITY.md', '.gitattributes', '.gitignore',
+  'README.md', 'CHANGELOG.md', 'SECURITY.md', '.gitattributes', '.gitignore', '.gitleaks.toml',
   'install.sh', 'package.json', 'package-lock.json'];
 export const publicDirectories = ['package', 'LICENSES', 'media', 'docs', 'config',
-  'examples', '.github', 'tests', 'tools'];
+  'examples', '.github', 'tests', 'tools', 'native/transaction'];
 const root = fileURLToPath(new URL('..', import.meta.url));
 const oldBrand = new RegExp(['dae', 'mon'].join(''), 'i');
 const privateName = ['priv', 'vpn', 'vps'].join('_');
@@ -25,6 +26,16 @@ function inside(parent, child) {
 }
 
 export function validatePublicFile(path, data) {
+  if (path === 'native/transaction/apk-3.0.5-foxhole-transaction-v1-source.tar.gz') {
+    if (data.length !== 388369 || createHash('sha256').update(data).digest('hex') !==
+        'e47373813001b0f5a36470b34b4f0390324182636233736b514e4c7e85fd4557')
+      fail('Exact clean transaction source archive required');
+    const verified = spawnSync('python3', [join(root, 'tools/check-transaction-source.py'), '--stdin'], {
+      input: data, encoding: 'utf8', timeout: 10000, maxBuffer: 1048576
+    });
+    if (verified.error || verified.status !== 0) fail('Transaction source archive validation failed');
+    return;
+  }
   const apkKey = path === 'config/foxhole-openwrt-apk.pem';
   if (path.split('/').includes('AGENTS.md') || oldBrand.test(path) || path.includes(privateName) ||
     (prohibitedNames.test(path) && !apkKey)) {
@@ -84,6 +95,12 @@ export async function collectPublic(source = root) {
       return;
     }
     if (!info.isFile()) fail('Public export refuses special files');
+    if (path === 'native/transaction/apk-3.0.5-foxhole-transaction-v1-source.tar.gz') {
+      const parent = await lstat(dirname(absolute));
+      if (info.nlink !== 1 || info.size !== 388369 || (info.mode & 0o022) ||
+          !parent.isDirectory() || parent.isSymbolicLink() || (parent.mode & 0o022))
+        fail('Protected regular transaction source archive required');
+    }
     const data = await readRegular(absolute, info);
     validatePublicFile(path, data);
     entries.push({ path, data, mode: info.mode & 0o111 ? 0o755 : 0o644 });

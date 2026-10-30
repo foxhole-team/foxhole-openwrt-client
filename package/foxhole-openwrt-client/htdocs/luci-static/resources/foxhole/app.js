@@ -1,5 +1,7 @@
-import { hasHost, request, cancelPending, PanelError } from './bridge.js?v=0.1.0-r41-ui1';
-import { Charts, formatBytes, setCountryLabel } from './charts.js?v=0.1.0-r41-ui1';
+import { UpdatePanel } from './update-panel.js?v=1.0.0-r3-ui1';
+import { EnginePanel } from './engine-panel.js?v=1.0.0-r3-ui1';
+import { hasHost, request, cancelPending, PanelError } from './bridge.js?v=1.0.0-r3-ui1';
+import { Charts, formatBytes, setCountryLabel } from './charts.js?v=1.0.0-r3-ui1';
 import {
   clientDeviceIcon, clientDeviceType, clone, countryCodes,
   countryFlagPath, finite, maskIpv4, maskMac, networkDeviceIcon,
@@ -7,10 +9,10 @@ import {
   randomId,
   serverCountryCode,
   validAddress
-} from './frontend-model.js?v=0.1.0-r41-ui1';
+} from './frontend-model.js?v=1.0.0-r3-ui1';
 import {
   ModalFlow, PopupController, waitForMotion
-} from './ui-controller.js?v=0.1.0-r41-ui1';
+} from './ui-controller.js?v=1.0.0-r3-ui1';
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -18,12 +20,17 @@ const storage = {
   get(key) { try { return localStorage.getItem(`foxhole.${key}`); } catch { return null; } },
   set(key, value) { try { localStorage.setItem(`foxhole.${key}`, value); } catch {} }
 };
+const supportedLanguages = ['en', 'ru', 'de', 'fr', 'es', 'ja', 'zh'];
+const languageFlags = { ru: 'RU', en: 'GB', ja: 'JP', de: 'DE', fr: 'FR', es: 'ES', zh: 'CN' };
 const dictionary = {};
-let language = storage.get('language') === 'en' ? 'en' : 'ru';
+let language = supportedLanguages.includes(storage.get('language')) ? storage.get('language') : 'ru';
 let preferredTheme = storage.get('theme') === 'light' ? 'light' : 'dark';
 let preferredPlainHeadings = storage.get('plainHeadings') === '1';
 let token = null;
 let pinSetupRequired = false;
+const LICENSE_VERSION = 1;
+let licenseRequired = false;
+let licenseRequiredVersion = LICENSE_VERSION;
 let state = null;
 let draft = null;
 let draftChange = 0;
@@ -200,6 +207,11 @@ const modalDefinitions = {
       tone: 'accent', id: view.data.id
     }]
   },
+  'engines': { icon: 'network', actions: () => [backAction, closeAction] },
+  'engine-plan': { icon: 'download', actions: () => [backAction, { action: 'engine-apply', icon: 'check', label: 'action.confirm', tone: 'accent' }] },
+  'engine-progress': { icon: 'download', actions: () => [closeAction] },
+  'updates': { icon: 'download', actions: () => [backAction, closeAction] },
+  'update-plan': { icon: 'download', actions: () => [backAction, { action: 'update-apply', icon: 'check', label: 'action.confirm', tone: 'accent' }] },
   'settings-home': {
     icon: 'settings', actions: () => [{
       action: 'open-help', icon: 'info', label: 'help.title'
@@ -293,6 +305,12 @@ function renderModalChrome(view) {
 
 function prepareModalView(view) {
   renderModalChrome(view);
+  if (view.name === 'updates') void updatePanel.open();
+  if (view.name === 'update-plan') updatePanel.render();
+  if (view.name === 'settings-home') void updatePanel.summary();
+  if (view.name === 'engines') void enginePanel.open();
+  if (view.name === 'engine-plan') enginePanel.renderPlan();
+  if (view.name === 'engine-progress') enginePanel.renderJob();
   const stage = $('[data-modal-stage]');
   translate(stage.firstElementChild);
   if (view.name === 'settings-home' ||
@@ -313,12 +331,15 @@ function prepareModalView(view) {
   if (view.name === 'router-stats') renderRouterStats();
   if (view.name === 'pin-change') {
     $('[data-pin-setup-copy]').hidden = !pinSetupRequired;
+    $$('[data-license-setup]').forEach(node => { node.hidden = !licenseRequired; });
     syncPinSaveState();
   }
   syncViewport();
 }
 
 function finishModal() {
+  enginePanel.close();
+  updatePanel.close();
   presentToast();
   popups.closeAll();
   charts.setSuspended(false);
@@ -343,6 +364,14 @@ const modal = new ModalFlow({
 });
 const views = modal.views;
 const popups = new PopupController($('#modal-shell'));
+const updatePanel = new UpdatePanel({
+  call: api, text: t, element, show: openView, scope: () => epoch,
+  error: (error) => toast(errorText(error), 'error')
+});
+const enginePanel = new EnginePanel({
+  call: api, text: t, element, icon, show: openView, scope: () => epoch,
+  error: (error) => toast(errorText(error), 'error'), notice: toast
+});
 
 function latency(value) {
   const amount = finite(value);
@@ -387,7 +416,7 @@ function lastConnection(value) {
 
 function appearance(settings, renderEntities = true) {
   const next = {
-    language: settings.language === 'en' ? 'en' : 'ru',
+    language: supportedLanguages.includes(settings.language) ? settings.language : 'ru',
     theme: settings.theme === 'light' ? 'light' : 'dark',
     darkCharts: settings.darkCharts === true,
     plainHeadings: settings.plainHeadings === true,
@@ -399,7 +428,7 @@ function appearance(settings, renderEntities = true) {
     next.darkCharts !== lastAppearance.darkCharts || languageChanged;
   language = next.language;
   preferredTheme = next.theme;
-  document.documentElement.lang = language;
+  document.documentElement.lang = language === 'zh' ? 'zh-CN' : language;
   document.documentElement.classList.toggle('theme-light',
     preferredTheme === 'light');
   document.documentElement.classList.toggle('theme-dark',
@@ -678,8 +707,7 @@ function renderSettings() {
   if (languageSelect) languageSelect.value = draft.settings.language;
   const languageFlag = $('[data-language-flag]');
   if (languageFlag)
-    languageFlag.src = countryFlagPath(draft.settings.language === 'en'
-      ? 'GB' : 'RU');
+    languageFlag.src = countryFlagPath(languageFlags[draft.settings.language] || 'RU');
   const themeIcon = $('[data-theme-icon]');
   if (themeIcon) themeIcon.dataset.assetIcon =
     draft.settings.theme === 'light' ? 'sun' : 'moon';
@@ -1434,7 +1462,10 @@ async function testServer() {
   await operation(async () => {
 
     toast(t('server.testing'), 'info');
-    const result = await api('server.test', { config: $('[data-server-config]').value });
+    const result = await api('server.test', {
+      config: $('[data-server-config]').value,
+      engine: views.at(-1)?.data.engine || ''
+    });
 
     toast(t(result.valid ? 'server.test_valid' : 'server.test_invalid'),
       result.valid ? 'success' : 'error');
@@ -1449,6 +1480,8 @@ async function saveServer() {
     const next = await api('server.save', {
       revision: state.revision, name,
       config: $('[data-server-config]').value,
+      engine: view.data.engine || '',
+      subscription: view.data.subscription || {},
       ...(view.data.id ? { id: view.data.id } : {})
     });
     applyState(next);
@@ -1503,10 +1536,16 @@ async function savePin() {
     return;
   }
   form.classList.remove('is-error');
+  const accepted = $('[data-license-accept]')?.checked === true;
+  if (licenseRequired && (!accepted || licenseRequiredVersion !== LICENSE_VERSION)) {
+    toast(t('error.license_required'), 'error');
+    return;
+  }
   const setup = pinSetupRequired;
   let saved = false;
   await operation(async () => {
-    const result = await api('pin.change', { newPin: first });
+    const result = await api('pin.change', { newPin: first,
+      licenseAccepted: licenseRequired && accepted, licenseVersion: licenseRequired && accepted ? LICENSE_VERSION : 0 });
     token = result.token;
     pinSetupRequired = false;
     $('[data-pin-change-form]').reset();
@@ -1523,7 +1562,8 @@ async function savePin() {
 function syncPinSaveState() {
   const first = $('[data-new-pin]')?.value || '';
   const repeat = $('[data-repeat-pin]')?.value || '';
-  const disabled = !first && !repeat;
+  const disabled = (!first && !repeat) || (licenseRequired &&
+    (!$('[data-license-accept]')?.checked || licenseRequiredVersion !== LICENSE_VERSION));
   const save = $('[data-modal-footer] [data-action="save-pin"]');
   if (save) save.disabled = disabled;
   $('[data-pin-change-form]')?.classList.remove('is-error');
@@ -1590,6 +1630,7 @@ async function loadEntity(type, id) {
   if (!data) return;
   await openView(type === 'server' ? 'server-config' : 'client-device', type === 'server'
     ? { id: data.id, name: data.name, config: data.config,
+      engine: data.engine || '', subscription: data.subscription || null,
       titleKey: 'server.edit_title' }
     : { export: data.export || data, id: data.id || id, managed: true,
       titleKey: 'client.export_title' });
@@ -1730,12 +1771,16 @@ async function poll() {
 }
 
 function localLock() {
+  enginePanel.close();
+  updatePanel.close();
   clearTimeout(toastTimer);
   hideToast();
   runtimeNoticeKey = connectedNoticeKey = null;
   epoch += 1;
   token = null;
   pinSetupRequired = false;
+  licenseRequired = false;
+  licenseRequiredVersion = LICENSE_VERSION;
   state = null;
   draft = null;
   popups.closeAll();
@@ -1772,6 +1817,9 @@ async function unlock(event) {
     const result = await request('unlock', { pin });
     token = result.token;
     pinSetupRequired = result.pinChangeRequired === true;
+    licenseRequired = result.licenseRequired === true || (result.licenseRequired == null && pinSetupRequired);
+    licenseRequiredVersion = result.licenseVersion == null ? LICENSE_VERSION : result.licenseVersion;
+    if (licenseRequired && licenseRequiredVersion !== LICENSE_VERSION) throw new PanelError('unavailable');
     if (!token) throw new PanelError('unavailable');
     applyState(result.state);
     $('#app-shell').hidden = false;
@@ -1877,6 +1925,15 @@ async function perform(action, target) {
       break;
     }
     case 'open-pin-change': await openView('pin-change'); break;
+    case 'open-updates': await openView('updates'); break;
+    case 'update-check': await updatePanel.action('check'); break;
+    case 'update-plan': await updatePanel.action('plan'); break;
+    case 'update-apply': await updatePanel.apply(); break;
+    case 'update-status': await updatePanel.open(); break;
+    case 'open-engines': await openView('engines'); break;
+    case 'engine-plan': await enginePanel.prepare(id, target.dataset.operation); break;
+    case 'engine-apply': await enginePanel.apply(); break;
+    case 'engine-job': await enginePanel.showJob(); break;
     case 'open-interface-settings': await openView('interface-settings'); break;
     case 'open-help': await openView('help'); break;
     case 'open-router-stats': await openView('router-stats', {}, true); break;
@@ -1962,8 +2019,10 @@ document.addEventListener('input', (event) => {
   }
   const current = views[views.length - 1];
   if (current?.name === 'server-config') {
-    if (input.matches('[data-server-config]'))
+    if (input.matches('[data-server-config]')) {
       current.data.config = input.value;
+      current.data.subscription = null;
+    }
     if (input.matches('[data-server-name]'))
       current.data.name = input.value;
   }
@@ -1973,7 +2032,7 @@ document.addEventListener('input', (event) => {
       ? maskMac(input.value) : maskIpv4(input.value);
   }
   if (input.matches('[data-site-input]')) syncSiteAddState();
-  if (input.matches('[data-new-pin], [data-repeat-pin]')) {
+  if (input.matches('[data-new-pin], [data-repeat-pin], [data-license-accept]')) {
     input.value = input.value.replace(/\D/g, '').slice(0, 4);
     syncPinSaveState();
   }
@@ -2124,7 +2183,7 @@ window.addEventListener('pagehide', () => { stopPolling(); cancelPending(); });
 
 async function boot() {
   try {
-    for (const locale of ['ru', 'en']) {
+    for (const locale of supportedLanguages) {
       const response = await fetch(new URL(`./locales/${locale}.json`, import.meta.url), { cache: 'no-store', credentials: 'same-origin' });
       if (!response.ok) throw new Error();
       dictionary[locale] = await response.json();

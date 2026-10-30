@@ -1,7 +1,6 @@
 #!/bin/sh
 
-mkdir -p /etc/foxhole /tmp/foxhole
-chmod 700 /etc/foxhole /tmp/foxhole
+/usr/libexec/foxhole-private-file initialize || exit 1
 
 uci -q get foxhole.panel.standalone >/dev/null || {
 	uci set foxhole.panel.standalone='1'

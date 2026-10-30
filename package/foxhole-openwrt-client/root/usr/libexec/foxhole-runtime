@@ -7,6 +7,10 @@ import * as ubus from 'ubus';
 import * as uci from 'uci';
 import * as model from '/usr/share/foxhole/model.uc';
 import * as runtime from '/usr/share/foxhole/runtime-model.uc';
+import * as core from '/usr/share/foxhole/core-model.uc';
+import * as adapter from '/usr/share/foxhole/core-adapter.uc';
+import * as store from '/usr/share/foxhole/private-store.uc';
+import * as digest from 'digest';
 
 const STATE_PATH = '/etc/foxhole/state.json';
 const STATUS_PATH = '/tmp/foxhole/runtime.json';
@@ -21,8 +25,6 @@ const MAX_STATE = 262144;
 const MAX_COUNTRY = 16 * 1024 * 1024;
 const MAX_PREFIXES = 200000;
 const COUNTRY_TTL = 86400;
-const COUNTRY_URL = 'https://raw.githubusercontent.com/' +
-	'ipverse/country-ip-blocks/master/country/';
 const PROBE_URL = 'https://cloudflare.com/cdn-cgi/trace';
 
 const ERRORS = [
@@ -47,8 +49,8 @@ function fail(code) {
 };
 
 function ensure_dirs() {
-	try { fs.mkdir('/tmp/foxhole', 0o700); } catch (_) {}
-	try { fs.mkdir(COUNTRY_DIR, 0o700); } catch (_) {}
+	store.directory('/tmp/foxhole');
+	store.directory(COUNTRY_DIR);
 };
 
 function read_json(path, limit) {
@@ -62,6 +64,10 @@ function read_json(path, limit) {
 
 function write_file(path, value, mode) {
 	ensure_dirs();
+	if (mode == 0o600 && substr(path, 0, 13) == '/tmp/foxhole/') {
+		store.write(path, value);
+		return;
+	}
 	let temp = path + '.new';
 	if (fs.writefile(temp, value) != length(value) ||
 	    !fs.chmod(temp, mode) || !fs.rename(temp, path))
@@ -218,15 +224,15 @@ function country_file(code) {
 };
 
 function fetch_country(code) {
-	let path = country_file(code), info = fs.stat(path);
+	let path = country_file(code), info = fs.lstat(path);
+	store.target(path);
 	if (info && info.type == 'file' && info.size <= MAX_COUNTRY &&
 	    time() - info.mtime < COUNTRY_TTL) return path;
 	let temp = path + '.new';
+	store.target(temp);
 	unlink(temp);
-	let url = COUNTRY_URL + lc(code) + '/aggregated.json';
 	let result = system([
-		'uclient-fetch', '-q', '-Y', 'off', '-T', '12',
-		'-O', temp, url
+		'/usr/libexec/foxhole-country-fetch', lc(code), temp
 	], 15000);
 	if (result != 0) {
 		unlink(temp);
@@ -306,6 +312,28 @@ function policy_files(state, emergency) {
 };
 
 function probe() {
+	let state = state_record(), server = runtime.active_server(state);
+	if (server?.engine == 'core') {
+		let lock = fs.open('/tmp/foxhole/core-probe.lock', 'a+');
+		if (!lock || !lock.lock('xn')) fail('tunnel_start_failed');
+		let configuration = digest.sha256(server.config);
+		if (digest.sha256(store.read(adapter.config_path, MAX_STATE)) !=
+		    configuration) fail('tunnel_start_failed');
+		let value = adapter.receipt('probe');
+		if (value?.validated != true || !adapter.generation(value)) {
+			lock.lock('u'); lock.close();
+			fail('tunnel_start_failed');
+		}
+		write_json(adapter.proof_path, {
+			generation_key: value.generation_key,
+			serverId: server.id, checkedUptimeMs: adapter.clock_ms(),
+			bootId: trim(fs.readfile('/proc/sys/kernel/random/boot_id', 128) || ''),
+			configIdentity: configuration,
+			validated: true
+		}, 0o600);
+		lock.lock('u'); lock.close();
+		return;
+	}
 	let proxy = 'http://' + runtime.constants().proxyListen;
 	let handle = null, output = '';
 	try {
@@ -339,6 +367,16 @@ function apply_routes(connected) {
 	run_ip(commands.rule6, 'route_apply_failed');
 };
 
+function proof_routes(connected) {
+	let commands = core.proof_routes(connected);
+	clear_rules(commands.delete4);
+	clear_rules(commands.delete6);
+	run_ip(commands.route4, 'route_apply_failed');
+	run_ip(commands.route6, 'route_apply_failed');
+	run_ip(commands.rule4, 'route_apply_failed');
+	run_ip(commands.rule6, 'route_apply_failed');
+};
+
 function configure_dns(sites) {
 	let action = sites ? 'setup' : 'cleanup';
 	command([ DNS_HELPER, action ], 20000, 'dnsmasq_apply_failed');
@@ -362,8 +400,27 @@ function prepare() {
 	let state = state_record();
 	let server = runtime.active_server(state);
 	if (!server) fail('server_not_found');
-	if (!fs.stat('/dev/net/tun') || !fs.stat('/usr/bin/hysteria') ||
+	let native = server.engine == 'core';
+	if (!fs.stat('/dev/net/tun') ||
+	    !fs.stat(native ? (adapter.binary_for ? adapter.binary_for(server.config) : adapter.binary) : '/usr/bin/hysteria') ||
 	    !fs.stat(IP) || !fs.stat(NFT)) fail('runtime_missing');
+	if (native) {
+		core.server(server);
+		apply_policy(state, false, true);
+		write_file(adapter.config_path, server.config, 0o600);
+		if (!adapter.check()) fail('invalid_state');
+		let username = fs.readfile('/dev/urandom', 32);
+		let password = fs.readfile('/dev/urandom', 32);
+		if (length(username || '') != 32 || length(password || '') != 32)
+			fail('storage_error');
+		write_json(adapter.auth_path, {
+			listen: '127.0.0.1:17891',
+			username: hexenc(username), password: hexenc(password)
+		}, 0o600);
+		unlink(adapter.proof_path);
+		write_status(state, 'connecting', false, true, null);
+		return;
+	}
 	if (state.settings.killSwitch) apply_policy(state, false, true);
 	let resolved = resolve_endpoint(server.endpoint);
 	let cursor = uci.cursor();
@@ -386,12 +443,21 @@ function cleanup_policy() {
 	clear_rules(commands.delete6);
 	system([ IP, ...commands.flush4 ], 3000);
 	system([ IP, ...commands.flush6 ], 3000);
+	commands = core.proof_routes(false);
+	clear_rules(commands.delete4);
+	clear_rules(commands.delete6);
+	system([ IP, ...commands.flush4 ], 3000);
+	system([ IP, ...commands.flush6 ], 3000);
 	unlink(POLICY_PATH);
 	unlink(DNSMASQ_PATH);
 };
 
 function cleanup_secret() {
 	unlink(CONFIG_PATH);
+	unlink(adapter.config_path);
+	unlink(adapter.auth_path);
+	unlink(adapter.proof_path);
+	unlink(adapter.policy_path);
 };
 
 function apply(mode) {
@@ -400,7 +466,49 @@ function apply(mode) {
 	if (!connected && mode != 'blocked') fail('invalid_state');
 	if (connected && !runtime.active_server(state))
 		fail('server_not_found');
+	let native = runtime.active_server(state)?.engine == 'core';
+	let proof = null, generation = null;
+	if (connected && native) {
+		let owner = adapter.receipt('owner');
+		generation = adapter.generation(owner);
+		proof = read_json(adapter.proof_path, 4096);
+		let stamp = adapter.clock_ms();
+		if (!core.proof_valid(proof, { ...runtime.active_server(state), id: state.activeServerId }, owner, stamp))
+			fail('tunnel_start_failed');
+	}
 	apply_policy(state, connected);
+	if (connected && native) {
+		let owner = adapter.receipt('owner');
+		let state_identity = adapter.policy_identity(state);
+		let fingerprint = adapter.kernel_policy(owner?.generation_key,
+			state_identity);
+		if (owner?.owned != true || adapter.generation(owner) != generation ||
+		    !fingerprint) fail('policy_apply_failed');
+		// Policy setup can exhaust the original proof's freshness.
+		// Re-probe and fence identities before publishing connected.
+		probe();
+		let final_owner = adapter.receipt('owner');
+		if (final_owner?.owned != true ||
+		    adapter.generation(final_owner) != generation) fail('policy_apply_failed');
+		let final_identity = adapter.policy_identity(state_record());
+		if (final_identity != state_identity) fail('policy_apply_failed');
+		let final_fingerprint = adapter.kernel_policy(final_owner.generation_key,
+			final_identity);
+		let final_proof = read_json(adapter.proof_path, 4096);
+		if (final_fingerprint != fingerprint ||
+		    adapter.policy_identity(state_record()) != state_identity ||
+		    digest.sha256(store.read(adapter.config_path, MAX_STATE) || '') !=
+			final_proof?.configIdentity ||
+		    !core.proof_valid(final_proof,
+			{ ...runtime.active_server(state), id: state.activeServerId },
+			final_owner, adapter.clock_ms())) fail('policy_apply_failed');
+		write_json(adapter.policy_path, {
+			generation_key: owner.generation_key,
+			serverId: state.activeServerId,
+			stateIdentity: state_identity,
+			kernelIdentity: fingerprint
+		}, 0o600);
+	}
 	write_status(state, connected ? 'connected' : 'blocked',
 		connected, true, null);
 };
@@ -415,7 +523,14 @@ function cleanup() {
 function down(reason) {
 	let state = state_record();
 	reason = index(ERRORS, reason) >= 0 ? reason : 'tunnel_exited';
+	let native = runtime.active_server(state)?.engine == 'core';
+	if (native && state.activeServerId && reason != 'runtime_stopped')
+		apply_policy(state, false, true);
 	cleanup_secret();
+	if (native && state.activeServerId && reason != 'runtime_stopped') {
+		write_status(state, 'error', false, true, reason);
+		return;
+	}
 	if (state.settings.killSwitch) {
 		let previous = read_json(STATUS_PATH, 8192);
 		write_status(state, 'blocked', false, previous?.enforced, null);
@@ -441,6 +556,11 @@ function mode() {
 	return state.settings.killSwitch ? 'block' : 'off';
 };
 
+function engine() {
+	let server = runtime.active_server(state_record());
+	return server?.engine == 'core' ? 'core' : 'hysteria';
+};
+
 function status() {
 	let state = state_record();
 	let value = read_json(STATUS_PATH, 8192);
@@ -454,7 +574,10 @@ let action = ARGV[0] || '';
 try {
 	switch (action) {
 	case 'mode': print(mode()); break;
+	case 'engine': print(engine()); break;
+	case 'binary': print(adapter.binary_for ? adapter.binary_for(runtime.active_server(state_record()).config) : adapter.binary); break;
 	case 'prepare': prepare(); break;
+	case 'prepare-proof': proof_routes(true); break;
 	case 'probe': probe(); break;
 	case 'apply': apply(ARGV[1]); break;
 	case 'cleanup': cleanup(); break;
@@ -467,6 +590,8 @@ try {
 	if (action != 'probe') {
 		try {
 			let state = state_record();
+			if (runtime.active_server(state)?.engine == 'core')
+				apply_policy(state, false, true);
 			write_status(state, 'error', false, false, code);
 		} catch (_) {}
 	}

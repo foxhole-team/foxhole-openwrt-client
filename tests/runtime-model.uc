@@ -171,6 +171,19 @@ test('policy routes are marked for TUN or prohibit', () => {
 	truth(index(connected.delete4, '0x40000000/0x40000000') >= 0);
 });
 
+test('bootstrap blocks normal marked sockets and leaves the proof bit distinct', () => {
+	let bootstrap = runtime.nft_config(state(), {
+		interfaces: ['br-lan'], dnsUid: 453, bootstrap: true
+	});
+	let normal = runtime.nft_config(state(), {
+		interfaces: ['br-lan'], dnsUid: 453
+	});
+	truth(index(bootstrap,
+		'meta mark & 0x50000000 == 0x40000000 counter drop') >= 0);
+	truth(index(normal,
+		'meta mark & 0x50000000 == 0x40000000 counter drop') < 0);
+});
+
 print('1..', passed + failed, '\n');
 print('# runtime model tests: ', passed, ' passed, ', failed,
 	' failed\n');

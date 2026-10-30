@@ -1,0 +1,20 @@
+#!/usr/bin/ucode
+
+'use strict';
+
+import * as fs from 'fs';
+import * as store from '/usr/share/foxhole/private-store.uc';
+
+if (fs.stat('/proc/self')?.uid != 0) die('Root private storage required\n');
+if (ARGV[0] == 'initialize' && length(ARGV) == 1) {
+ store.directory('/etc/foxhole'); store.directory('/tmp/foxhole');
+} else if (ARGV[1] == '/tmp/foxhole/mobile.nft' && length(ARGV) == 2) {
+ if (ARGV[0] == 'write') {
+  let raw = fs.readfile('/dev/stdin', 4097);
+  if (raw == null || length(raw) > 4096) die('Private input exceeds limit\n');
+  store.write(ARGV[1], raw);
+ } else if (ARGV[0] == 'remove') {
+  store.target(ARGV[1]);
+  if (fs.lstat(ARGV[1]) && !fs.unlink(ARGV[1])) die('Private cleanup failed\n');
+ } else die('Unsupported private storage action\n');
+} else die('Unsupported private storage action\n');

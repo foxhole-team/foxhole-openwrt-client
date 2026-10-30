@@ -1,0 +1,226 @@
+--- a/core/client/udp.go
++++ b/core/client/udp.go
+@@ -4,7 +4,9 @@
+ 	"errors"
+ 	"io"
+ 	"math/rand"
++	"net"
+ 	"sync"
++	"sync/atomic"
+ 
+ 	"github.com/apernet/quic-go"
+ 
+@@ -23,13 +25,14 @@
+ }
+ 
+ type udpConn struct {
+-	ID        uint32
+-	D         *frag.Defragger
+-	ReceiveCh chan *protocol.UDPMessage
+-	SendBuf   []byte
+-	SendFunc  func([]byte, *protocol.UDPMessage) error
+-	CloseFunc func()
+-	Closed    bool
++	ID         uint32
++	D          *frag.Defragger
++	ReceiveCh  chan *protocol.UDPMessage
++	SendBuf    []byte
++	SendFunc   func([]byte, *protocol.UDPMessage) error
++	CloseFunc  func()
++	Closed     bool
++	sendClosed atomic.Bool
+ }
+ 
+ func (u *udpConn) Receive() ([]byte, string, error) {
+@@ -50,6 +53,9 @@
+ 
+ // Send is not thread-safe, as it uses a shared SendBuf.
+ func (u *udpConn) Send(data []byte, addr string) error {
++	if u.sendClosed.Load() {
++		return net.ErrClosed
++	}
+ 	// Try no frag first
+ 	msg := &protocol.UDPMessage{
+ 		SessionID: u.ID,
+@@ -66,6 +72,9 @@
+ 		msg.PacketID = uint16(rand.Intn(0xFFFF)) + 1
+ 		fMsgs := frag.FragUDPMessage(msg, int(errTooLarge.MaxDatagramPayloadSize))
+ 		for _, fMsg := range fMsgs {
++			if u.sendClosed.Load() {
++				return net.ErrClosed
++			}
+ 			err := u.SendFunc(u.SendBuf, &fMsg)
+ 			if err != nil {
+ 				return err
+@@ -172,6 +181,7 @@
+ 
+ func (m *udpSessionManager) close(conn *udpConn) {
+ 	if !conn.Closed {
++		conn.sendClosed.Store(true)
+ 		conn.Closed = true
+ 		close(conn.ReceiveCh)
+ 		delete(m.m, conn.ID)
+--- /dev/null
++++ b/core/client/udp_closed_regression_test.go
+@@ -0,0 +1,161 @@
++package client
++
++import (
++	"errors"
++	"io"
++	"net"
++	"sync"
++	"sync/atomic"
++	"testing"
++	"time"
++
++	coreErrs "github.com/apernet/hysteria/core/v2/errors"
++	"github.com/apernet/hysteria/core/v2/internal/protocol"
++	"github.com/apernet/quic-go"
++)
++
++type closeRegressionIO struct {
++	send func([]byte, *protocol.UDPMessage) error
++}
++
++func (s *closeRegressionIO) ReceiveMessage() (*protocol.UDPMessage, error) {
++	return nil, io.EOF
++}
++
++func (s *closeRegressionIO) SendMessage(buf []byte, msg *protocol.UDPMessage) error {
++	return s.send(buf, msg)
++}
++
++func closeRegressionSession(t *testing.T, send func([]byte, *protocol.UDPMessage) error) (*udpSessionManager, *udpConn) {
++	t.Helper()
++	manager := &udpSessionManager{io: &closeRegressionIO{send: send}, m: make(map[uint32]*udpConn), nextID: 1}
++	session, err := manager.NewUDP()
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(manager.closeCleanup)
++	return manager, session.(*udpConn)
++}
++
++func TestUDPClosedSendRejected(t *testing.T) {
++	var calls atomic.Int32
++	_, session := closeRegressionSession(t, func(_ []byte, msg *protocol.UDPMessage) error {
++		if msg.Addr != "127.0.0.1:53" || string(msg.Data) != "packet" {
++			t.Error("unexpected admitted packet")
++		}
++		calls.Add(1)
++		return nil
++	})
++	if err := session.Send([]byte("packet"), "127.0.0.1:53"); err != nil {
++		t.Fatal(err)
++	}
++	if calls.Load() != 1 {
++		t.Fatal("open session did not admit its packet")
++	}
++	if err := session.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if err := session.Send([]byte("packet"), "127.0.0.1:53"); !errors.Is(err, net.ErrClosed) {
++		t.Fatalf("post-Close Send error = %v, want net.ErrClosed", err)
++	}
++	if calls.Load() != 1 {
++		t.Fatal("closed session admitted another packet")
++	}
++	if _, _, err := session.Receive(); !errors.Is(err, io.EOF) {
++		t.Fatalf("closed Receive = %v, want EOF", err)
++	}
++}
++
++func TestUDPClosedManagerCleanupRejectsSend(t *testing.T) {
++	var calls atomic.Int32
++	manager, first := closeRegressionSession(t, func(_ []byte, _ *protocol.UDPMessage) error { calls.Add(1); return nil })
++	second, err := manager.NewUDP()
++	if err != nil {
++		t.Fatal(err)
++	}
++	manager.closeCleanup()
++	for _, session := range []HyUDPConn{first, second} {
++		if err := session.Send([]byte("packet"), "127.0.0.1:53"); !errors.Is(err, net.ErrClosed) {
++			t.Fatalf("cleaned-up session Send error = %v, want net.ErrClosed", err)
++		}
++	}
++	if calls.Load() != 0 {
++		t.Fatal("manager cleanup left writable sessions")
++	}
++	var closed coreErrs.ClosedError
++	if _, err := manager.NewUDP(); !errors.As(err, &closed) {
++		t.Fatalf("global NewUDP error = %v, want ClosedError", err)
++	}
++}
++
++func TestUDPClosedBetweenFragmentsRejectsRemainingWrites(t *testing.T) {
++	var calls int
++	var session *udpConn
++	_, session = closeRegressionSession(t, func(_ []byte, msg *protocol.UDPMessage) error {
++		calls++
++		if calls == 1 {
++			return &quic.DatagramTooLargeError{MaxDatagramPayloadSize: 128}
++		}
++		if calls == 2 {
++			if msg.FragCount <= 1 || msg.FragID != 0 {
++				t.Fatal("first fragment is malformed")
++			}
++			if err := session.Close(); err != nil {
++				t.Fatal(err)
++			}
++		}
++		return nil
++	})
++	if err := session.Send(make([]byte, 1024), "127.0.0.1:53"); !errors.Is(err, net.ErrClosed) {
++		t.Fatalf("fragmented Send after Close = %v, want net.ErrClosed", err)
++	}
++	if calls != 2 {
++		t.Fatalf("fragment IO calls = %d, want initial attempt plus one admitted fragment", calls)
++	}
++}
++
++func TestUDPClosedConcurrentCloseKeepsInflightAdmissionBounded(t *testing.T) {
++	var calls atomic.Int32
++	entered, release, sent := make(chan struct{}), make(chan struct{}), make(chan error, 1)
++	var releaseOnce sync.Once
++	unblock := func() { releaseOnce.Do(func() { close(release) }) }
++	defer unblock()
++	_, session := closeRegressionSession(t, func(_ []byte, _ *protocol.UDPMessage) error {
++		if calls.Add(1) == 1 {
++			close(entered)
++			<-release
++		}
++		return nil
++	})
++	go func() { sent <- session.Send([]byte("packet"), "127.0.0.1:53") }()
++	select {
++	case <-entered:
++	case <-time.After(2 * time.Second):
++		t.Fatal("sender did not enter controlled IO")
++	}
++	closed := make(chan error, 1)
++	go func() { closed <- session.Close() }()
++	select {
++	case err := <-closed:
++		if err != nil {
++			t.Fatal(err)
++		}
++	case <-time.After(2 * time.Second):
++		t.Fatal("Close blocked behind an admitted IO call")
++	}
++	unblock()
++	select {
++	case err := <-sent:
++		if err != nil {
++			t.Fatalf("already-admitted Send = %v, want its successful IO result", err)
++		}
++	case <-time.After(2 * time.Second):
++		t.Fatal("admitted sender did not finish")
++	}
++	if err := session.Send([]byte("packet"), "127.0.0.1:53"); !errors.Is(err, net.ErrClosed) {
++		t.Fatalf("future Send after concurrent Close = %v, want net.ErrClosed", err)
++	}
++	if calls.Load() != 1 {
++		t.Fatal("post-Close IO occurred after inflight writer completed")
++	}
++}

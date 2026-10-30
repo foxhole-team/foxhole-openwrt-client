@@ -8,7 +8,7 @@ const rpc = await read(`${base}/usr/share/rpcd/ucode/foxhole.uc`);
 
 function execute(source, compile = false) {
   const result = spawnSync('docker', ['exec', '-i', container, 'ucode',
-    ...(compile ? ['-c', '-o', '/dev/null'] : []), '-'], {
+    ...(compile ? ['-cdynlink=uci,dynlink=ubus', '-o', '/dev/null'] : []), '-'], {
     input: source, encoding: 'utf8', timeout: 30000
   });
   if (result.stdout) process.stdout.write(result.stdout);

@@ -6,16 +6,24 @@ umask 077
 	echo 'Hysteria RAM package requires ARM64' >&2
 	exit 1
 }
-cache=/tmp/foxhole-hysteria
 digest=ebfacc1ec3a0edfd742cd68ce17f292a6092e606b9d11f99b035c1d888f3d709
 url=https://github.com/HyNetworks/hysteria/releases/download/app%2Fv2.12.2/hysteria-linux-arm64
 
-[ ! -L "$cache" ] || exit 1
-mkdir -p "$cache"
-chmod 700 "$cache"
+private_directory() {
+	if [ ! -e "$1" ] && [ ! -L "$1" ]; then mkdir -m 700 "$1"; fi
+	[ ! -L "$1" ] && [ "$(stat -c '%F:%u:%a' "$1")" = 'directory:0:700' ] || exit 1
+}
+private_directory /tmp/foxhole-hysteria
+cache="/tmp/foxhole-hysteria/$digest"
+private_directory "$cache"
+lock="$cache/lock"
+if [ ! -e "$lock" ] && [ ! -L "$lock" ]; then (set -C; : > "$lock"); fi
+[ -f "$lock" ] && [ ! -L "$lock" ] &&
+	[ "$(stat -c '%u:%a:%h:%s' "$lock")" = '0:600:1:0' ] || exit 1
 
 valid() {
 	[ -f "$cache/hysteria" ] && [ ! -L "$cache/hysteria" ] &&
+		[ "$(stat -c '%u:%a:%h' "$cache/hysteria")" = '0:700:1' ] &&
 		printf '%s  %s\n' "$digest" "$cache/hysteria" |
 		sha256sum -c - >/dev/null 2>&1
 }
@@ -23,11 +31,12 @@ valid() {
 (
 	flock -x 9
 	valid && exit 0
+	[ ! -e "$cache/hysteria" ] && [ ! -L "$cache/hysteria" ] || exit 1
 	[ "$(awk '/MemAvailable:/{print $2}' /proc/meminfo)" -ge 49152 ] || {
 		echo 'Insufficient free RAM for Hysteria download' >&2
 		exit 1
 	}
-	partial="$cache/download.$$"
+	partial=$(mktemp "$cache/download.XXXXXX")
 	trap 'rm -f "$partial"' EXIT HUP INT TERM
 	ulimit -f 65536
 	uclient-fetch -4 -T 60 -O "$partial" "$url" >/dev/null 2>&1 || {
@@ -40,7 +49,8 @@ valid() {
 		exit 1
 	}
 	chmod 700 "$partial"
-	mv "$partial" "$cache/hysteria"
-) 9>"$cache/lock"
+	ln -T "$partial" "$cache/hysteria"
+	rm -f "$partial"
+) 9<>"$lock"
 
 exec "$cache/hysteria" "$@"

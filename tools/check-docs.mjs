@@ -15,8 +15,15 @@ try {
     const source = await readFile(resolve(root, path), 'utf8');
     if (source.match(/^```/gm)?.length % 2 === 1)
       throw new Error(`Unclosed code fence: ${path}`);
+    const languageBar = '<p align="center">\n' +
+      '  <strong>English</strong> · ' +
+      '<a href="docs/README.ru.md">Русский</a>\n</p>';
+    const allowLanguageBadge = path === 'README.md' || /^docs\/README\.(?:ru|de|es|fr|ja|zh)\.md$/.test(path);
+    const prose = (path === 'README.md' ?
+      source.replace(languageBar, '') : source).replace(
+        /^\[!\[Русский\]\(https:\/\/img\.shields\.io\/badge\/[^)\r\n]+\)\]\((?:docs\/)?README\.ru\.md\)$/m, match => allowLanguageBadge ? '' : match);
     if (path !== 'docs/README.ru.md' && /[А-Яа-яЁё]/.test(
-      source.replace(/<[^>]+>/g, '')))
+      prose.replace(/<[^>]+>/g, '')))
       throw new Error(`Russian prose belongs in docs/README.ru.md: ${path}`);
     for (const match of source.matchAll(/\]\(([^\s)]+)\)|(?:href|src)="([^"]+)"/g)) {
       const target = match[1] || match[2];

@@ -1,0 +1,21 @@
+#!/bin/sh
+set -eu
+umask 077
+url=${1:?fixed release URL}
+output=${2:?owned private target}
+bytes=${3:?bounded bytes}
+case "$url" in https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v*) ;; *) exit 1 ;; esac
+case "$url" in *[!a-zA-Z0-9:/_.+-]*|*/../*|*/./*) exit 1 ;; esac
+case "$output" in /tmp/foxhole/engine-assets/*) ;; *) exit 1 ;; esac
+case "$output" in *[!a-zA-Z0-9/_.-]*|*/../*|*/./*) exit 1 ;; esac
+case "$bytes" in ''|*[!0-9]*) exit 1 ;; esac
+[ "$bytes" -gt 0 ] && [ "$bytes" -le 134217728 ] || exit 1
+[ ! -e "$output" ] && [ ! -L "$output" ] || exit 1
+partial=$(mktemp "${output}.part.XXXXXX")
+trap 'rm -f "$partial"' EXIT HUP INT TERM
+ulimit -f "$(( (bytes + 511) / 512 ))"
+uclient-fetch -T 120 -O "$partial" "$url" >/dev/null 2>&1
+[ "$(wc -c < "$partial")" -le "$bytes" ] || exit 1
+# The caller verifies the canonical hash and signature before use.
+ln -T "$partial" "$output"
+rm -f "$partial"

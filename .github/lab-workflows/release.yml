@@ -1,3 +1,5 @@
+# Reference recipe only. Authoritative execution belongs to Git LAN / the protected lab.
+# This directory is outside GitHub Actions workflow discovery.
 name: release-candidate
 
 on:
@@ -29,7 +31,7 @@ jobs:
         id: version
         run: |
           version="$(cat config/release-version.txt)"
-          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]]
           echo "value=$version" >> "$GITHUB_OUTPUT"
 
       - name: Verify the signed main authority
@@ -122,8 +124,8 @@ jobs:
 
           candidate = Path("release-candidate")
           payload = {
-              "hysteria-2.12.2-r2.apk", "hysteria-ram-2.12.2-r1.apk",
-              "foxhole-openwrt-client-0.1.0-r41.apk", "install.sh",
+              "hysteria-2.12.2-r3.apk", "hysteria-ram-2.12.2-r2.apk",
+              "foxhole-openwrt-client-1.0.0-r1.apk", "install.sh",
               "sdk.config", "feeds.buildinfo", "CANDIDATE.json",
               "foxhole-openwrt-client-source.zip",
               "foxhole-openwrt-client-source.zip.sha256",
@@ -204,9 +206,11 @@ jobs:
           fi
           notes="$RUNNER_TEMP/release-notes.md"
           cat > "$notes" <<'EOF'
-          Public beta 1.0 prototype. Main and matching dev verification passed.
+          Release candidate. Main and matching dev verification passed.
           Release assets are awaiting local APK signing and owner YubiKey signatures.
           Firmware traffic, load and reboot acceptance remain pending.
           EOF
-          gh release create "$tag" --draft --prerelease --target "$SOURCE_COMMIT" \
+          prerelease=()
+          [[ "$VERSION" != *-beta.* ]] || prerelease=(--prerelease)
+          gh release create "$tag" --draft "${prerelease[@]}" --target "$SOURCE_COMMIT" \
             --title "FoxHole OpenWrt Client $VERSION" --notes-file "$notes"

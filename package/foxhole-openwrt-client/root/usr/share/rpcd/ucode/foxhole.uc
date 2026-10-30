@@ -4,6 +4,7 @@
 
 import * as fs from 'fs';
 import * as digest from 'digest';
+import * as socket from 'socket';
 import * as uci from 'uci';
 import * as ubus from 'ubus';
 import * as model from '/usr/share/foxhole/model.uc';
@@ -11,9 +12,24 @@ import * as runtime_model from '/usr/share/foxhole/runtime-model.uc';
 import * as probe from '/usr/share/foxhole/probe.uc';
 import * as history_store from '/usr/share/foxhole/history.uc';
 import * as inbound from '/usr/share/foxhole/inbound.uc';
+import * as pairing from '/usr/share/foxhole/pairing.uc';
+import * as mobile from '/usr/share/foxhole/mobile.uc';
+import * as core_adapter from '/usr/share/foxhole/core-adapter.uc';
+import * as store from '/usr/share/foxhole/private-store.uc';
+import * as core_model from '/usr/share/foxhole/core-model.uc';
+import * as handoff from '/usr/share/foxhole/handoff.uc';
+import * as remote from '/usr/share/foxhole/remote.uc';
+import * as handoff_adapter from '/usr/share/foxhole/handoff-adapter.uc';
+import * as device_model from '/usr/share/foxhole/device-model.uc';
+import * as observation from '/usr/share/foxhole/client-observation.uc';
+import * as engine_service from '/usr/share/foxhole/engine-service.uc';
+import * as update_service from '/usr/share/foxhole/update-service.uc';
+import * as update_model from '/usr/share/foxhole/update-model.uc';
 
 const STATE_PATH = '/etc/foxhole/state.json';
 const AUTH_PATH = '/etc/foxhole/auth.json';
+const PAIRING_PATH = '/etc/foxhole/pairing.json';
+const MOBILE_PATH = '/etc/foxhole/mobile.json';
 const LOCK_PATH = '/etc/foxhole/state.lock';
 const RUNTIME_PATH = '/tmp/foxhole/runtime.json';
 const RUNTIME_INIT = '/etc/init.d/foxhole-runtime';
@@ -37,13 +53,16 @@ const RUNTIME_ERRORS = [
 	'tunnel_start_failed', 'tunnel_exited'
 ];
 const ERRORS = [
-	'invalid_pin', 'pin_required', 'pin_unchanged',
+	...map(update_model.reasons, code => 'update_' + lc(code)),
+	'engine_unknown_protocol', 'engine_not_released', 'engine_unsupported_target', 'engine_unsupported_profile_graph', 'engine_stale_plan', 'engine_stale_session', 'engine_router_unavailable', 'engine_busy', 'engine_no_space', 'engine_authentication_failed', 'engine_download_failed', 'engine_package_verification_failed', 'engine_candidate_check_failed', 'engine_reconnect_failed', 'engine_recovery_required', 'engine_invalid_request', 'engine_in_use',
+	'invalid_pin', 'pin_required', 'pin_unchanged', 'pin_setup_required', 'license_required',
 	'locked', 'unauthorized', 'revision_conflict',
 	'invalid_config', 'unsupported_config', 'invalid_name',
 	'invalid_address', 'invalid_mac', 'mac_not_found', 'invalid_site',
 	'site_path_unsupported', 'invalid_settings', 'duplicate_rule',
 	'not_found', 'storage_error', 'unavailable', 'pin_mismatch', 'client_limit',
-	'runtime_unavailable', ...RUNTIME_ERRORS
+	'runtime_unavailable', 'invalid_pairing', 'pairing_conflict',
+	'pairing_limit', 'inbound_required', 'invalid_handoff', 'handoff_conflict', 'public_address_required', 'client_revoked', ...RUNTIME_ERRORS
 ];
 
 let sessions = {};
@@ -52,6 +71,8 @@ let history = [];
 let last_cpu = null;
 let last_sample = 0;
 let last_probe_request = 0;
+let last_core_probe_request = 0;
+let provider_resolutions = {};
 
 function fail(code) {
 	die(index(ERRORS, code) >= 0 ? code : 'storage_error');
@@ -71,8 +92,8 @@ function safe(fn) {
 };
 
 function ensure_dir() {
-	try { fs.mkdir('/etc/foxhole', 0o700); } catch (_) {}
-	try { fs.mkdir('/tmp/foxhole', 0o700); } catch (_) {}
+	store.directory('/etc/foxhole');
+	store.directory('/tmp/foxhole');
 };
 
 function read_json(path, limit) {
@@ -84,20 +105,20 @@ function read_json(path, limit) {
 
 function write_json(path, value, mode) {
 	ensure_dir();
-	let temp = path + '.new';
 	let raw = sprintf('%J', value);
 	if (length(raw) > MAX_STATE) fail('storage_error');
-	if (fs.writefile(temp, raw) != length(raw)) fail('storage_error');
-	if (!fs.chmod(temp, mode)) fail('storage_error');
-	if (!fs.rename(temp, path)) fail('storage_error');
+	if (mode != 0o600) fail('storage_error');
+	store.write(path, raw);
 };
 
 function locked(fn) {
 	ensure_dir();
 	let handle = null;
 	try {
-		handle = fs.open(LOCK_PATH, 'a+');
-		if (!handle || !handle.lock('x')) fail('storage_error');
+		store.target(LOCK_PATH);
+		handle = fs.open(LOCK_PATH, 'a+', 0o600);
+		if (!handle || !handle.lock('x') ||
+		    !store.file_metadata(fs.lstat(LOCK_PATH))) fail('storage_error');
 		let result = fn();
 		handle.lock('u');
 		handle.close();
@@ -117,41 +138,21 @@ function random_hex(bytes) {
 	return hexenc(raw);
 };
 
-function bootstrap_pin() {
-	let cursor = uci.cursor();
-	let pin = cursor.get('foxhole', 'panel', 'bootstrap_pin');
-	try { cursor.unload(); } catch (_) {}
-	if (pin == null) pin = join('', ['1', '2', '3', '4']);
-	if (type(pin) != 'string' || !match(pin, /^[0-9]{4}$/))
-		fail('storage_error');
-	return pin;
-};
-
 function pin_hash(salt, pin) {
 	let result = digest.sha256(salt + ':' + pin);
 	if (!result) fail('storage_error');
 	return result;
 };
 
-function auth_record() {
+function auth_record(allow_missing) {
 	let auth = read_json(AUTH_PATH, 4096);
-	if (auth != null) {
-		if (type(auth.salt) != 'string' ||
-		    !match(auth.salt, /^[a-f0-9]{32}$/) ||
-		    type(auth.hash) != 'string' ||
-		    !match(auth.hash, /^[a-f0-9]{64}$/)) fail('storage_error');
-		return auth;
+	if (auth == null) {
+		if (allow_missing) return null;
+		fail('pin_setup_required');
 	}
-	let salt = random_hex(16);
-	auth = { schema: 1, salt, hash: pin_hash(salt, bootstrap_pin()),
-		changed: false };
-	write_json(AUTH_PATH, auth, 0o600);
-	let cursor = uci.cursor();
-	try {
-		cursor.delete('foxhole', 'panel', 'bootstrap_pin');
-		cursor.commit('foxhole');
-	} catch (_) {}
-	try { cursor.unload(); } catch (_) {}
+	if (auth.schema != 1 || type(auth.changed) != 'bool' ||
+	    !match(auth.salt || '', /^[a-f0-9]{32}$/) ||
+	    !match(auth.hash || '', /^[a-f0-9]{64}$/)) fail('storage_error');
 	return auth;
 };
 
@@ -174,6 +175,12 @@ function check_pin(pin) {
 	}
 	if (failures.count >= FAILURE_LIMIT) fail('locked');
 	let auth = auth_record();
+	if (auth.changed != true) {
+		let uptime = fs.readfile('/proc/uptime', 256);
+		let boot = trim(fs.readfile('/proc/sys/kernel/random/boot_id', 128) || '');
+		if (!pairing.bootstrap_valid(auth, uptime, boot))
+			fail('invalid_pin');
+	}
 	let valid = equal_secret(pin_hash(auth.salt, pin), auth.hash);
 	if (!valid) {
 		failures.count++;
@@ -188,19 +195,26 @@ function user_of(request) {
 	return request?.info?.acl?.user || 'unknown';
 };
 
-function new_token(user) {
+function pairing_record() {
+	let record = read_json(PAIRING_PATH, 32768) || pairing.defaults();
+	pairing.public_devices(record);
+	return record;
+};
+
+function new_token(user, paired) {
 	for (let key, item in sessions)
 		if (item.expires < time()) delete sessions[key];
 	if (length(keys(sessions)) >= 64) fail('locked');
 	let token = random_hex(32);
+	if (paired) token = 'p1.' + token;
 	sessions[token] = { user, expires: time() + TOKEN_TTL,
-		setup: auth_record().changed != true };
+		setup: auth_record().changed != true, pairing: paired || null };
 	return token;
 };
 
 function session(request, allow_setup) {
 	let token = request.args?.token;
-	if (type(token) != 'string' || !match(token, /^[a-f0-9]{64}$/))
+	if (type(token) != 'string' || !match(token, /^(p1\.)?[a-f0-9]{64}$/))
 		fail('unauthorized');
 	let item = sessions[token];
 	if (!item || item.user != user_of(request)) fail('unauthorized');
@@ -209,7 +223,12 @@ function session(request, allow_setup) {
 		fail('unauthorized');
 	}
 	if (item.setup && !allow_setup) fail('pin_required');
-	item.expires = time() + TOKEN_TTL;
+	if (item.pairing &&
+	    !pairing.session_current(pairing_record(), item.pairing)) {
+		delete sessions[token];
+		fail('unauthorized');
+	}
+	if (!item.reset) item.expires = time() + TOKEN_TTL;
 	return token;
 };
 
@@ -509,11 +528,19 @@ function telemetry() {
 		sample, history, runtime: current.runtime };
 };
 
-function test_server(raw) {
-	let parsed = model.parse_config(raw);
+function admit_server(raw, engine) {
+	if (!engine || engine == 'hysteria') return model.parse_config(raw);
+	if (engine != 'core') fail('unsupported_config');
+	return core_adapter.admit(raw);
+};
+
+function test_server(raw, engine) {
+	let parsed = admit_server(raw, engine);
 	return {
 		valid: true, scope: 'config', connected: false, code: 'validated',
-		name: parsed.name, endpoint: parsed.endpoint
+		name: parsed.name, endpoint: parsed.endpoint,
+		protocol: parsed.protocol || 'hysteria2',
+		configSha256: digest.sha256(engine == 'core' ? parsed.raw : trim(raw))
 	};
 };
 
@@ -536,11 +563,13 @@ function public_state(state) {
 };
 
 function settings_call(request) {
+	engine_service.guard_mutation();
 	session(request);
 	let args = request.args;
 	let expected = valid_revision(args.revision);
 	let result = locked(() => {
 		session(request);
+		engine_service.guard_mutation();
 		let state = state_record();
 		if (state.revision != expected) fail('revision_conflict');
 		let before = runtime_model.runtime_fingerprint(state);
@@ -563,27 +592,46 @@ function settings_call(request) {
 };
 
 function save_server(request) {
+	engine_service.guard_mutation();
 	session(request);
 	let args = request.args, expected = valid_revision(args.revision);
-	let parsed = model.parse_config(args.config);
+	let parsed = admit_server(args.config, args.engine);
+	let subscription = core_model.subscription(args.subscription);
+	if (subscription && subscription.selectedProtocol !=
+	    (parsed.protocol || 'hysteria2')) fail('invalid_config');
 	let id = args.id || next_id('server');
 	if (!match(id, /^server-[a-f0-9]{12}$/)) fail('not_found');
 	let name = model.server_name(args.name || 'VPN SERVER 01');
 	let result = locked(() => {
 		session(request);
+		engine_service.guard_mutation();
 		let state = state_record(), found = false;
 		if (state.revision != expected) fail('revision_conflict');
 		for (let server in state.servers) {
 			if (server.id != id) continue;
+			let preserve_portable = args.engine == 'core' &&
+				trim(args.config) == trim(server.config) && server.portableProfile != null;
 			server.name = name;
 			server.endpoint = parsed.endpoint;
-			server.config = trim(args.config);
+			server.config = args.engine == 'core' ? parsed.raw : trim(args.config);
+			if (args.engine == 'core') {
+				server.engine = 'core'; server.protocol = parsed.protocol;
+				if (!preserve_portable) server.portableProfile = parsed.portableProfile;
+			} else {
+				delete server.engine; delete server.protocol; delete server.portableProfile;
+			}
+			if (subscription) server.subscription = subscription;
+			else delete server.subscription;
 			found = true;
 		}
 		if (!found && args.id) fail('not_found');
 		if (!found) push(state.servers, {
 			id, name, endpoint: parsed.endpoint,
-			config: trim(args.config)
+			config: args.engine == 'core' ? parsed.raw : trim(args.config),
+			...(args.engine == 'core' ?
+				{ engine: 'core', protocol: parsed.protocol,
+					portableProfile: parsed.portableProfile } : {}),
+			...(subscription ? { subscription } : {})
 		});
 		state.revision++;
 		write_json(STATE_PATH, state, 0o600);
@@ -600,14 +648,20 @@ function get_server(request) {
 	for (let server in state.servers)
 		if (server.id == id)
 			return { id: server.id, name: server.name, endpoint: server.endpoint,
-				config: server.config };
+				config: server.config,
+				configSha256: digest.sha256(server.config),
+				...(server.subscription ? { subscription: server.subscription } : {}),
+				...(server.engine == 'core' ? { engine: 'core',
+					portableProfile: core_model.portable(server.portableProfile, server.config) } : {}) };
 	fail('not_found');
 };
 
 function delete_server(request) {
+	engine_service.guard_mutation();
 	let expected = valid_revision(request.args.revision), id = request.args.id;
 	let result = locked(() => {
 		session(request);
+		engine_service.guard_mutation();
 		let state = state_record();
 		if (state.revision != expected) fail('revision_conflict');
 		let found = false;
@@ -631,11 +685,13 @@ function delete_server(request) {
 };
 
 function start_server(request) {
+	engine_service.guard_mutation();
 	session(request);
 	let expected = valid_revision(request.args.revision);
 	let id = request.args.id;
 	let result = locked(() => {
 		session(request);
+		engine_service.guard_mutation();
 		let state = state_record(), found = false;
 		if (state.revision != expected) fail('revision_conflict');
 		for (let server in state.servers)
@@ -643,7 +699,9 @@ function start_server(request) {
 		if (!found) fail('not_found');
 		let changed = state.activeServerId != id;
 		state.activeServerId = id;
-		runtime_model.hysteria_config(state, null);
+		let selected = runtime_model.active_server(state);
+		if (selected.engine != 'core')
+			runtime_model.hysteria_config(state, null);
 		if (changed) {
 			state.revision++;
 			write_json(STATE_PATH, state, 0o600);
@@ -661,6 +719,7 @@ function stop_server(request) {
 		session(request);
 		let state = state_record();
 		if (state.revision != expected) fail('revision_conflict');
+		engine_service.stop_intent();
 		if (state.activeServerId != null) {
 			state.activeServerId = null;
 			state.revision++;
@@ -668,7 +727,7 @@ function stop_server(request) {
 		}
 		return state;
 	});
-	restart_runtime(result);
+	if (!engine_service.defer_stop_for_update()) restart_runtime(result);
 	return public_state(result);
 };
 
@@ -709,6 +768,23 @@ function client_export(state, client) {
 		model.client_profile(state, client);
 	profile.qrSvg = qr_svg(profile.uri);
 	return profile;
+};
+
+function profile_app_metadata(paired, client_id, uri) {
+	if (type(paired) != 'object' || type(paired.id) != 'string' ||
+	    length(paired.id) != 37 ||
+	    !match(paired.id, /^pair-[a-f0-9]{32}$/) ||
+	    type(client_id) != 'string' || length(client_id) != 19 ||
+	    !match(client_id, /^client-[a-f0-9]{12}$/) ||
+	    type(uri) != 'string' || !length(uri) || length(uri) > 16384)
+		return null;
+	for (let i = 0; i < length(uri); i++) {
+		let byte = ord(uri, i);
+		if (byte < 0x20 || byte == 0x7f) return null;
+	}
+	return { schema: 1, kind: 'foxhole-openwrt-client',
+		pairingId: paired.id, clientId: client_id,
+		uriSha256: digest.sha256(uri) };
 };
 
 function save_client(request) {
@@ -773,9 +849,16 @@ function update_client(request) {
 function get_client(request) {
 	session(request);
 	let state = state_record();
-	for (let client in state.clients)
-		if (client.id == request.args.id)
-			return { export: client_export(state, client) };
+	for (let client in state.clients) {
+		if (client.id != request.args.id) continue;
+		let profile = client_export(state, client);
+		let sid = session(request), paired = sessions[sid].pairing;
+		if (paired && client.inbound == true) {
+			let metadata = profile_app_metadata(paired, client.id, profile.uri);
+			if (metadata) profile.appMetadata = metadata;
+		}
+		return { export: profile };
+	}
 	fail('not_found');
 };
 
@@ -806,9 +889,20 @@ function delete_client(request) {
 		session(request);
 		let state = state_record();
 		if (state.revision != expected) fail('revision_conflict');
-		let found = false;
+		let found = false, revoked = false;
 		for (let i = 0; i < length(state.clients); i++) {
 			if (state.clients[i].id != id) continue;
+			if (state.clients[i].inbound == true && system([
+				'/usr/libexec/foxhole-inbound-revoke', id
+			], 2500) != 0) fail('runtime_unavailable');
+			if (state.clients[i].inbound == true) {
+				revoked = true;
+				let phones = mobile.journal(read_json(MOBILE_PATH, 65536)), changed = false;
+				for (let phone in phones.phones) if (phone.remoteClientId == id) {
+					phone.remoteRevoked = true; changed = true;
+				}
+				if (changed) write_json(MOBILE_PATH, phones, 0o600);
+			}
 			splice(state.clients, i, 1);
 			found = true;
 			break;
@@ -816,19 +910,69 @@ function delete_client(request) {
 		if (!found) fail('not_found');
 		state.revision++;
 		write_json(STATE_PATH, state, 0o600);
-		return public_state(state);
+		return { ...public_state(state), clientRevocation: { id,
+			applied: true, targetRevoked: revoked } };
 	});
 };
 
-function store_pin(pin) {
+function handoff_record() {
+	let raw = store.read(handoff.path, 65536);
+	return handoff.journal(raw ? json(raw) : null);
+};
+
+function handoff_apply(record, pairs) {
+	let connection = ubus.connect(), listener;
+	if (!connection) fail('unavailable');
+	try { listener = mobile.lan_listener(connection.call(
+		'network.interface.lan', 'status', {})); }
+	catch (_) { connection.disconnect(); fail('unavailable'); }
+	connection.disconnect();
+	handoff_adapter.apply(record, pairs, listener.device);
+	write_json(handoff.path, record, 0o600);
+};
+
+function revoke_handoff(id) {
+	if (!store.read(handoff.path, 65536)) return;
+	let record = handoff_record();
+	record.leases = filter(record.leases, lease => id && lease.pairId != id);
+	record.revision++;
+	handoff_apply(record, pairing_record());
+};
+
+const LICENSE_VERSION = 1;
+const LICENSE_RECORD_PATH = '/etc/foxhole/license.json';
+
+function license_record() {
+ let record = read_json(LICENSE_RECORD_PATH, 4096);
+ if (record == null) return false;
+ if (record.schema != 1 || type(record.licenseAccepted) != 'bool' ||
+     type(record.licenseVersion) != 'int' || record.licenseVersion != LICENSE_VERSION) fail('storage_error');
+ return record.licenseAccepted == true;
+};
+
+function license_required(auth) {
+ return auth?.changed != true && !(type(auth?.licenseAccepted) == 'bool' && auth.licenseAccepted == true &&
+  type(auth?.licenseVersion) == 'int' && auth.licenseVersion == LICENSE_VERSION) && !license_record();
+};
+
+function license_choice(auth, acceptance) {
+ let recorded = license_record();
+ let accepted = type(acceptance?.licenseAccepted) == 'bool' && acceptance.licenseAccepted == true &&
+  type(acceptance?.licenseVersion) == 'int' && acceptance.licenseVersion == LICENSE_VERSION;
+ if (license_required(auth) && !accepted) fail('license_required');
+ return recorded || accepted || (type(auth?.licenseAccepted) == 'bool' && auth.licenseAccepted == true &&
+  type(auth?.licenseVersion) == 'int' && auth.licenseVersion == LICENSE_VERSION);
+};
+
+function store_pin(pin, acceptance) {
 	if (type(pin) != 'string' || !match(pin, /^[0-9]{4}$/))
 		fail('pin_mismatch');
-	let previous = auth_record();
-	if (!previous.changed &&
-	    equal_secret(previous.hash, pin_hash(previous.salt, pin)))
-		fail('pin_unchanged');
+	let previous = auth_record(true), accepted = license_choice(previous, acceptance);
 	let auth = { schema: 1, salt: random_hex(16), changed: true };
+	if (accepted) { auth.licenseAccepted = true; auth.licenseVersion = LICENSE_VERSION; }
 	auth.hash = pin_hash(auth.salt, pin);
+	revoke_handoff(null);
+	write_json(PAIRING_PATH, pairing.defaults(), 0o600);
 	write_json(AUTH_PATH, auth, 0o600);
 	for (let item in sessions) delete sessions[item];
 };
@@ -849,7 +993,7 @@ function admin_pin(request) {
 			if (code != 0 || access?.access != true)
 				fail('unauthorized');
 			return locked(() => {
-				store_pin(request.args.newPin);
+				store_pin(request.args.newPin, request.args);
 				return { changed: true };
 			});
 		});
@@ -859,12 +1003,13 @@ function admin_pin(request) {
 };
 
 function change_pin(request) {
-	session(request, true);
+	let sid = session(request, true);
+	if (sessions[sid].pairing) fail('unauthorized');
 	let pin = request.args.newPin;
 	if (type(pin) != 'string' || !match(pin, /^[0-9]{4}$/)) fail('pin_mismatch');
 	return locked(() => {
 		session(request, true);
-		store_pin(pin);
+		store_pin(pin, request.args);
 		let token = new_token(user_of(request));
 		return { token };
 	});
@@ -877,10 +1022,25 @@ function resolve_device(request) {
 	return { address, mac: host ? resolve_mac(host) : null };
 };
 
+function neighbor_observation() {
+	let directory = '/tmp/foxhole/neighbors-' + random_hex(6);
+	let output = directory + '/output', raw = null;
+	try {
+		if (!fs.mkdir(directory, 0o700)) return [];
+		store.directory(directory);
+		let code = system([ '/bin/sh', '-c', 'umask 077; ' +
+			'/sbin/ip neigh show 2>/dev/null | head -c 262145 >' + output ], 2000);
+		if (code == 0) raw = store.read(output, 262144);
+	} catch (_) { raw = null; }
+	try { fs.unlink(output); } catch (_) {}
+	try { fs.rmdir(directory); } catch (_) {}
+	return device_model.parse_neighbors(raw);
+};
+
 function list_devices(request) {
 	session(request);
 	let raw = fs.readfile('/tmp/dhcp.leases', 262144) || '';
-	let devices = [], seen = {};
+	let devices = [], seen = {}, neighbors = neighbor_observation();
 	for (let line in split(raw, '\n')) {
 		let fields = split(trim(line), /[ \t]+/);
 		if (length(fields) < 4) continue;
@@ -895,24 +1055,518 @@ function list_devices(request) {
 		    match(name, /[[:cntrl:]]/)) name = address;
 		name = substr(name, 0, 64);
 		seen[mac] = true;
-		push(devices, { name, address, mac });
+		push(devices, { name, address, mac,
+			online: device_model.online(neighbors, address, mac) });
 		if (length(devices) >= 256) break;
 	}
 	return { devices };
 };
 
 function unlock(request) {
-	let pin = request.args.pin;
-	check_pin(pin);
-	let token = new_token(user_of(request));
-	return { token, state: public_state(state_record()),
-		pinChangeRequired: sessions[token].setup };
+	return locked(() => {
+		let pin = request.args.pin;
+		check_pin(pin);
+		let token = new_token(user_of(request));
+		let auth = auth_record();
+		if (auth.changed != true && auth.bootstrapExpiresUptimeMs != null) {
+			auth.bootstrapConsumed = true;
+			write_json(AUTH_PATH, auth, 0o600);
+		}
+		return { token, state: public_state(state_record()),
+			pinChangeRequired: sessions[token].setup, licenseRequired: license_required(auth),
+			licenseVersion: LICENSE_VERSION };
+	});
 };
 
 function lock(request) {
 	let token = session(request, true);
 	delete sessions[token];
 	return {};
+};
+
+function pair_create(request) {
+	let sid = session(request);
+	if (sessions[sid].pairing) fail('unauthorized');
+	return locked(() => {
+		session(request);
+		let args = request.args;
+		let record = pairing.register(pairing_record(), args.id,
+			args.credential, args.name, time());
+		write_json(PAIRING_PATH, record, 0o600);
+		return { id: args.id };
+	});
+};
+
+function pair_unlock(request) {
+	let now = time();
+	if (now - failures.since >= FAILURE_WINDOW) {
+		failures.count = 0;
+		failures.since = now;
+	}
+	if (failures.count >= FAILURE_LIMIT) fail('locked');
+	if (auth_record().changed != true) fail('pin_required');
+	let paired;
+	try {
+		paired = pairing.authenticate(pairing_record(),
+			request.args.id, request.args.credential);
+	} catch (error) {
+		if (error_code(error) != 'unauthorized') die(error_code(error));
+		failures.count++;
+		if (!failures.since) failures.since = now;
+		fail('unauthorized');
+	}
+	let token = new_token(user_of(request), paired);
+	return { token, state: public_state(state_record()) };
+};
+
+function pair_revoke(request) {
+	let sid = session(request), id = request.args.id;
+	if (sessions[sid].pairing && sessions[sid].pairing.id != id)
+		fail('unauthorized');
+	return locked(() => {
+		session(request);
+		let record = pairing.revoke(pairing_record(), id);
+		revoke_handoff(id);
+		write_json(PAIRING_PATH, record, 0o600);
+		for (let token, item in sessions)
+			if (item.pairing?.id == id) delete sessions[token];
+		return {};
+	});
+};
+
+function phone_session(request) {
+	let token = session(request);
+	let paired = sessions[token].pairing;
+	if (!paired) fail('unauthorized');
+	return paired;
+};
+
+function remote_wan_address() {
+	let connection = ubus.connect(), address = null;
+	if (!connection) fail('public_address_required');
+	try { address = remote.wan_address(connection.call('network.interface.wan', 'status', {})); }
+	catch (_) {}
+	try { connection.disconnect(); } catch (_) {}
+	if (!address) fail('public_address_required');
+	return address;
+};
+
+function phone_capabilities(request) {
+	phone_session(request);
+	let native = core_adapter.receipt('capabilities');
+	let protocols = [];
+	if (native?.schema_version == 1 && native.router_contract_version == 1 &&
+	    native.platform == 'linux' && type(native.protocols) == 'array' &&
+	    length(native.protocols) <= 12)
+		for (let name in native.protocols) {
+			if (type(name) != 'string' || !core_model.supported_protocol(name) ||
+			    index(protocols, name) >= 0) { protocols = []; break; }
+			push(protocols, name);
+		}
+	let legacy = fs.stat('/usr/bin/hysteria') != null;
+	let incoming = legacy && read_json('/etc/foxhole/inbound.json', 65536) != null;
+	if (legacy && !incoming) try { incoming = remote_wan_address() != null; } catch (_) {}
+	return { schema: 1, coreProtocols: protocols,
+		legacyProtocols: legacy ? ['hysteria2'] : [],
+		inboundProtocols: incoming ? ['hysteria2'] : [],
+		subscriptionSelection: true, phoneRegistration: true,
+		independentPhoneChoices: true, packageUpdates: true,
+		phoneRemoteProvisioning: incoming, homeProof: false, phoneHandoff: false,
+		providerResolve: false };
+};
+
+function phone_address(request) {
+	let address = model.normalize_address(request.args.address);
+	if (address != request.args._peerAddress ||
+	    model.host_address(address) != address ||
+	    length(iptoarr(address) || []) != 4) fail('invalid_address');
+	return address;
+};
+
+function phone_provision(request) {
+	phone_session(request);
+	let address = phone_address(request), mac = resolve_mac(address);
+	if (!mac) fail('mac_not_found');
+	let result = locked(() => {
+		let paired = phone_session(request), state = state_record();
+		let base = read_json('/etc/foxhole/inbound.json', 65536);
+		if (request.args.createRemote == true && !base)
+			base = remote.prepare(remote_wan_address());
+		let record = mobile.prune(read_json(MOBILE_PATH, 65536),
+			pairing_record());
+		let prepared = mobile.prepare(state, record,
+			paired, { name: request.args.name, address, mac,
+				registerPhone: request.args.registerPhone,
+				createRemote: request.args.createRemote }, base, random_hex);
+		let applied = mobile.apply(state, prepared.phone);
+		let profile = null;
+		if (prepared.phone.remoteClientId) {
+			for (let client in applied.state.clients)
+				if (client.id == prepared.phone.remoteClientId)
+					profile = inbound.profile(base, client).uri;
+		}
+		// Persist intent first; retries must not duplicate clients.
+		write_json(MOBILE_PATH, prepared.record, 0o600);
+		if (applied.changed) write_json(STATE_PATH, applied.state, 0o600);
+		return { state: applied.state, changed: applied.changed,
+			phone: prepared.phone, profile };
+	});
+	if (!restart_runtime(result.state))
+		fail('runtime_unavailable');
+	if (result.phone.remoteClientId && system([
+		'/usr/libexec/foxhole-inbound', 'force'
+	], 30000) != 0) fail('unavailable');
+	let paired = phone_session(request);
+	let response = {
+		revision: result.state.revision,
+		lanDeviceId: result.phone.lanDeviceId,
+		remoteClientId: result.phone.remoteClientId,
+		profileUri: result.profile, remoteReady: false
+	};
+	let metadata = profile_app_metadata(paired,
+		result.phone.remoteClientId, result.profile);
+	if (metadata) response.appMetadata = metadata;
+	return response;
+};
+
+function phone_status(request) {
+	let paired = phone_session(request), address = phone_address(request);
+	let state = state_record(), device = null;
+	let record = mobile.journal(read_json(MOBILE_PATH, 65536));
+	for (let phone in record.phones)
+		if (phone.pairId == paired.id && phone.verifier == paired.verifier &&
+		    phone.mac == resolve_mac(address))
+			for (let item in state.devices)
+				if (item.id == phone.lanDeviceId) device = item;
+	let result = { schema: 1, pairingId: paired.id,
+		lanDeviceId: device?.id || null,
+		serverId: state.activeServerId, generation: null,
+		validated: false, vpnBound: false, checkedAgeMs: null,
+		routed: false, failClosed: false, address,
+		lossConfirmed: false,
+		observedUptimeMs: core_adapter.clock_ms(), handoff: null };
+	try { result.handoff = handoff_adapter.observe(handoff_record(),
+		pairing_record(), paired); } catch (_) { delete result.handoff; }
+	let selected = runtime_model.active_server(state);
+	if (!selected && !fs.stat('/sys/class/net/foxhole0') &&
+	    core_adapter.receipt('capabilities')?.router_contract_version == 1) {
+		result.lossConfirmed = true;
+		return result;
+	}
+	if (selected?.engine != 'core') return result;
+	let current = runtime_status(state);
+	let owner = core_adapter.receipt('owner');
+	let key = core_adapter.generation(owner);
+	if (owner?.owned != true || !key || !current.connected ||
+	    !current.enforced) {
+		result.lossConfirmed = current.phase != 'connecting' &&
+			!fs.stat('/sys/class/net/foxhole0');
+		return result;
+	}
+	let policy = read_json(core_adapter.policy_path, 4096);
+	if (policy?.generation_key != key ||
+	    policy.serverId != state.activeServerId ||
+	    policy.stateIdentity != core_adapter.policy_identity(state)) return result;
+	let kernel = core_adapter.kernel_policy(key, policy.stateIdentity);
+	if (policy.kernelIdentity != kernel) {
+		result.lossConfirmed = true;
+		result.observedUptimeMs = core_adapter.clock_ms();
+		return result;
+	}
+	let after = core_adapter.receipt('owner');
+	if (after?.owned != true || core_adapter.generation(after) != key) {
+		result.lossConfirmed = !fs.stat('/sys/class/net/foxhole0');
+		return result;
+	}
+	result.generation = key;
+	if (!device || device.route != 'vpn' || device.bindMac != true) {
+		result.lossConfirmed = device?.route == 'direct';
+		return result;
+	}
+	result.routed = true;
+	result.failClosed = selected.engine == 'core';
+	result.lossConfirmed = !result.failClosed;
+	let proof = read_json(core_adapter.proof_path, 4096);
+	let now = core_adapter.clock_ms();
+	let checked = proof?.checkedUptimeMs;
+	if (core_model.proof_identity(proof, { ...selected, id: state.activeServerId }, after, now)) {
+		result.checkedAgeMs = now - checked + 10;
+		result.validated = core_model.proof_valid(proof, { ...selected, id: state.activeServerId }, after, now);
+		result.vpnBound = result.validated;
+	}
+	if (!result.validated && type(now) == 'int' &&
+	    now - last_core_probe_request >= 5000) {
+		last_core_probe_request = now;
+		system('/usr/libexec/foxhole-runtime probe ' +
+			'</dev/null >/dev/null 2>&1 &');
+	}
+	return result;
+};
+
+function registered_phone(request) {
+	let paired = phone_session(request), address = phone_address(request);
+	let mac = resolve_mac(address), state = state_record();
+	for (let phone in mobile.journal(read_json(MOBILE_PATH, 65536)).phones)
+		if (phone.pairId == paired.id && phone.verifier == paired.verifier && phone.mac == mac)
+			for (let device in state.devices)
+				if (device.id == phone.lanDeviceId && device.mac == mac &&
+				    device.bindMac == true && device.route == 'vpn')
+					return { ...phone, address };
+	fail('unauthorized');
+};
+
+function phone_resolve(request) {
+	let paired = phone_session(request), phone = registered_phone(request);
+	let host = handoff.hostname(request.args.host), now = core_adapter.clock_ms();
+	let bucket = provider_resolutions[paired.id];
+	if (bucket?.verifier != paired.verifier || now < bucket.windowUptimeMs)
+		bucket = { verifier: paired.verifier, windowUptimeMs: now, requests: 0, hosts: {} };
+	let previous = bucket.hosts[host];
+	if (previous && now >= previous.checkedUptimeMs &&
+	    now - previous.checkedUptimeMs < previous.ttlMs)
+		return { ...previous, ttlMs: previous.ttlMs - (now - previous.checkedUptimeMs) };
+	if (now - bucket.windowUptimeMs >= 5000) {
+		bucket.windowUptimeMs = now; bucket.requests = 0;
+	}
+	if (bucket.requests >= 8) fail('unavailable');
+	for (let name, value in bucket.hosts)
+		if (now - value.checkedUptimeMs >= value.ttlMs) delete bucket.hosts[name];
+	if (length(keys(bucket.hosts)) >= 8 && !bucket.hosts[host]) fail('unavailable');
+	if (length(keys(provider_resolutions)) >= 16 && !provider_resolutions[paired.id])
+		provider_resolutions = {};
+	bucket.requests++;
+	provider_resolutions[paired.id] = bucket;
+	let directory = '/tmp/foxhole/resolve-' + random_hex(12);
+	if (!fs.mkdir(directory, 0o700)) fail('storage_error');
+	let output = directory + '/output', result = null;
+	try {
+		store.directory(directory);
+		if (system(['/usr/libexec/foxhole-provider-resolve', host, output], 4500) != 0)
+			fail('unavailable');
+		let raw = store.read(output, 8192);
+		result = handoff.dns_answer(json(raw), host);
+	} catch (_) {}
+	try { fs.unlink(output); fs.rmdir(directory); } catch (_) {}
+	// Recheck pair and DHCP ownership after the WAN operation.
+	registered_phone(request); phone_session(request);
+	let checked = core_adapter.clock_ms();
+	bucket.hosts[host] = { schema: 1, pairingId: paired.id,
+		host, addresses: result?.addresses || [],
+		ttlMs: result?.ttlMs || 0, checkedUptimeMs: checked };
+	if (!result) fail('unavailable');
+	return { ...bucket.hosts[host] };
+};
+
+function phone_handoff(request) {
+	return locked(() => {
+		let paired = phone_session(request), phone = registered_phone(request);
+		let now = core_adapter.clock_ms(), pairs = pairing_record();
+		if (type(request.args._receivedUptimeMs) != 'int' ||
+		    request.args._receivedUptimeMs > now ||
+		    now - request.args._receivedUptimeMs > 5000) fail('invalid_handoff');
+		let record = handoff_record();
+		let before = phone_status(request);
+		now = core_adapter.clock_ms();
+		if (now - request.args._receivedUptimeMs > 5000) fail('invalid_handoff');
+		if (request.args.mode == 'router_vpn' &&
+		    (!before.validated || !before.vpnBound || !before.routed || !before.failClosed ||
+		     before.serverId != request.args.expectedServerId ||
+		     before.generation != request.args.expectedGeneration)) fail('unavailable');
+		let next = handoff.request(record, pairs, paired, phone, request.args,
+			now, handoff_adapter.boot_id());
+		handoff_apply(next, pairs);
+		let observed = handoff_adapter.observe(next, pairs, paired);
+		if (request.args.mode == 'phone_vpn' && !observed) fail('unavailable');
+		let after = phone_status(request);
+		if (request.args.mode == 'router_vpn' &&
+		    (!after.validated || !after.vpnBound || !after.routed || !after.failClosed ||
+		     after.serverId != request.args.expectedServerId ||
+		     after.generation != request.args.expectedGeneration)) fail('unavailable');
+		return { schema: 1, claimId: request.args.claimId,
+			mode: request.args.mode, phase: observed ? 'active' : 'released',
+			remainingMs: observed?.remainingMs || 0,
+			observedUptimeMs: core_adapter.clock_ms(),
+			serverId: after.serverId, generation: after.generation,
+			policyRevision: next.revision };
+	});
+};
+
+function online_ready(connection, flags, deadline) {
+	let now = core_adapter.clock_ms();
+	if (now == null || now >= deadline) return false;
+	let ready = socket.poll(deadline - now, [connection, flags]);
+	return length(ready || []) == 1 && (ready[0][1] & flags) != 0;
+};
+
+function read_online(listener, ids) {
+	let connection = null;
+	let read = () => {
+		let port = match(listener.listen || '', /^127\.0\.0\.1:90([1-5])$/);
+		if (!port || type(listener.secret) != 'string' ||
+		    !match(listener.secret, /^[a-f0-9]{64}$/)) return null;
+		let now = core_adapter.clock_ms();
+		if (now == null) return null;
+		let deadline = now + 2000;
+		connection = socket.connect({ family: socket.AF_INET,
+			address: '127.0.0.1', port: 900 + int(port[1]) }, null, null, 500);
+		if (!connection) return null;
+		let request = 'GET /online HTTP/1.0\r\nHost: ' + listener.listen +
+			'\r\nConnection: close\r\nAuthorization: ' + listener.secret + '\r\n\r\n';
+		let offset = 0;
+		while (offset < length(request)) {
+			if (!online_ready(connection, socket.POLLOUT, deadline)) return null;
+			let sent = connection.send(substr(request, offset), socket.MSG_DONTWAIT | socket.MSG_NOSIGNAL);
+			if (sent == null || sent <= 0) return null;
+			offset += sent;
+		}
+		let raw = '';
+		while (true) {
+			if (!online_ready(connection, socket.POLLIN | socket.POLLHUP, deadline)) return null;
+			let part = connection.recv(10241 - length(raw), socket.MSG_DONTWAIT);
+			if (part == null) return null;
+			if (!length(part)) break;
+			raw += part;
+			if (length(raw) > 10240) return null;
+		}
+		return observation.online_map(observation.http_body(raw), ids);
+	};
+	let result = null;
+	try { result = read(); } catch (_) {}
+	if (connection) try { connection.close(); } catch (_) {}
+	return result;
+};
+
+function client_status(request) {
+	session(request);
+	return locked(() => {
+		session(request);
+		let state = state_record();
+		let rows = map(state.clients, item => ({ id: item.id, online: null }));
+		let unknown = () => ({ schema: 1, revision: state.revision,
+			clients: map(state.clients, item => ({ id: item.id, online: null })) });
+		let directory = '/tmp/foxhole/inbound', record;
+		try { record = json(store.read(directory + '/observations.json', 8192) || 'null'); }
+		catch (_) { return unknown(); }
+		if (record?.schema != 1 || record.revision != state.revision ||
+		    type(record.listeners) != 'array' || length(record.listeners) > 4 ||
+		    type(record.generation) != 'string' || !match(record.generation, /^[a-f0-9]{64}$/))
+			return unknown();
+		let generation;
+		try { generation = store.read(directory + '/generation', 128); }
+		catch (_) { return unknown(); }
+		if (generation != record.generation) return unknown();
+		let ids = map(filter(state.clients, item => item.inbound == true), item => item.id);
+		let shared = length(record.listeners) == 1 && record.listeners[0]?.id == 'shared';
+		if ((!shared && length(record.listeners) != length(ids)) ||
+		    (shared && !length(ids))) return unknown();
+		let seen = {};
+		for (let listener in record.listeners) {
+			let id = listener?.id;
+			if (type(id) != 'string' || (id != 'shared' && index(ids, id) < 0) || seen[id]) return unknown();
+			seen[id] = true;
+			let config;
+			try { config = json(store.read(directory + '/' + id + '.json', 65536)); }
+			catch (_) { return unknown(); }
+			if (config?.trafficStats?.listen != listener.listen || config.trafficStats.secret != listener.secret ||
+			    config.auth?.type != 'userpass' || type(config.auth.userpass) != 'object') return unknown();
+			let users = keys(config.auth.userpass);
+			if ((shared && length(users) != length(ids)) ||
+			    (!shared && (length(users) != 1 || users[0] != id))) return unknown();
+			for (let user in users) {
+				let client = filter(state.clients, item => item.id == user && item.inbound == true)[0];
+				if (!client || config.auth.userpass[user] != client.secret) return unknown();
+			}
+			let values = read_online(listener, users);
+			for (let row in rows)
+				if (index(users, row.id) >= 0) row.online = observation.online(values, row.id);
+		}
+		try { if (store.read(directory + '/generation', 128) != generation) return unknown(); }
+		catch (_) { return unknown(); }
+		return { schema: 1, revision: state.revision, clients: rows };
+	});
+};
+
+function engine_principal(request) {
+	let item = sessions[session(request)];
+	if (item.pairing) return { kind: 'pair', id: item.pairing.id, verifier: item.pairing.verifier };
+	return { kind: 'admin', user: item.user, verifier: digest.sha256(auth_record().hash) };
+};
+function update_request(request, action) {
+	let principal = engine_principal(request), args = request.args;
+	try {
+	if (action == 'status') return update_service.status(principal);
+	if (action == 'job') return update_service.job(args.jobId, principal);
+	if (action == 'check') return update_service.check({ expectedRevision: args.expectedRevision }, principal);
+	if (action == 'plan') return update_service.plan({ expectedRevision: args.expectedRevision }, principal);
+	if (action == 'settings') return update_service.settings({ expectedRevision: args.expectedRevision, autoUpdateEnabled: args.autoUpdateEnabled }, principal);
+	return update_service.apply({ planId: args.planId, planSha256: args.planSha256, expectedRevision: args.expectedRevision, confirmed: args.confirmed }, principal);
+	} catch (error) {
+		let code = type(error) == 'string' ? error : error?.message;
+		if (substr(code || '', 0, 7) == 'engine_' && index(update_model.reasons, uc(substr(code, 7))) >= 0)
+			die('update_' + substr(code, 7));
+		die(error);
+	}
+};
+function engines_status(request) { return engine_service.status(engine_principal(request)); };
+function engines_plan(request) {
+	let owner = engine_principal(request);
+	return engine_service.plan({ operation: request.args.operation, engineIds: request.args.engineIds,
+		storage: request.args.storage, expectedRevision: request.args.expectedRevision,
+		catalogSha256: request.args.catalogSha256 }, owner);
+};
+function engines_apply(request) {
+	let owner = engine_principal(request);
+	return engine_service.apply({ planId: request.args.planId, planSha256: request.args.planSha256,
+		expectedRevision: request.args.expectedRevision, confirmed: request.args.confirmed }, owner);
+};
+function engines_job(request) { return engine_service.job(request.args.jobId, engine_principal(request)); };
+
+function package_status(request) {
+	let auth = auth_record(true);
+	return { schema: 1, product: 'foxhole', installed: true,
+		pinConfigured: auth?.changed == true, resetSupported: true, packageUpdates: true,
+		licenseRequired: license_required(auth), licenseVersion: LICENSE_VERSION };
+};
+
+function setup_reset(request) {
+	let sid = session(request);
+	if (sessions[sid].pairing) fail('unauthorized');
+	if (type(request.args.confirm) != 'bool' || request.args.confirm != true) fail('unauthorized');
+	let expected = valid_revision(request.args.revision);
+	return locked(() => {
+		let sid = session(request);
+		if (sessions[sid].pairing) fail('unauthorized');
+		let previous = auth_record(), state = state_record();
+		if (previous.changed != true) fail('pin_required');
+		if (state.revision != expected || state.revision >= 0x7fffffff)
+			fail('revision_conflict');
+		revoke_handoff(null);
+		if (system([ RUNTIME_INIT, 'stop' ], 10000) != 0 ||
+		    system([ '/etc/init.d/foxhole-inbound', 'stop' ], 10000) != 0)
+			fail('unavailable');
+		let inbound_path = '/etc/foxhole/inbound.json';
+		store.target(inbound_path);
+		if (fs.lstat(inbound_path) && !fs.unlink(inbound_path)) fail('storage_error');
+		let cleared = model.defaults();
+		cleared.revision = state.revision + 1;
+		for (let item in sessions) delete sessions[item];
+		write_json(STATE_PATH, cleared, 0o600);
+		let pairs = pairing.defaults(), phones = { schema: 1, phones: [] };
+		let auth = { schema: 1, salt: previous.salt,
+			hash: previous.hash, changed: false, resetPending: true };
+		write_json(PAIRING_PATH, pairs, 0o600);
+		write_json(MOBILE_PATH, phones, 0o600);
+		write_json(AUTH_PATH, auth, 0o600);
+		for (let path, expected in { [STATE_PATH]: cleared,
+			[PAIRING_PATH]: pairs, [MOBILE_PATH]: phones, [AUTH_PATH]: auth })
+			if (sprintf('%J', read_json(path, MAX_STATE)) != sprintf('%J', expected))
+				fail('storage_error');
+		let token = new_token(user_of(request));
+		sessions[token].expires = time() + 300;
+		sessions[token].reset = true;
+		return { schema: 1, scope: 'foxhole', reset: true,
+			revision: cleared.revision, token, pinChangeRequired: true };
+	});
 };
 
 function state_call(request) {
@@ -925,16 +1579,59 @@ function call(name, request, fn) {
 };
 
 const methods = {
+	'updates.status': { args: { token: '' }, call: request => call('updates.status', request, request => update_request(request, 'status')) },
+	'updates.check': { args: { token: '', expectedRevision: 0 }, call: request => call('updates.check', request, request => update_request(request, 'check')) },
+	'updates.plan': { args: { token: '', expectedRevision: 0 }, call: request => call('updates.plan', request, request => update_request(request, 'plan')) },
+	'updates.apply': { args: { token: '', planId: '', planSha256: '', expectedRevision: 0, confirmed: false }, call: request => call('updates.apply', request, request => update_request(request, 'apply')) },
+	'updates.job': { args: { token: '', jobId: '' }, call: request => call('updates.job', request, request => update_request(request, 'job')) },
+	'updates.settings': { args: { token: '', expectedRevision: 0, autoUpdateEnabled: false }, call: request => call('updates.settings', request, request => update_request(request, 'settings')) },
+	'engines.status': { args: { token: '' }, call: request => call('engines.status', request, engines_status) },
+	'engines.plan': { args: { token: '', operation: '', engineIds: [], storage: 'AUTO', expectedRevision: 0, catalogSha256: '' },
+		call: request => call('engines.plan', request, engines_plan) },
+	'engines.apply': { args: { token: '', planId: '', planSha256: '', expectedRevision: 0, confirmed: false },
+		call: request => call('engines.apply', request, engines_apply) },
+	'engines.job': { args: { token: '', jobId: '' }, call: request => call('engines.job', request, engines_job) },
+	'client.status': { args: { token: '' }, call: request => call('client.status', request, client_status) },
+	'package.status': { args: {}, call: request => call('package.status', request, package_status) },
+	'setup.reset': { args: { token: '', revision: 0, confirm: false }, call: request => call('setup.reset', request, setup_reset) },
+	'phone.resolve': { args: { token: '', address: '', _peerAddress: '', host: '' },
+		call: request => call('phone.resolve', request, phone_resolve) },
+	'phone.handoff': { args: { token: '', address: '', _peerAddress: '',
+		claimId: '', mode: '', leaseMs: 60000, upstreamTargets: [],
+		requestUptimeMs: 0, _receivedUptimeMs: 0,
+		expectedServerId: '', expectedGeneration: '' }, call: request =>
+		call('phone.handoff', request, phone_handoff) },
+	'phone.capabilities': { args: { token: '' }, call: request =>
+		call('phone.capabilities', request, phone_capabilities) },
+	'phone.provision': { args: { token: '', name: '', address: '',
+		_peerAddress: '', registerPhone: true, createRemote: false },
+		call: request => call('phone.provision', request, phone_provision) },
+	'phone.status': { args: { token: '', address: '', _peerAddress: '' },
+		call: request => call('phone.status', request, phone_status) },
 	unlock: { args: { pin: '' }, call: request => call('unlock', request, unlock) },
 	lock: { args: { token: '' }, call: request => call('lock', request, lock) },
+	'pair.create': { args: { token: '', id: '', credential: '', name: '' },
+		call: request => call('pair.create', request, pair_create) },
+	'pair.unlock': { args: { id: '', credential: '' },
+		call: request => call('pair.unlock', request, pair_unlock) },
+	'pair.list': { args: { token: '' }, call: request =>
+		call('pair.list', request, request => {
+			session(request);
+			return { devices: pairing.public_devices(pairing_record()) };
+		}) },
+	'pair.revoke': { args: { token: '', id: '' },
+		call: request => call('pair.revoke', request, pair_revoke) },
 	state: { args: { token: '' }, call: request => call('state', request, state_call) },
 	telemetry: { args: { token: '' }, call: request => call('telemetry', request,
 		request => { session(request); return telemetry(); }) },
 	settings: { args: { token: '', revision: 0, settings: {}, countries: [],
 		devices: [], sites: [] }, call: request => call('settings', request, settings_call) },
-	'server.test': { args: { token: '', config: '' }, call: request =>
-		call('server.test', request, request => { session(request); return test_server(request.args.config); }) },
-	'server.save': { args: { token: '', revision: 0, config: '', id: '', name: '' },
+	'server.test': { args: { token: '', config: '', engine: '' }, call: request =>
+		call('server.test', request, request => {
+			session(request);
+			return test_server(request.args.config, request.args.engine);
+		}) },
+	'server.save': { args: { token: '', revision: 0, config: '', id: '', name: '', engine: '', subscription: {} },
 		call: request => call('server.save', request, save_server) },
 	'server.get': { args: { token: '', id: '' }, call: request =>
 		call('server.get', request, get_server) },
@@ -954,7 +1651,7 @@ const methods = {
 		call('client.get', request, get_client) },
 	'client.delete': { args: { token: '', revision: 0, id: '' }, call: request =>
 		call('client.delete', request, delete_client) },
-	'pin.change': { args: { token: '', newPin: '' }, call: request =>
+	'pin.change': { args: { token: '', newPin: '', licenseAccepted: false, licenseVersion: 0 }, call: request =>
 		call('pin.change', request, change_pin) },
 	'device.resolve': { args: { token: '', address: '' }, call: request =>
 		call('device.resolve', request, resolve_device) },
@@ -963,6 +1660,6 @@ const methods = {
 };
 
 return { foxhole: methods, 'foxhole.admin': {
-	set_pin: { args: { newPin: '' },
+	set_pin: { args: { newPin: '', licenseAccepted: false, licenseVersion: 0 },
 		call: request => safe(() => admin_pin(request)) }
 } };

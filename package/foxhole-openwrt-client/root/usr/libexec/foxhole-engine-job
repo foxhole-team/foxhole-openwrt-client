@@ -1,0 +1,7 @@
+#!/usr/bin/ucode
+'use strict';
+import * as service from '/usr/share/foxhole/engine-service.uc';
+let id = ARGV[0];
+if (type(id) != 'string' || !match(id, /^engine-job-[a-f0-9]{32}$/)) exit(1);
+if (length(ARGV) > 2 || (ARGV[1] != null && ARGV[1] != 'recover')) exit(1);
+try { if (ARGV[1] == 'recover') service.recover(id); else service.run(id); } catch (_) { exit(1); }

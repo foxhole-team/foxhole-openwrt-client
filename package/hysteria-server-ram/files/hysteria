@@ -1,0 +1,83 @@
+#!/bin/sh
+set -eu
+umask 077
+
+file_info() {
+ ucode -e '
+  import * as fs from "fs";
+  let info = fs.lstat(ARGV[1]);
+  if (!info) exit(1);
+  let mode = sprintf("%o", info.mode & 07777);
+  switch (ARGV[0]) {
+   case "%u": print(info.uid); break;
+   case "%u:%a": print(info.uid + ":" + mode); break;
+   case "%u:%a:%h": print(info.uid + ":" + mode + ":" + info.nlink); break;
+   case "%u:%a:%h:%s": print(info.uid + ":" + mode + ":" + info.nlink + ":" + info.size); break;
+   case "%F:%u:%a": print(info.type + ":" + info.uid + ":" + mode); break;
+   default: exit(1);
+  }
+ ' -- "$1" "$2"
+}
+
+
+case "$(uname -m)" in aarch64|x86_64) ;; *) exit 1 ;; esac
+receipt=/usr/share/foxhole/hysteria-server-download.txt
+[ -f "$receipt" ] && [ ! -L "$receipt" ] || exit 1
+url=$(sed -n '1p' "$receipt")
+digest=$(sed -n '2p' "$receipt")
+bytes=$(sed -n '3p' "$receipt")
+reserve=$(sed -n '4p' "$receipt")
+case "$url" in https://*) ;; *) exit 1 ;; esac
+case "$digest" in *[!a-f0-9]*) exit 1 ;; esac
+[ "${#digest}" = 64 ] || exit 1
+case "$bytes" in ''|*[!0-9]*) exit 1 ;; esac
+[ "$bytes" -gt 0 ] && [ "$bytes" -le 536870912 ] || exit 1
+case "$reserve" in ''|*[!0-9]*) exit 1 ;; esac
+[ "$reserve" -gt 0 ] && [ "$reserve" -le 9007199254740991 ] || exit 1
+private_directory() {
+ if [ ! -e "$1" ] && [ ! -L "$1" ]; then mkdir -m 700 "$1"; fi
+ [ "$(file_info '%F:%u:%a' "$1")" = 'directory:0:700' ] && [ ! -L "$1" ] || {
+  echo 'Hysteria server RAM storage is not owned private storage' >&2; exit 1
+ }
+}
+private_directory /tmp/foxhole-hysteria-server-binary
+cache="/tmp/foxhole-hysteria-server-binary/$digest"
+private_directory "$cache"
+lock="$cache/download.lock"
+if [ ! -e "$lock" ] && [ ! -L "$lock" ]; then
+ (set -C; : > "$lock")
+fi
+[ -f "$lock" ] && [ ! -L "$lock" ] &&
+ [ "$(file_info '%u:%a:%h:%s' "$lock")" = '0:600:1:0' ] || exit 1
+valid() {
+ [ -f "$cache/hysteria" ] && [ ! -L "$cache/hysteria" ] &&
+ [ "$(file_info '%u:%a:%h' "$cache/hysteria")" = '0:700:1' ] &&
+ printf '%s  %s\n' "$digest" "$cache/hysteria" | sha256sum -c - >/dev/null 2>&1
+}
+(
+ flock -x 9
+ valid && exit 0
+ available=$(awk '/MemAvailable:/ {print $2}' /proc/meminfo)
+ case "$available" in ''|*[!0-9]*) exit 1 ;; esac
+ [ "$((available * 1024))" -ge "$((bytes + reserve))" ] || {
+  echo 'Insufficient available RAM for the pinned Hysteria server download' >&2; exit 1
+ }
+ [ ! -e "$cache/hysteria" ] && [ ! -L "$cache/hysteria" ] || {
+  echo 'Unexpected Hysteria server RAM binary; existing file preserved' >&2; exit 1
+ }
+ partial=$(mktemp "$cache/download.XXXXXX")
+ trap 'rm -f "$partial"' EXIT HUP INT TERM
+ ulimit -f "$(( (bytes + 511) / 512 ))"
+ uclient-fetch -4 -T 120 -O "$partial" "$url" >/dev/null 2>&1 || {
+  echo 'Hysteria server RAM download failed' >&2; exit 1
+ }
+ printf '%s  %s\n' "$digest" "$partial" | sha256sum -c - >/dev/null 2>&1 || {
+  echo 'Hysteria server RAM checksum mismatch' >&2; exit 1
+ }
+ [ "$(wc -c < "$partial")" -eq "$bytes" ] || exit 1
+ chmod 700 "$partial"
+ # Never replace another entry while publishing the verified file.
+ ln -T "$partial" "$cache/hysteria"
+ rm -f "$partial"
+) 9<>"$lock"
+exec "$cache/hysteria" "$@"

@@ -4,11 +4,15 @@ import vm from 'node:vm';
 import { functionBody, hostHarness, modelPath, packageRoot, panelRoot,
   plain, read, rpcMethods } from './helpers.mjs';
 
-const readMethods = ['unlock', 'lock', 'state', 'telemetry', 'server.test',
-  'server.get', 'client.get', 'device.resolve', 'device.list'];
-const writeMethods = ['settings', 'server.save', 'server.delete',
+const readMethods = ['updates.status', 'updates.plan', 'updates.job', 'engines.status', 'engines.plan', 'engines.job', 'package.status', 'unlock', 'lock', 'state', 'telemetry', 'server.test',
+  'server.get', 'client.get', 'client.status', 'device.resolve', 'device.list',
+  'pair.unlock', 'pair.list', 'phone.status', 'phone.capabilities', 'phone.resolve'];
+const writeMethods = ['updates.check', 'updates.apply', 'updates.settings', 'engines.apply', 'setup.reset', 'settings', 'server.save', 'server.delete',
   'server.start', 'server.stop', 'client.save', 'client.update', 'client.access',
-  'client.delete', 'pin.change'];
+  'client.delete', 'pin.change', 'pair.create', 'pair.revoke', 'phone.provision',
+  'phone.handoff'];
+const mobileMethods = ['package.status', 'setup.reset', 'client.status', 'pair.create', 'pair.unlock', 'pair.list', 'pair.revoke',
+  'phone.status', 'phone.provision', 'phone.capabilities', 'phone.handoff', 'phone.resolve'];
 
 test('LuCI declarations match RPC names, arguments and ACL scopes', async () => {
   const host = await hostHarness();
@@ -18,7 +22,8 @@ test('LuCI declarations match RPC names, arguments and ACL scopes', async () => 
   assert.deepEqual(Object.keys(acl), ['luci-app-foxhole', 'luci-app-foxhole-pin']);
   assert.deepEqual(acl['luci-app-foxhole-pin'].write.ubus,
     { 'foxhole.admin': ['set_pin'] });
-  assert.deepEqual([...host.declarations.keys()].sort(), Object.keys(methods).sort());
+  assert.deepEqual([...host.declarations.keys()].sort(), Object.keys(methods)
+    .filter((name) => !mobileMethods.includes(name)).sort());
   assert.deepEqual([...scope.read.ubus.foxhole].sort(), [...readMethods].sort());
   assert.deepEqual([...scope.write.ubus.foxhole].sort(), [...writeMethods].sort());
   assert.deepEqual([...readMethods, ...writeMethods].sort(), Object.keys(methods).sort());
@@ -179,7 +184,7 @@ test('package root entry and browser cache key follow the release', async () => 
   const release = makefile.match(/^PKG_RELEASE:=(.+)$/m)?.[1];
   const cacheKey = `${version}-r${release}`;
   const postinst = makefile.match(/define Package\/foxhole-openwrt-client\/postinst([\s\S]*?)endef/)?.[1];
-  assert.equal(cacheKey, '0.1.0-r41');
+  assert.equal(cacheKey, '1.0.0-r3');
   assert.match(makefile, /\$\(1\)\/www\/foxhole\.html/);
   assert.match(defaults, /panel_index='foxhole\.html'/);
   assert.match(defaults, /legacy_index='luci-static\/resources\/foxhole\/shell\.html'/);
@@ -202,7 +207,7 @@ test('package installs one supervised Hysteria routing runtime', async () => {
     `${packageRoot}/root/usr/libexec/foxhole-runtime`);
   const policy = await read(
     `${packageRoot}/root/usr/share/foxhole/runtime-model.uc`);
-  for (const dependency of ['hysteria', 'kmod-tun', 'ip-full',
+  for (const dependency of ['kmod-tun', 'ip-full',
     'nftables-json', 'firewall4', 'jsonfilter']) {
     assert.match(makefile, new RegExp(`\\+${dependency}`), dependency);
   }
@@ -641,12 +646,27 @@ test('status hiding is presentational and client export actions are explicit', a
 test('settings views share one bounded modal height with scrollable help', async () => {
   const shell = await read(`${panelRoot}/shell.html`);
   const css = await read(`${panelRoot}/app.css`);
-  for (const name of ['settings-home', 'interface-settings']) {
+  const views = [
+    ['settings-home', ['localScope', 'localRules', 'clientRules', 'killSwitch'],
+      ['open-exceptions', 'open-updates', 'open-engines', 'open-interface-settings'], 0],
+    ['interface-settings', ['theme', 'darkCharts', 'hideRouterStatus', 'plainHeadings'],
+      ['open-pin-change'], 1]
+  ];
+  for (const [name, settings, actions, languageRows] of views) {
     const template = shell.split(`id="tpl-${name}"`)[1].split('</template>')[0];
-    assert.equal([...template.matchAll(/class="setting-row\b/g)].length, 6);
+    assert.deepEqual([...template.matchAll(/\bdata-setting="([^"]+)"/g)]
+      .map((match) => match[1]), settings, name);
+    assert.deepEqual([...template.matchAll(/\bdata-action="(open-[^"]+)"/g)]
+      .map((match) => match[1]), actions, name);
+    assert.equal([...template.matchAll(/\bid="language-select"/g)].length, languageRows, name);
+    assert.equal([...template.matchAll(/class="setting-row\b/g)].length,
+      settings.length + actions.length + languageRows, name);
   }
+  const help = shell.split('id="tpl-help"')[1].split('</template>')[0];
+  assert.match(help, /class="modal-panel" data-modal-view="help"/);
+  assert.match(help, /class="help-topic"/);
   assert.match(css, /\.modal:is\(\.view-settings-home, \.view-interface-settings\) \{ --modal-base-height: 28rem; \}/);
-  assert.match(css, /\.modal-stage \{ flex: 1;/);
+  assert.match(css, /\.modal-stage \{ flex: 1;[^}]*min-height: 0;[^}]*overflow-y: auto;[^}]*overscroll-behavior: contain;/);
   assert.match(css, /\.modal \{[^}]*max-height: calc\(var\(--viewport-height\) - 36px\)/);
 });
 

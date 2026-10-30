@@ -1,0 +1,82 @@
+'use strict';
+const ARCH = '/etc/apk/arch';
+let metadata, body, reads, commands, replace_after_read, passed = 0, failed = 0;
+function copy(value) { return json(sprintf('%J', value)); };
+function reset(value) {
+ metadata = {};
+ for (let path in ['/', '/etc', '/etc/apk'])
+  metadata[path] = { type: 'directory', uid: 0, mode: 0o755, inode: 1, nlink: 1, size: 0, mtime: 10 };
+ body = value; reads = []; commands = []; replace_after_read = false;
+ metadata[ARCH] = { type: 'file', uid: 0, gid: 0, mode: 0o644, inode: 2, nlink: 1, size: length(body), mtime: 10 };
+};
+let fs = {
+ lstat: path => metadata[path] ? copy(metadata[path]) : null,
+ dirname: path => path == '/' ? '/' : replace(path, /\/[^/]+$/, '') || '/',
+ readfile: (path, maximum) => {
+  if (path != ARCH) die('unexpected_architecture_file_read');
+  push(reads, path);
+  if (replace_after_read) metadata[ARCH].inode++;
+  return substr(body, 0, maximum);
+ }
+};
+function capture(argv, maximum, timeout) {
+ push(commands, argv);
+ die('native_architecture_command_forbidden');
+};
+/* ACTUAL_PUBLIC_FILE */
+/* ACTUAL_ARCHITECTURE */
+function equal(a, b) { if (sprintf('%J', a) != sprintf('%J', b)) die('architecture_assertion'); };
+function accepts(value) {
+ equal(architecture(), value); equal(reads, [ARCH]); equal(commands, []);
+};
+function refuses(expected) {
+ let error = null;
+ try { architecture(); } catch (caught) { error = type(caught) == 'string' ? caught : caught.message; }
+ equal(error, expected); equal(commands, []);
+};
+function test(name, fn) {
+ reset('x86_64\n');
+ try { fn(); passed++; print('ok ', name, '\n'); }
+ catch (error) { failed++; print('not ok ', name, ': ', sprintf('%J', error), '\n'); }
+};
+for (let arch in ['x86_64', 'aarch64_generic', 'aarch64_cortex-a53']) test('APK file architecture ' + arch, () => {
+ body = arch + '\n'; metadata[ARCH].size = length(body); accepts(arch);
+});
+test('the 128-byte public read boundary is accepted', () => {
+ body = sprintf('%-128s', 'x86_64'); metadata[ARCH].size = length(body); accepts('x86_64');
+});
+test('unknown architecture is refused', () => {
+ body = 'arm_cortex-a7\n'; metadata[ARCH].size = length(body); refuses('engine_unsupported_target');
+});
+test('empty architecture has no compiled or PATH fallback', () => {
+ body = ''; metadata[ARCH].size = 0; refuses('engine_unsupported_target');
+});
+test('multiple architecture lines do not select the first entry', () => {
+ body = 'x86_64\naarch64_generic\n'; metadata[ARCH].size = length(body); refuses('engine_unsupported_target');
+});
+test('missing architecture file is refused', () => {
+ delete metadata[ARCH]; refuses('engine_package_verification_failed');
+});
+test('symlink architecture file is refused', () => {
+ metadata[ARCH].type = 'link'; refuses('engine_package_verification_failed');
+});
+test('hardlinked architecture file keeps generic strict admission', () => {
+ metadata[ARCH].nlink = 2; refuses('engine_package_verification_failed');
+});
+test('foreign owner is refused', () => {
+ metadata[ARCH].uid = 1000; refuses('engine_package_verification_failed');
+});
+test('writable architecture file is refused', () => {
+ metadata[ARCH].mode = 0o664; refuses('engine_package_verification_failed');
+});
+test('writable parent is refused', () => {
+ metadata['/etc/apk'].mode = 0o775; refuses('engine_package_verification_failed');
+});
+test('oversized architecture file is refused', () => {
+ body = sprintf('%0129d', 1); metadata[ARCH].size = length(body); refuses('engine_package_verification_failed');
+});
+test('replacement during public read is refused', () => {
+ replace_after_read = true; refuses('engine_package_verification_failed');
+});
+print('Registry architecture cases: ', passed, ' passed, ', failed, ' failed\n');
+exit(failed ? 1 : 0);

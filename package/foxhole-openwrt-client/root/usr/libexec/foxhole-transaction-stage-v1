@@ -1,0 +1,18 @@
+#!/bin/sh
+set -eu
+umask 077
+[ "$#" = 2 ] || exit 1
+printf '%s\n' "$1" | grep -Eq '^/etc/foxhole/update-cache/[a-f0-9]{64}$' || exit 1
+printf '%s\n' "$2" | grep -Eq '^/tmp/foxhole/transaction-tools/[a-f0-9]{64}/transaction$' || exit 1
+ucode -e 'import * as fs from "fs";for(let p in ARGV){let d=fs.lstat(fs.dirname(p));if(d?.type!="directory"||d.uid!=0||(d.mode&0o7777)!=0o700)exit(1);}let s=fs.lstat(ARGV[0]);if(s?.type!="file"||s.uid!=0||s.nlink!=1||(s.mode&0o7777)!=0o600||s.size<1||s.size>8388608||fs.lstat(ARGV[1]))exit(1);' -- "$1" "$2"
+folder=${2%/transaction}
+expected=${folder##*/}
+temporary=$(mktemp -d "$folder/stage-XXXXXXXX")
+trap 'rm -rf -- "$temporary"' EXIT
+(ulimit -f 32768; set -C; /bin/gzip -dc "$1" > "$temporary/executable") || exit 1
+ucode -e 'import * as fs from "fs";let s=fs.lstat(ARGV[0]);if(s?.type!="file"||s.uid!=0||s.nlink!=1||(s.mode&0o7777)!=0o600||s.size<64||s.size>16777216)exit(1);' -- "$temporary/executable"
+actual=$(/usr/bin/sha256sum "$temporary/executable")
+[ "${actual%% *}" = "$expected" ] || exit 1
+chmod 700 "$temporary/executable"
+ln "$temporary/executable" "$2"
+rm "$temporary/executable"

@@ -1,48 +1,82 @@
-name: verify
+# This checks source metadata only. Full tests and builds run in Git LAN / the lab.
+name: source-checks
 
 on:
-  workflow_dispatch:
-  pull_request:
-    branches: [main, dev]
   push:
-    branches: [main, dev]
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: verify-${{ github.ref }}
-  cancel-in-progress: false
+  group: source-checks-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  public-check:
+  source-checks:
+    name: source syntax and metadata only
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Checkout source without build dependencies
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - name: Validate source syntax and pinned metadata
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import ast, json, pathlib, subprocess, tomllib
+          import xml.etree.ElementTree as ET
+          root = pathlib.Path('.')
+          paths = subprocess.check_output(['git', 'ls-files', '-z'], text=True).split('\0')
+          checked = 0
+          for name in filter(None, paths):
+              p = root / name
+              if not p.is_file():
+                  continue
+              if name.startswith(('scripts/', 'tools/')) and p.suffix == '.py':
+                  ast.parse(p.read_text(), filename=name)
+                  checked += 1
+              elif name.startswith(('config/', 'metadata/')) and p.suffix == '.json':
+                  json.loads(p.read_text())
+                  checked += 1
+              elif name in ('Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', 'gradle/libs.versions.toml', 'package-lock.json', 'package.json'):
+                  if p.suffix == '.json':
+                      json.loads(p.read_text())
+                  else:
+                      tomllib.loads(p.read_text())
+                  checked += 1
+          assert checked, 'No source metadata was checked'
+          print(f'Source syntax and metadata checked: {checked} files; no build or test qualification.')
+          PY
+      - name: Check shell syntax
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import pathlib, subprocess
+          for raw in subprocess.check_output(['git', 'ls-files', '-z'], text=True).split('\0'):
+              p = pathlib.Path(raw)
+              if not raw or not p.is_file() or not (raw.startswith(('scripts/', 'tools/')) or raw in ('gradlew', 'install.sh')):
+                  continue
+              first = p.open('rb').readline()
+              if first.startswith(b'#!') and b'bash' in first:
+                  subprocess.run(['bash', '-n', raw], check=True)
+              elif first.startswith(b'#!/bin/sh') or raw == 'gradlew':
+                  subprocess.run(['sh', '-n', raw], check=True)
+          PY
+      - name: Setup JavaScript syntax checker
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22.16.0
-          cache: npm
-      - run: npm ci --ignore-scripts
-      - name: Install pinned secret scanner
+      - name: Check JavaScript module syntax
+        shell: bash
         run: |
-          go install github.com/zricethezav/gitleaks/v8@v8.30.1
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-      - name: Source, documentation, regression tests and public export
-        run: npm run check
-      - name: Installer regression tests
-        run: npm run test:installer
-      - name: Reproducible source archive
-        run: npm run build:source
-      - name: Installer shell syntax
-        run: sh -n install.sh
-      - name: Working tree integrity
-        run: git diff --exit-code
-
-  apk-candidate:
-    needs: public-check
-    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
-    uses: ./.github/workflows/build-apk.yml
+          git ls-files -z 'tools/*.mjs' 'tests/*.mjs' | xargs -0 -r -n 1 node --check
+      - name: Record verification scope
+        shell: bash
+        run: |
+          printf '%s\n' 'Source syntax and metadata only. Full tests, dependency/publisher verification, native builds, APKs and emulators require the Git LAN / lab record for the exact source and inputs. This result does not qualify a release.' >> "$GITHUB_STEP_SUMMARY"

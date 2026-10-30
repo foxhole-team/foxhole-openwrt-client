@@ -1,0 +1,56 @@
+#!/bin/sh
+set -eu
+umask 077
+# Runtime policy is installed before this launcher is reached.
+slot=${0%/foxcore-cli}
+case "$slot" in /usr/libexec/foxhole/engines/*) ;; *) exit 1 ;; esac
+metadata=$(ucode -e '
+ import * as fs from "fs";
+ import * as registry from "/usr/share/foxhole/engine-registry.uc";
+ let path=ARGV[0],info=fs.lstat(path+"/slot.json");
+ if(info?.type!="file"||info.uid!=0||info.nlink!=1||(info.mode&022))exit(1);
+ let value=json(fs.readfile(path+"/slot.json",32768));
+ if(value.storage!="RAM"||!match(value.id,/^[a-z0-9]+$/)||!match(value.binarySha256,/^[a-f0-9]{64}$/))exit(1);
+ print(value.id," ",value.binarySha256," ",value.binaryBytes," ",value.reserveBytes," ",value.version," ",value.architecture);
+' -- "$slot") || exit 1
+set -- $metadata "$@"
+id=$1 digest=$2 bytes=$3 reserve=$4 version=$5 architecture=$6
+shift 6
+cache="/tmp/foxhole/engine-binaries/$id/$digest"
+ucode -e 'import * as store from "/usr/share/foxhole/private-store.uc";store.directory(ARGV[0]);' -- "$cache"
+valid() {
+ ucode -e '
+  import * as fs from "fs";
+  import * as registry from "/usr/share/foxhole/engine-registry.uc";
+  let p=ARGV[0],i=fs.lstat(p);
+  if(i?.type!="file"||i.uid!=0||i.nlink!=1||(i.mode&0777)!=0700||i.size!=+ARGV[2])exit(1);
+  exit(registry.hash_file(p)==ARGV[1]?0:1);
+ ' -- "$cache/foxcore-cli" "$digest" "$bytes"
+}
+
+lock="$cache/download.lock"
+ucode -e '
+ import * as fs from "fs";
+ import * as store from "/usr/share/foxhole/private-store.uc";
+ store.target(ARGV[0]);let i=fs.lstat(ARGV[0]);if(i&&i.size!=0)exit(1);
+' -- "$lock"
+[ -e "$lock" ] || (set -C; : > "$lock")
+(
+ flock -x 9
+ valid && exit 0
+ available=$(awk '/MemAvailable:/ {print $2}' /proc/meminfo)
+ case "$available" in ''|*[!0-9]*) exit 1 ;; esac
+ [ "$((available * 1024))" -ge "$((bytes + reserve))" ] || exit 1
+ [ ! -e "$cache/foxcore-cli" ] && [ ! -L "$cache/foxcore-cli" ] || exit 1
+ partial=$(mktemp "$cache/download.XXXXXX")
+ trap 'rm -f "$partial"' EXIT HUP INT TERM
+ ulimit -f "$(( (bytes + 511) / 512 ))"
+ url="https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v$version/engine-$id-$architecture-$digest.bin"
+ uclient-fetch -T 120 -O "$partial" "$url" >/dev/null 2>&1
+ [ "$(wc -c < "$partial")" -eq "$bytes" ]
+ printf '%s  %s\n' "$digest" "$partial" | sha256sum -c - >/dev/null 2>&1
+ chmod 700 "$partial"
+ ln -T "$partial" "$cache/foxcore-cli"
+ rm -f "$partial"
+) 9<>"$lock"
+exec "$cache/foxcore-cli" "$@"

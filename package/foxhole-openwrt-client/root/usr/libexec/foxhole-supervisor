@@ -4,6 +4,9 @@ controller='/usr/libexec/foxhole-runtime'
 config='/tmp/foxhole/hysteria.json'
 tun='/sys/class/net/foxhole0'
 child=''
+bridge=''
+engine='hysteria'
+core_binary='/usr/bin/foxcore-cli'
 reason='tunnel_start_failed'
 stopping=0
 
@@ -11,10 +14,15 @@ stop_runtime() {
 	stopping=1
 	reason='runtime_stopped'
 	[ -z "$child" ] || kill "$child" 2>/dev/null
+	[ -z "$bridge" ] || kill "$bridge" 2>/dev/null
 }
 
 finish_runtime() {
 	trap - EXIT TERM INT
+	if [ -n "$bridge" ]; then
+		kill "$bridge" 2>/dev/null
+		wait "$bridge" 2>/dev/null
+	fi
 	if [ -n "$child" ]; then
 		kill "$child" 2>/dev/null
 		wait "$child" 2>/dev/null
@@ -49,7 +57,16 @@ trap finish_runtime EXIT
 
 "$controller" prepare >/dev/null 2>&1 || exit 1
 [ "$stopping" -eq 0 ] || exit 0
-/usr/bin/hysteria client -c "$config" >/dev/null 2>&1 &
+engine="$($controller engine)" || exit 1
+if [ "$engine" = core ]; then
+	core_binary="$($controller binary)" || exit 1
+	case "$core_binary" in /usr/bin/foxcore-cli|/usr/libexec/foxhole/engines/*/foxcore-cli) ;; *) exit 1 ;; esac
+	"$core_binary" run --config /tmp/foxhole/core.json \
+		--state /tmp/foxhole/core-state.json --interface foxhole0 \
+		>/dev/null 2>&1 &
+else
+	/usr/bin/hysteria client -c "$config" >/dev/null 2>&1 &
+fi
 child=$!
 
 ready=0
@@ -60,7 +77,9 @@ while [ "$attempt" -lt 20 ]; do
 		reason='tunnel_start_failed'
 		exit 1
 	fi
-	if [ -d "$tun" ]; then
+	if [ -d "$tun" ] && { [ "$engine" != core ] ||
+		"$core_binary" owner --state /tmp/foxhole/core-state.json \
+			--interface foxhole0 >/dev/null 2>&1; }; then
 		ready=1
 		break
 	fi
@@ -71,6 +90,10 @@ done
 if [ "$ready" -ne 1 ]; then
 	reason='tunnel_start_failed'
 	exit 1
+fi
+
+if [ "$engine" = core ]; then
+	"$controller" prepare-proof >/dev/null 2>&1 || exit 1
 fi
 
 ready=0
@@ -85,6 +108,7 @@ while [ "$attempt" -lt 10 ]; do
 		ready=1
 		break
 	fi
+	[ "$engine" != core ] || break
 	attempt=$((attempt + 1))
 	sleep 1
 done
@@ -97,6 +121,18 @@ fi
 if ! "$controller" apply connected >/dev/null 2>&1; then
 	reason='policy_apply_failed'
 	exit 1
+fi
+
+if [ "$engine" = core ]; then
+	"$core_binary" bridge --state /tmp/foxhole/core-state.json \
+		--auth /tmp/foxhole/bridge-auth.json --interface foxhole0 \
+		>/dev/null 2>&1 &
+	bridge=$!
+	sleep 1
+	if ! kill -0 "$bridge" 2>/dev/null; then
+		reason='tunnel_start_failed'
+		exit 1
+	fi
 fi
 
 wait "$child"

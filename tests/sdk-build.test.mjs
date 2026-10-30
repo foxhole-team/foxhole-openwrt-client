@@ -37,13 +37,24 @@ const mocks = {
     fi
     [ "$MOCK_BUILD_STATUS" = 0 ] || exit "$MOCK_BUILD_STATUS"
     mkdir -p bin/packages
-    touch bin/packages/hysteria-2.12.2-r2.apk
-    touch bin/packages/hysteria-ram-2.12.2-r1.apk
-    touch bin/packages/foxhole-openwrt-client-0.1.0-r41.apk
+    case "$*" in
+      *hysteria/compile*)
+        touch bin/packages/hysteria-2.12.2-r5.apk ;;
+      *hysteria-ram/compile*)
+        touch bin/packages/hysteria-ram-2.12.2-r2.apk ;;
+      *hysteria-server-ram/compile*)
+        touch bin/packages/hysteria-server-ram-2.12.2-r2.apk ;;
+      *foxcore-cli/compile*)
+        touch bin/packages/foxcore-cli-1.0.0-r1.apk ;;
+      *foxcore-cli-ram/compile*)
+        touch bin/packages/foxcore-cli-ram-1.0.0-r1.apk ;;
+      *foxhole-openwrt-client/compile*)
+        touch bin/packages/foxhole-openwrt-client-1.0.1-r1.apk ;;
+    esac
   `
 };
 
-async function fixture(t, buildStatus, cleanupFails = false) {
+async function fixture(t, buildStatus, cleanupFails = false, args = []) {
   const directory = await mkdtemp(join(tmpdir(), 'foxhole-sdk-test-'));
   t.after(async () => {
     spawnSync('/bin/chmod', ['-R', 'u+w', directory]);
@@ -62,7 +73,7 @@ exec /bin/chmod "$@"
 `, { mode: 0o755 });
   }
   const output = join(directory, 'output');
-  const result = spawnSync('/bin/sh', [join(root, 'tools/build-openwrt.sh'), output], {
+  const result = spawnSync('/bin/sh', [join(root, 'tools/build-openwrt.sh'), ...args, output], {
     cwd: root, encoding: 'utf8', timeout: 10000,
     env: { ...process.env, PATH: bin + ':' + process.env.PATH,
       MOCK_ROOT: directory, MOCK_BUILD_STATUS: String(buildStatus) }
@@ -75,10 +86,11 @@ test('SDK build exports APKs and removes read-only Go module directories', async
   const { directory, output, result } = await fixture(t, 0);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /Unsigned APK bundle:/);
-  for (const file of ['hysteria-2.12.2-r2.apk', 'hysteria-ram-2.12.2-r1.apk',
-    'foxhole-openwrt-client-0.1.0-r41.apk', 'sdk.config', 'feeds.buildinfo']) {
+  for (const file of ['hysteria-2.12.2-r5.apk',
+    'foxhole-openwrt-client-1.0.1-r1.apk', 'sdk.config', 'feeds.buildinfo']) {
     await readFile(join(output, file));
   }
+  await assert.rejects(readFile(join(output, 'hysteria-ram-2.12.2-r2.apk')), { code: 'ENOENT' });
   const config = await readFile(join(output, 'sdk.config'), 'utf8');
   assert.doesNotMatch(config, /CONFIG_ALL=y|CONFIG_PACKAGE_kmod-unrelated/);
   assert.match(config, /^CONFIG_PACKAGE_kmod-tun=m$/m);
@@ -98,3 +110,29 @@ for (const buildStatus of [0, 37]) {
     assert.equal(result.status, buildStatus || 1, result.stderr);
   });
 }
+
+test('Core SDK mode selects both exact RAM producers without legacy RAM', async t => {
+  const { output, result } = await fixture(t, 0, false, [
+    '--core-input', '/synthetic/core', '--core-source-sha256', 'a'.repeat(64),
+    '--core-download-url', 'https://example.invalid/core.bin', '--core-ram-reserve-bytes', '1048576',
+    '--server-input', '/synthetic/server', '--server-download-url', 'https://example.invalid/server.bin',
+    '--server-ram-reserve-bytes', '1048576', '--hy2'
+  ]);
+  assert.equal(result.status, 0, result.stderr);
+  const config = await readFile(join(output, 'sdk.config'), 'utf8');
+  assert.match(config, /^CONFIG_PACKAGE_foxcore-cli-ram=m$/m);
+  assert.match(config, /^CONFIG_PACKAGE_hysteria-server-ram=m$/m);
+  assert.doesNotMatch(config, /^CONFIG_PACKAGE_hysteria-ram=m$/m);
+  await readFile(join(output, 'foxcore-cli-ram-1.0.0-r1.apk'));
+  await readFile(join(output, 'hysteria-server-ram-2.12.2-r2.apk'));
+  await assert.rejects(readFile(join(output, 'hysteria-ram-2.12.2-r2.apk')), { code: 'ENOENT' });
+});
+
+test('Server RAM without a verified native producer fails before SDK setup', async t => {
+  const { directory, result } = await fixture(t, 0, false, [
+    '--server-download-url', 'https://example.invalid/server.bin', '--server-ram-reserve-bytes', '1048576'
+  ]);
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /verified native producer/);
+  await assert.rejects(readFile(join(directory, 'scratch')), { code: 'ENOENT' });
+});

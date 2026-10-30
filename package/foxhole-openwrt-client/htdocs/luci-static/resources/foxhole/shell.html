@@ -10,11 +10,11 @@
   <title>FoxHole OpenWRT Client</title>
   <base href="/luci-static/resources/foxhole/">
   <link rel="icon" href="./assets/foxhole.png" type="image/png">
-  <link rel="preload" href="./assets/foxhole.png?v=0.1.0-r41-ui1" as="image" type="image/png">
+  <link rel="preload" href="./assets/foxhole.png?v=1.0.0-r3-ui1" as="image" type="image/png">
   <link rel="preload" href="./assets/JetBrainsMono-Regular.ttf" as="font" type="font/ttf" crossorigin>
   <link rel="preload" href="./assets/JetBrainsMono-Medium.ttf" as="font" type="font/ttf" crossorigin>
   <link rel="preload" href="./assets/Tiny5-Regular.ttf" as="font" type="font/ttf" crossorigin>
-  <link rel="stylesheet" href="./app.css?v=0.1.0-r41-ui1">
+  <link rel="stylesheet" href="./app.css?v=1.0.0-r3-ui1">
 </head>
 <body>
   <svg class="svg-sprite" aria-hidden="true">
@@ -148,7 +148,7 @@
 
   <section id="pin-gate" class="pin-gate" data-view="pin" aria-labelledby="pin-prompt">
     <div class="pin-card">
-      <img class="pin-logo" src="./assets/foxhole.png?v=0.1.0-r41-ui1" width="512" height="512" alt="FoxHole OpenWRT Client">
+      <img class="pin-logo" src="./assets/foxhole.png?v=1.0.0-r3-ui1" width="512" height="512" alt="FoxHole OpenWRT Client">
       <strong class="pin-brand">FoxHole OpenWRT Client</strong>
       <p id="pin-prompt" class="muted pin-prompt" data-i18n="auth.pin_prompt"></p>
       <form id="pin-form" data-pin-form autocomplete="off">
@@ -172,7 +172,7 @@
   <div id="app-shell" class="app-shell" data-view="dashboard" hidden>
     <header id="topbar" class="topbar" data-topbar>
       <a class="brand" href="#dashboard" data-action="scroll-top" aria-label="FoxHole OpenWRT Client">
-        <img src="./assets/foxhole.png?v=0.1.0-r41-ui1" width="512" height="512" alt="">
+        <img src="./assets/foxhole.png?v=1.0.0-r3-ui1" width="512" height="512" alt="">
         <span>FoxHole OpenWRT Client</span>
       </a>
       <nav class="topbar-actions" data-i18n-aria-label="nav.primary">
@@ -487,6 +487,17 @@
     </div>
   </template>
 
+  <template id="tpl-updates" data-template="updates">
+    <div class="modal-panel" data-modal-view="updates" data-title-key="updates.title">
+      <div class="settings-list" data-update-detail aria-live="polite"></div>
+    </div>
+  </template>
+  <template id="tpl-update-plan" data-template="update-plan">
+    <div class="modal-panel" data-modal-view="update-plan" data-title-key="updates.confirm_title">
+      <div class="engine-plan" data-update-plan></div>
+    </div>
+  </template>
+
   <template id="tpl-settings-home" data-template="settings-home">
     <div class="modal-panel" data-modal-view="settings-home" data-title-key="settings.title">
       <form id="settings-form" class="settings-list" data-settings-form>
@@ -540,6 +551,19 @@
           <svg class="row-chevron" aria-hidden="true"><use href="#icon-chevron"/></svg>
         </button>
 
+        <button class="setting-row is-link" type="button" data-action="open-updates">
+          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-download"/></svg></span>
+          <span class="setting-copy"><strong data-i18n="updates.title"></strong></span>
+          <small class="muted" data-update-summary></small>
+          <svg class="row-chevron" aria-hidden="true"><use href="#icon-chevron"/></svg>
+        </button>
+
+        <button class="setting-row is-link" type="button" data-action="open-engines">
+          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-network"/></svg></span>
+          <span class="setting-copy"><strong data-i18n="engines.title"></strong></span>
+          <svg class="row-chevron" aria-hidden="true"><use href="#icon-chevron"/></svg>
+        </button>
+
         <button class="setting-row is-link" type="button" data-action="open-interface-settings">
           <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-moon"/></svg></span>
           <span class="setting-copy"><strong data-i18n="settings.interface"></strong></span>
@@ -547,6 +571,28 @@
         </button>
 
       </form>
+    </div>
+  </template>
+
+  <template id="tpl-engines" data-template="engines">
+    <div class="modal-panel" data-modal-view="engines" data-title-key="engines.title">
+      <label class="setting-row"><span data-i18n="engines.storage"></span>
+        <select class="compact-select" data-engine-storage>
+          <option value="AUTO" data-i18n="engines.auto"></option>
+          <option value="FLASH">FLASH</option><option value="RAM">RAM</option>
+        </select>
+      </label>
+      <div class="settings-list" data-engine-list></div>
+    </div>
+  </template>
+  <template id="tpl-engine-plan" data-template="engine-plan">
+    <div class="modal-panel" data-modal-view="engine-plan" data-title-key="engines.confirm_title">
+      <div data-engine-plan></div>
+    </div>
+  </template>
+  <template id="tpl-engine-progress" data-template="engine-progress">
+    <div class="modal-panel" data-modal-view="engine-progress" data-title-key="engines.progress">
+      <div data-engine-progress aria-live="polite"></div>
     </div>
   </template>
 
@@ -558,8 +604,13 @@
           <span class="setting-copy"><strong data-i18n="settings.language"></strong></span>
           <span class="setting-picker" data-setting-picker data-popup>
             <select id="language-select" name="language" data-language hidden>
-              <option value="ru" data-i18n="language.ru"></option>
               <option value="en" data-i18n="language.en"></option>
+              <option value="ru" data-i18n="language.ru"></option>
+              <option value="de" data-i18n="language.de"></option>
+              <option value="fr" data-i18n="language.fr"></option>
+              <option value="es" data-i18n="language.es"></option>
+              <option value="ja" data-i18n="language.ja"></option>
+              <option value="zh" data-i18n="language.zh"></option>
             </select>
             <button class="setting-picker-trigger" type="button" data-action="toggle-popup" data-popup-trigger aria-expanded="false" data-i18n-aria-label="settings.language">
               <img class="select-flag" data-language-flag src="./assets/flags/ru.svg" width="16" height="12" alt="">
@@ -567,8 +618,13 @@
               <svg aria-hidden="true"><use href="#icon-chevron"/></svg>
             </button>
             <span class="setting-picker-menu" role="listbox" data-setting-menu data-popup-menu hidden>
-              <button type="button" role="option" data-action="select-setting-option" data-value="ru" aria-selected="true"><img class="select-flag" src="./assets/flags/ru.svg" width="16" height="12" alt=""><span data-i18n="language.ru"></span></button>
               <button type="button" role="option" data-action="select-setting-option" data-value="en" aria-selected="false"><img class="select-flag" src="./assets/flags/gb.svg" width="16" height="12" alt=""><span data-i18n="language.en"></span></button>
+              <button type="button" role="option" data-action="select-setting-option" data-value="ru" aria-selected="true"><img class="select-flag" src="./assets/flags/ru.svg" width="16" height="12" alt=""><span data-i18n="language.ru"></span></button>
+              <button type="button" role="option" data-action="select-setting-option" data-value="de" aria-selected="false"><img class="select-flag" src="./assets/flags/de.svg" width="16" height="12" alt=""><span data-i18n="language.de"></span></button>
+              <button type="button" role="option" data-action="select-setting-option" data-value="fr" aria-selected="false"><img class="select-flag" src="./assets/flags/fr.svg" width="16" height="12" alt=""><span data-i18n="language.fr"></span></button>
+              <button type="button" role="option" data-action="select-setting-option" data-value="es" aria-selected="false"><img class="select-flag" src="./assets/flags/es.svg" width="16" height="12" alt=""><span data-i18n="language.es"></span></button>
+              <button type="button" role="option" data-action="select-setting-option" data-value="ja" aria-selected="false"><img class="select-flag" src="./assets/flags/jp.svg" width="16" height="12" alt=""><span data-i18n="language.ja"></span></button>
+              <button type="button" role="option" data-action="select-setting-option" data-value="zh" aria-selected="false"><img class="select-flag" src="./assets/flags/cn.svg" width="16" height="12" alt=""><span data-i18n="language.zh"></span></button>
             </span>
           </span>
         </div>
@@ -823,6 +879,14 @@
     <div class="modal-panel" data-modal-view="pin-change" data-title-key="pin_change.title">
       <form id="pin-change-form" class="form-stack" data-pin-change-form autocomplete="off">
         <p class="muted" data-pin-setup-copy data-i18n="pin_setup.description" hidden></p>
+        <details data-license-setup hidden>
+          <summary data-i18n="license.title"></summary>
+          <p class="license-agreement-body" data-i18n="license.body"></p>
+        </details>
+        <label class="setting-row" data-license-setup hidden>
+          <span data-i18n="license.accept"></span>
+          <span class="switch"><input type="checkbox" data-license-accept><i aria-hidden="true"></i></span>
+        </label>
         <label for="new-pin" data-i18n="pin_change.new_pin"></label>
         <input id="new-pin" class="text-input" name="newPin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="new-password" data-new-pin required>
         <label for="repeat-pin" data-i18n="pin_change.repeat_pin"></label>
@@ -904,6 +968,6 @@
     </div>
   </template>
 
-  <script src="./app.js?v=0.1.0-r41-ui1" type="module"></script>
+  <script src="./app.js?v=1.0.0-r3-ui1" type="module"></script>
 </body>
 </html>

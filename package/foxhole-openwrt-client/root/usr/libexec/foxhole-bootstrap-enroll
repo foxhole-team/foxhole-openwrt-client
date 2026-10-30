@@ -1,0 +1,65 @@
+#!/usr/bin/ucode
+
+'use strict';
+
+import * as fs from 'fs';
+import * as digest from 'digest';
+import * as uci from 'uci';
+import * as store from '/usr/share/foxhole/private-store.uc';
+
+if (fs.stat('/proc/self')?.uid != 0 || length(ARGV)) die('Root enrollment required\n');
+store.directory('/etc/foxhole');
+const lock_path = '/etc/foxhole/state.lock';
+store.target(lock_path);
+let handle = fs.open(lock_path, 'a+', 0o600);
+if (!handle || !handle.lock('x') || !store.file_metadata(fs.lstat(lock_path)))
+ die('Private enrollment lock unavailable\n');
+let result = null;
+try {
+ let raw = store.read('/etc/foxhole/auth.json', 4096);
+ let auth = raw == null ? null : json(raw);
+ if (auth != null && (auth.schema != 1 || type(auth.changed) != 'bool' ||
+     !match(auth.salt || '', /^[a-f0-9]{32}$/) || !match(auth.hash || '', /^[a-f0-9]{64}$/)))
+  die('Existing authentication record is invalid\n');
+ if (auth?.changed == true) {
+  result = { schema: 1, status: 'already_configured', bootstrapPin: null, expiresInSeconds: 0 };
+ } else {
+  let paired_raw = store.read('/etc/foxhole/pairing.json', 32768);
+  if (paired_raw != null) {
+   let paired = json(paired_raw);
+   if (paired.schema != 1 || type(paired.devices) != 'array' || length(paired.devices))
+    die('Existing pairing must be preserved\n');
+  }
+  let pin = null;
+  for (let attempt = 0; attempt < 32 && pin == null; attempt++) {
+   let random = fs.readfile('/dev/urandom', 2);
+   if (length(random || '') != 2) die('Enrollment entropy unavailable\n');
+   let value = ord(substr(random, 0, 1)) * 256 + ord(substr(random, 1, 1));
+   if (value < 60000) pin = sprintf('%04d', value % 10000);
+  }
+  if (pin == null) die('Enrollment entropy unavailable\n');
+  let random = fs.readfile('/dev/urandom', 16);
+  if (length(random || '') != 16) die('Enrollment entropy unavailable\n');
+  let uptime = fs.readfile('/proc/uptime', 256);
+  let boot = trim(fs.readfile('/proc/sys/kernel/random/boot_id', 128) || '');
+  if (!match(uptime || '', /^[0-9]+\.[0-9]+ /) || !match(boot, /^[a-f0-9-]{36}$/))
+   die('Enrollment monotonic clock unavailable\n');
+  let salt = hexenc(random), expires = int(+split(uptime, ' ')[0] * 1000) + 300000;
+  store.write('/etc/foxhole/auth.json', sprintf('%J', { schema: 1, salt,
+   hash: digest.sha256(salt + ':' + pin), changed: false,
+   bootstrapExpiresUptimeMs: expires, bootstrapBootId: boot, bootstrapConsumed: false }));
+  let cursor = uci.cursor();
+  cursor.delete('foxhole', 'panel', 'bootstrap_pin');
+  cursor.commit('foxhole'); cursor.unload();
+  result = { schema: 1, status: 'fresh', bootstrapPin: pin, expiresInSeconds: 300 };
+ }
+ handle.lock('u'); handle.close(); handle = null;
+ if (result.status == 'fresh') {
+  let restart = fs.popen('/etc/init.d/rpcd restart >/dev/null 2>&1', 'r');
+  if (!restart || restart.close() != 0) die('Enrollment session reset failed\n');
+ }
+ printf('%J\n', result);
+} catch (_) {
+ if (handle) { handle.lock('u'); handle.close(); }
+ die('Enrollment failed; existing PIN and paired clients preserved\n');
+}

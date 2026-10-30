@@ -1,0 +1,50 @@
+#!/bin/sh
+set -eu
+umask 077
+
+file_info() {
+ ucode -e '
+  import * as fs from "fs";
+  let info = fs.lstat(ARGV[1]);
+  if (!info) exit(1);
+  let mode = sprintf("%o", info.mode & 07777);
+  switch (ARGV[0]) {
+   case "%u": print(info.uid); break;
+   case "%u:%a": print(info.uid + ":" + mode); break;
+   case "%u:%a:%h": print(info.uid + ":" + mode + ":" + info.nlink); break;
+   case "%u:%a:%h:%s": print(info.uid + ":" + mode + ":" + info.nlink + ":" + info.size); break;
+   case "%F:%u:%a": print(info.type + ":" + info.uid + ":" + mode); break;
+   default: exit(1);
+  }
+ ' -- "$1" "$2"
+}
+
+[ "$#" = 2 ] || exit 1
+code=$1
+path=$2
+case "$code" in [a-z][a-z]) ;; *) exit 1 ;; esac
+[ "$path" = "/tmp/foxhole/countries/$code.json.new" ] || exit 1
+directory=/tmp/foxhole/countries
+[ ! -L /tmp/foxhole ] && [ "$(file_info '%u:%a' /tmp/foxhole)" = 0:700 ] || exit 1
+[ ! -L "$directory" ] && [ "$(file_info '%u:%a' "$directory")" = 0:700 ] || exit 1
+[ ! -e "$path" ] && [ ! -L "$path" ] || exit 1
+stage=$(mktemp -d "$directory/.download.XXXXXX")
+download=''
+cleanup() {
+ if [ -n "$download" ]; then kill "$download" 2>/dev/null || true; wait "$download" 2>/dev/null || true; fi
+ rm -rf "$stage"
+}
+trap cleanup EXIT HUP INT TERM
+mkfifo -m 600 "$stage/stream"
+url="https://raw.githubusercontent.com/ipverse/country-ip-blocks/master/country/$code/aggregated.json"
+uclient-fetch -q -Y off -T 12 -O "$stage/stream" "$url" &
+download=$!
+head -c 16777217 < "$stage/stream" > "$stage/data"
+set +e
+wait "$download"
+status=$?
+download=''
+set -e
+bytes=$(wc -c < "$stage/data")
+[ "$status" = 0 ] && [ "$bytes" -ge 2 ] && [ "$bytes" -le 16777216 ] || exit 1
+ln -T "$stage/data" "$path"

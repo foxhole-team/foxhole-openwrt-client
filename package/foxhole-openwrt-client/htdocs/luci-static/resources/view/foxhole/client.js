@@ -3,13 +3,23 @@
 'require view';
 
 const parameters = {
+	'updates.status': ['token'],
+	'updates.check': ['token', 'expectedRevision'],
+	'updates.plan': ['token', 'expectedRevision'],
+	'updates.apply': ['token', 'planId', 'planSha256', 'expectedRevision', 'confirmed'],
+	'updates.job': ['token', 'jobId'],
+	'updates.settings': ['token', 'expectedRevision', 'autoUpdateEnabled'],
+	'engines.status': ['token'],
+	'engines.plan': ['token', 'operation', 'engineIds', 'storage', 'expectedRevision', 'catalogSha256'],
+	'engines.apply': ['token', 'planId', 'planSha256', 'expectedRevision', 'confirmed'],
+	'engines.job': ['token', 'jobId'],
 	unlock: ['pin'],
 	lock: ['token'],
 	state: ['token'],
 	telemetry: ['token'],
 	settings: ['token', 'revision', 'settings', 'countries', 'devices', 'sites'],
-	'server.test': ['token', 'config'],
-	'server.save': ['token', 'revision', 'config', 'id', 'name'],
+	'server.test': ['token', 'config', 'engine'],
+	'server.save': ['token', 'revision', 'config', 'id', 'name', 'engine', 'subscription'],
 	'server.get': ['token', 'id'],
 	'server.start': ['token', 'revision', 'id'],
 	'server.stop': ['token', 'revision'],
@@ -19,7 +29,7 @@ const parameters = {
 	'client.access': ['token', 'revision', 'id', 'allowLan'],
 	'client.get': ['token', 'id'],
 	'client.delete': ['token', 'revision', 'id'],
-	'pin.change': ['token', 'newPin'],
+	'pin.change': ['token', 'newPin', 'licenseAccepted', 'licenseVersion'],
 	'device.resolve': ['token', 'address'],
 	'device.list': ['token']
 };

@@ -1,0 +1,8 @@
+#!/usr/bin/ucode
+'use strict';
+import * as service from '/usr/share/foxhole/update-service.uc';
+if(length(ARGV)!=1)exit(1);
+if(ARGV[0]=='hooks')exit(service.hooks_deferred()?0:1);
+if(ARGV[0]=='tick'){try{service.tick();exit(0);}catch(_){exit(1);}}
+if(!match(ARGV[0]||'',/^update-job-[a-f0-9]{32}$/))exit(1);
+try{service.run(ARGV[0]);}catch(_){exit(1);}

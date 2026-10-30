@@ -1,0 +1,35 @@
+#!/bin/sh
+set -eu
+umask 077
+
+file_info() {
+ ucode -e '
+  import * as fs from "fs";
+  let info = fs.lstat(ARGV[1]);
+  if (!info) exit(1);
+  let mode = sprintf("%o", info.mode & 07777);
+  switch (ARGV[0]) {
+   case "%u": print(info.uid); break;
+   case "%u:%a": print(info.uid + ":" + mode); break;
+   case "%u:%a:%h": print(info.uid + ":" + mode + ":" + info.nlink); break;
+   case "%u:%a:%h:%s": print(info.uid + ":" + mode + ":" + info.nlink + ":" + info.size); break;
+   case "%F:%u:%a": print(info.type + ":" + info.uid + ":" + mode); break;
+   default: exit(1);
+  }
+ ' -- "$1" "$2"
+}
+
+[ "$#" = 2 ] || exit 1
+host=$1
+output=$2
+[ "${#host}" -le 253 ] || exit 1
+case "$host" in ''|*[!A-Za-z0-9.-]*) exit 1 ;; esac
+case "$output" in /tmp/foxhole/resolve-[a-f0-9]*/output) ;; *) exit 1 ;; esac
+directory=${output%/output}
+[ ! -L /tmp/foxhole ] && [ "$(file_info '%u:%a' /tmp/foxhole)" = 0:700 ] || exit 1
+[ ! -L "$directory" ] && [ "$(file_info '%u:%a' "$directory")" = 0:700 ] || exit 1
+[ ! -e "$output" ] && [ ! -L "$output" ] || exit 1
+ulimit -f 16
+uclient-fetch -4 -q -Y off -T 4 -H 'accept: application/dns-json' \
+ -O "$output" "https://1.1.1.1/dns-query?name=$host&type=A" >/dev/null 2>&1
+[ "$(wc -c < "$output")" -le 8192 ] || exit 1

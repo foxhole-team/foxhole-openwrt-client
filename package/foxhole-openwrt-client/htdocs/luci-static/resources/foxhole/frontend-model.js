@@ -99,7 +99,7 @@ export function networkDeviceIcon(device) {
 export function normalizeSettings(value = {}) {
   const input = { ...defaultSettings, ...value };
   return {
-    language: input.language === 'en' ? 'en' : 'ru',
+    language: ['ru', 'en', 'ja', 'de', 'fr', 'es', 'zh'].includes(input.language) ? input.language : 'ru',
     standaloneAccess: input.standaloneAccess !== false,
     localScope: input.localScope === 'selected' ? 'selected' : 'all',
     localRules: input.localRules === true,

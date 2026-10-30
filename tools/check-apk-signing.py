@@ -30,7 +30,7 @@ def main():
         empty = root / 'empty'
         empty.mkdir()
         shutil.copyfile(public, trust / 'test.pem')
-        for name in signing.PACKAGES:
+        for name in signing.package_names(args.input):
             signed = root / 'signed' / name
             rejected = subprocess.run([args.apk, '--keys-dir', str(empty), 'verify', str(signed)],
                                       capture_output=True)

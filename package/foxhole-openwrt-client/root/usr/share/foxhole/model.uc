@@ -1,3 +1,5 @@
+import * as core_model from './core-model.uc';
+
 const COUNTRIES = split('AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW', ' ');
 
 export function fail(code) {
@@ -291,7 +293,8 @@ export function public_state(state, runtime) {
 		servers: map(state.servers, server => ({
 			id: server.id, name: server.name,
 			endpoint: server.endpoint, state: 'saved',
-			protocol: 'hysteria2',
+			protocol: server.protocol || 'hysteria2',
+			...(server.engine == 'core' ? { engine: 'core' } : {}),
 			metrics: {
 				received: 0, sent: 0,
 				averageLatency: null, ping: null,
@@ -416,7 +419,7 @@ export function validate_settings(payload, resolve_mac) {
 	payload.countries ??= [];
 	payload.devices ??= [];
 	payload.sites ??= [];
-	if (index(['ru', 'en'], settings.language) < 0 ||
+	if (index(['ru', 'en', 'ja', 'de', 'fr', 'es', 'zh'], settings.language) < 0 ||
 	    index(['all', 'selected'], settings.localScope) < 0 ||
 	    index(['dark', 'light'], settings.theme) < 0)
 		fail('invalid_settings');
@@ -502,7 +505,17 @@ export function validate_state(state) {
 		    ids[server.id] || type(server.name) != 'string' ||
 		    type(server.endpoint) != 'string' || !server.config)
 			fail('storage_error');
-		parse_config(server.config);
+		if (server.engine == 'core') {
+			core_model.server(server);
+			core_model.portable(server.portableProfile, server.config);
+		}
+		else {
+			if (server.engine != null && server.engine != 'hysteria')
+				fail('storage_error');
+			parse_config(server.config);
+		}
+		if (server.subscription != null)
+			core_model.subscription(server.subscription);
 		ids[server.id] = true;
 	}
 	if (state.activeServerId != null && !ids[state.activeServerId])
@@ -529,6 +542,10 @@ export function validate_state(state) {
 export function policy_decision(state, flow) {
 	flow.country = type(flow.country) == 'string' ? uc(flow.country) : null;
 	if (flow.source == 'client') {
+		let active = filter(state.servers,
+			s => s.id == state.activeServerId)[0];
+		if (!flow.connected && state.settings.clientRules &&
+		    active?.engine == 'core') return 'block';
 		if (!flow.connected || !state.settings.clientRules) return 'direct';
 		for (let country in state.countries) {
 			let code = type(country) == 'string' ? country : country.code;

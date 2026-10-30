@@ -4,45 +4,102 @@ import * as digest from 'digest';
 import * as model from '/usr/share/foxhole/model.uc';
 import * as inbound from '/usr/share/foxhole/inbound.uc';
 import * as probe from '/usr/share/foxhole/probe.uc';
+import * as adapter from '/usr/share/foxhole/core-adapter.uc';
+import * as store from '/usr/share/foxhole/private-store.uc';
+import * as observation from '/usr/share/foxhole/client-observation.uc';
 
 const directory = '/tmp/foxhole/inbound';
-try { fs.mkdir('/tmp/foxhole', 0o700); } catch (_) {}
-try { fs.mkdir(directory, 0o700); } catch (_) {}
-let lock = fs.open('/tmp/foxhole/inbound.lock', 'a+');
-if (!lock?.lock('x')) exit(1);
-let base = probe.read_json('/etc/foxhole/inbound.json', 65536);
+store.directory(directory);
+store.directory('/tmp/foxhole/countries');
+store.target('/tmp/foxhole/inbound.lock');
+let lock = fs.open('/tmp/foxhole/inbound.lock', 'a+', 0o600);
+if (!lock?.lock('x') || !store.file_metadata(fs.lstat('/tmp/foxhole/inbound.lock'))) exit(1);
+let raw = store.read('/etc/foxhole/inbound.json', 65536);
+let base = raw ? json(raw) : null;
 if (!base) exit(0);
-let state = model.validate_state(probe.read_json('/etc/foxhole/state.json', 262144));
+let state = model.validate_state(json(store.read('/etc/foxhole/state.json', 262144)));
 let runtime = probe.runtime_snapshot()?.value;
 let connected = state.activeServerId != null && runtime?.connected &&
 	runtime.activeServerId == state.activeServerId &&
 	fs.stat('/sys/class/net/foxhole0') != null;
+let selected = filter(state.servers, s => s.id == state.activeServerId)[0];
+if (connected && selected?.engine == 'core') {
+	let owner = adapter.receipt('owner');
+	connected = owner?.owned == true && adapter.generation(owner) != null;
+	if (connected) {
+		let auth = json(store.read(adapter.auth_path, 4096));
+		if (auth?.listen != '127.0.0.1:17891' ||
+		    !match(auth.username || '', /^[a-f0-9]{64}$/) ||
+		    !match(auth.password || '', /^[a-f0-9]{64}$/))
+			die('tunnel_missing');
+		base.coreSocks = auth;
+	}
+}
 let clients = filter(state.clients, c => c.inbound == true);
 if (length(clients) > inbound.limit(base)) die('client_limit');
 let signature = digest.sha256(sprintf('%J', { base, clients,
 	connected, active: state.activeServerId,
 	rules: state.settings.clientRules, countries: state.countries,
 	servers: state.servers, day: int(time() / 86400) }));
-if (fs.readfile(directory + '/generation') == signature && ARGV[0] != 'force')
-	exit(0);
+function rebind_observations(state, signature, base, clients) {
+	let lock = null;
+	let rebind = () => {
+		if (store.read(directory + '/generation', 128) != signature) return false;
+		let record = json(store.read(directory + '/observations.json', 8192) || 'null');
+		let ids = inbound.shared(base) ? (length(clients) ? ['shared'] : []) : map(clients, c => c.id);
+		if (record?.schema != 1 || record.generation != signature || type(record.revision) != 'int' ||
+		    record.revision < 0 || record.revision > state.revision ||
+		    type(record.listeners) != 'array' || length(record.listeners) != length(ids)) return false;
+		for (let i = 0; i < length(ids); i++) {
+			let item = record.listeners[i], id = ids[i];
+			if (item?.id != id) return false;
+			let expected = observation.stats_config(id == 'shared' ? 0 : i + 1, item.secret);
+			let config = json(store.read(directory + '/' + id + '.json', 65536));
+			if (item.listen != expected.listen || config?.trafficStats?.listen != expected.listen ||
+			    config.trafficStats.secret != expected.secret) return false;
+			if (config.auth?.type != 'userpass' || type(config.auth.userpass) != 'object') return false;
+			let users = keys(config.auth.userpass);
+			if (length(users) != (id == 'shared' ? length(clients) : 1)) return false;
+			for (let user in users) {
+				let client = filter(clients, c => c.id == user)[0];
+				if (!client || (id != 'shared' && user != id) ||
+				    config.auth.userpass[user] != client.secret) return false;
+			}
+		}
+		store.target('/etc/foxhole/state.lock');
+		lock = fs.open('/etc/foxhole/state.lock', 'a+', 0o600);
+		if (!lock?.lock('x') || !store.file_metadata(fs.lstat('/etc/foxhole/state.lock'))) return false;
+		let latest = model.validate_state(json(store.read('/etc/foxhole/state.json', 262144)));
+		if (sprintf('%J', latest) != sprintf('%J', state)) return false;
+		record.revision = state.revision;
+		store.write(directory + '/observations.json', sprintf('%J', record));
+		return true;
+	};
+	let result = false;
+	try { result = rebind(); } catch (_) {}
+	if (lock) { try { lock.lock('u'); } catch (_) {} try { lock.close(); } catch (_) {} }
+	return result;
+};
+
+if (ARGV[0] != 'force' && rebind_observations(state, signature, base, clients)) exit(0);
 let prefixes = [];
 if (connected && state.settings.clientRules) {
 	for (let country in state.countries) {
 		let code = type(country) == 'string' ? country : country.code;
 		if (type(country) != 'string' && country.route != 'direct') continue;
 		if (!match(code, /^[A-Z]{2}$/)) die('invalid_country');
-		let path = directory + '/country-' + code + '.json';
-		let cached = fs.stat(path);
+		let path = '/tmp/foxhole/countries/' + lc(code) + '.json';
+		store.target(path);
+		let cached = fs.lstat(path);
 		if (!cached || time() - cached.mtime > 86400) {
-			let url = 'https://raw.githubusercontent.com/ipverse/' +
-				'country-ip-blocks/master/country/' + lc(code) + '/aggregated.json';
-			if (system(['uclient-fetch', '-4', '-q', '-T', '30', '-O',
-				path + '.new', url], 35000) != 0) die('country_fetch_failed');
-			let info = fs.stat(path + '.new');
-			if (!info || info.size > 16777216) die('country_data_too_large');
-			fs.rename(path + '.new', path);
+			store.target(path + '.new');
+			if (fs.lstat(path + '.new')) fs.unlink(path + '.new');
+			if (system(['/usr/libexec/foxhole-country-fetch', lc(code), path + '.new'], 15000) != 0)
+				die('country_fetch_failed');
+			store.read(path + '.new', 16777216);
+			if (!fs.rename(path + '.new', path)) die('storage_error');
 		}
-		let data = probe.read_json(path, 16777216);
+		let data = json(store.read(path, 16777216));
 		if (data?.countryCode != code) die('country_data_invalid');
 		for (let family in ['ipv4', 'ipv6']) {
 			if (type(data?.prefixes?.[family]) != 'array') die('country_data_invalid');
@@ -53,37 +110,54 @@ if (connected && state.settings.clientRules) {
 		}
 	}
 }
-let ports = [];
+// State updates cannot race publication of old credentials.
+store.target('/etc/foxhole/state.lock');
+let stateLock = fs.open('/etc/foxhole/state.lock', 'a+', 0o600);
+if (!stateLock?.lock('x') || !store.file_metadata(fs.lstat('/etc/foxhole/state.lock')))
+	die('storage_error');
+let latest = model.validate_state(json(store.read('/etc/foxhole/state.json', 262144)));
+if (sprintf('%J', latest) != sprintf('%J', state)) die('state_changed');
+let ports = [], observations = [];
 let listeners = inbound.shared(base) ?
 	(length(clients) ? ['shared'] : []) : map(clients, c => c.id);
-for (let id in listeners) {
+for (let i = 0; i < length(listeners); i++) {
+	let id = listeners[i];
 	let client = filter(clients, c => c.id == id)[0];
+	let random = fs.readfile('/dev/urandom', 32);
+	if (length(random || '') != 32) die('storage_error');
+	let stats = observation.stats_config(id == 'shared' ? 0 : i + 1, hexenc(random));
+	push(observations, { id, ...stats });
 	let value = id == 'shared' ?
-		inbound.shared_config(base, state, clients, connected, prefixes) :
-		inbound.config(base, state, client, connected, prefixes);
+		inbound.shared_config(base, state, clients, connected, prefixes, stats) :
+		inbound.config(base, state, client, connected, prefixes, stats);
 	let path = directory + '/' + id + '.json';
-	fs.writefile(path + '.new', sprintf('%J', value));
-	fs.chmod(path + '.new', 0o600);
-	fs.rename(path + '.new', path);
+	store.write(path, sprintf('%J', value));
 	push(ports, id == 'shared' ? 443 : client.port);
 }
 let entries = length(ports) ? ' elements = { ' + join(', ', ports) + ' };' : '';
 let set = 'set foxhole_inbound_ports { type inet_service;' + entries + ' }\n';
 let setPath = '/etc/nftables.d/31-foxhole-inbound.nft';
+let parentInfo = fs.lstat('/etc/nftables.d');
+if (parentInfo?.type != 'directory' || parentInfo.uid != 0 ||
+    (parentInfo.mode & 0o022) != 0) die('storage_error');
+let setInfo = fs.lstat(setPath);
+if (setInfo && (setInfo.type != 'file' || setInfo.uid != 0 ||
+    setInfo.nlink != 1 || (setInfo.mode & 0o022) != 0)) die('storage_error');
 if (fs.readfile(setPath) != set) {
-	fs.writefile(setPath + '.new', set);
-	fs.chmod(setPath + '.new', 0o644);
-	fs.rename(setPath + '.new', setPath);
+	let temporary = setPath + '.new-' + hexenc(fs.readfile('/dev/urandom', 12));
+	let output = fs.open(temporary, 'wxe', 0o644);
+	if (!output || output.write(set) != length(set) || !output.flush()) die('storage_error');
+	output.close();
+	if (!fs.rename(temporary, setPath)) die('storage_error');
 }
 // fw4 preserves named sets; replacement must explicitly flush.
 let batch = 'flush set inet fw4 foxhole_inbound_ports\n';
 if (length(ports)) batch += 'add element inet fw4 foxhole_inbound_ports { ' +
 	join(', ', ports) + ' }\n';
-fs.writefile(directory + '/ports.nft', batch);
+store.write(directory + '/ports.nft', batch);
 if (system(['/usr/sbin/nft', '-f', directory + '/ports.nft'], 5000) != 0)
 	die('firewall_failed');
-fs.writefile(directory + '/clients', join('\n', listeners) + '\n');
-fs.chmod(directory + '/clients', 0o600);
+store.write(directory + '/clients', join('\n', listeners) + '\n');
 for (let name in fs.lsdir(directory) || []) {
 	if (match(name, /^(client-[a-f0-9]{12}|shared)\.json$/) &&
 	    !length(filter(listeners, id => id + '.json' == name)))
@@ -91,8 +165,11 @@ for (let name in fs.lsdir(directory) || []) {
 }
 if (system(['/etc/init.d/foxhole-inbound-services', 'restart'], 15000) != 0)
 	die('inbound_start_failed');
-fs.writefile(directory + '/generation', signature);
-fs.writefile(directory + '/status.json', sprintf('%J', {
+store.write(directory + '/generation', signature);
+store.write(directory + '/observations.json', sprintf('%J', {
+	schema: 1, generation: signature, revision: state.revision, listeners: observations
+}));
+store.write(directory + '/status.json', sprintf('%J', {
 	viaVpn: connected && state.settings.clientRules,
 	ports, updated: time()
 }));

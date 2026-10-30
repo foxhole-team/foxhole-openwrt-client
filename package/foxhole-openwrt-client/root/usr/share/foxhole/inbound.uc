@@ -1,4 +1,5 @@
 import * as model from './model.uc';
+import * as observation from './client-observation.uc';
 
 const PRIVATE = [
 	'0.0.0.0/8', '10.0.0.0/8', '100.64.0.0/10', '127.0.0.0/8',
@@ -11,7 +12,7 @@ export function shared(base) { return base.listenerMode != 'per-client'; };
 
 export function limit(base) { return shared(base) ? 32 : 4; };
 
-export function config(base, state, client, connected, prefixes) {
+export function config(base, state, client, connected, prefixes, stats) {
 	if (client.inbound != true ||
 	    !match(client.secret || '', /^[a-f0-9]{64}$/) ||
 	    type(client.port) != 'int' || client.port < 1 || client.port > 65535)
@@ -22,11 +23,15 @@ export function config(base, state, client, connected, prefixes) {
 			push(rules, 'direct(' + model.normalize_address(address) + ')');
 	}
 	for (let address in PRIVATE) push(rules, 'reject(' + address + ')');
+	let active = filter(state.servers,
+		s => s.id == state.activeServerId)[0];
 	if (connected && state.settings.clientRules) {
 		for (let address in prefixes || [])
 			push(rules, 'direct(' + model.normalize_address(address) + ')');
 		push(rules, 'upstream(all)');
-	} else push(rules, 'direct(all)');
+	} else if (active?.engine == 'core' && state.settings.clientRules)
+		push(rules, 'reject(all)');
+	else push(rules, 'direct(all)');
 	let result = json(sprintf('%J', base.template));
 	result.listen = '0.0.0.0:' + client.port;
 	result.auth = { type: 'userpass', userpass: { [client.id]: client.secret } };
@@ -37,8 +42,10 @@ export function config(base, state, client, connected, prefixes) {
 		for (let item in state.servers)
 			if (item.id == state.activeServerId) server = item;
 		if (!server) die('server_not_found');
-		let socks = base.preserveSocks ?
-			model.parse_config(server.config).config.socks5 : null;
+		let socks = server.engine == 'core' ? base.coreSocks :
+			(base.preserveSocks ?
+			model.parse_config(server.config).config.socks5 : null);
+		if (server.engine == 'core' && !socks) die('tunnel_missing');
 		socks ??= { listen: '127.0.0.1:17891' };
 		push(result.outbounds, {
 			name: 'upstream', type: 'socks5',
@@ -47,6 +54,13 @@ export function config(base, state, client, connected, prefixes) {
 		});
 	}
 	delete result.trafficStats;
+	if (stats != null) {
+		if (type(stats) != 'object' || length(keys(stats)) != 2)
+			die('invalid_config');
+		let port = match(stats.listen || '', /^127\.0\.0\.1:90([1-5])$/);
+		if (!port) die('invalid_config');
+		result.trafficStats = observation.stats_config(int(port[1]) - 1, stats.secret);
+	}
 	return result;
 };
 
@@ -63,10 +77,10 @@ export function profile(base, client) {
 		uri, config: uri, inactive: false, warning: null };
 };
 
-export function shared_config(base, state, clients, connected, prefixes) {
+export function shared_config(base, state, clients, connected, prefixes, stats) {
 	if (!length(clients) || length(clients) > limit(base)) die('invalid_config');
 	let seed = { ...clients[0], port: 443, allowLan: base.sharedAllowLan == true };
-	let result = config(base, state, seed, connected, prefixes);
+	let result = config(base, state, seed, connected, prefixes, stats);
 	let users = { ...(base.legacyUsers || {}) };
 	for (let client in clients) users[client.id] = client.secret;
 	result.auth.userpass = users;

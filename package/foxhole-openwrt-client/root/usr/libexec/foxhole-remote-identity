@@ -1,0 +1,66 @@
+#!/bin/sh
+set -eu
+umask 077
+
+file_info() {
+ ucode -e '
+  import * as fs from "fs";
+  let info = fs.lstat(ARGV[1]);
+  if (!info) exit(1);
+  let mode = sprintf("%o", info.mode & 07777);
+  switch (ARGV[0]) {
+   case "%u": print(info.uid); break;
+   case "%u:%a": print(info.uid + ":" + mode); break;
+   case "%u:%a:%h": print(info.uid + ":" + mode + ":" + info.nlink); break;
+   case "%u:%a:%h:%s": print(info.uid + ":" + mode + ":" + info.nlink + ":" + info.size); break;
+   case "%F:%u:%a": print(info.type + ":" + info.uid + ":" + mode); break;
+   default: exit(1);
+  }
+ ' -- "$1" "$2"
+}
+
+[ "$#" = 0 ] && [ "$(id -u)" = 0 ] || exit 1
+parent=/etc/foxhole
+identity="$parent/remote-identity"
+stage=''
+trap '[ -z "$stage" ] || rm -rf "$stage"' EXIT HUP INT TERM
+[ ! -L "$parent" ] && [ "$(file_info '%u:%a' "$parent")" = 0:700 ] || exit 1
+verify() {
+ [ -d "$1" ] && [ ! -L "$1" ] && [ "$(file_info '%u:%a' "$1")" = 0:700 ] || return 1
+ for name in cert.pem key.pem; do
+  [ -f "$1/$name" ] && [ ! -L "$1/$name" ] && \
+   [ "$(file_info '%u:%a:%h' "$1/$name")" = 0:600:1 ] || return 1
+ done
+ openssl x509 -in "$1/cert.pem" -noout -checkend 86400 >/dev/null 2>&1 || return 1
+ check=$(mktemp -d "$parent/.remote-check.XXXXXX") || return 1
+ if ! openssl x509 -in "$1/cert.pem" -pubkey -noout > "$check/cert" 2>/dev/null || \
+    ! openssl pkey -in "$1/key.pem" -pubout > "$check/key" 2>/dev/null || \
+    ! cmp -s "$check/cert" "$check/key"; then
+  rm -rf "$check"; return 1
+ fi
+ rm -rf "$check"
+}
+if [ -e "$identity" ] || [ -L "$identity" ]; then
+ verify "$identity" || exit 1
+else
+ [ "$(date +%Y)" -ge 2025 ] || exit 1
+ stage=$(mktemp -d "$parent/.remote-identity.XXXXXX")
+ openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
+  -nodes -days 3650 -subj '/CN=FoxHole-Remote' \
+  -addext 'basicConstraints=critical,CA:FALSE' \
+  -addext 'keyUsage=critical,digitalSignature' \
+  -addext 'extendedKeyUsage=serverAuth' \
+  -keyout "$stage/key.pem" -out "$stage/cert.pem" >/dev/null 2>&1
+ chmod 600 "$stage/key.pem" "$stage/cert.pem"
+ verify "$stage" || exit 1
+ # The state lock protects creation; preserve an existing identity.
+ mv -nT "$stage" "$identity"
+ [ ! -d "$stage" ] || exit 1
+ stage=''
+ verify "$identity" || exit 1
+fi
+fingerprint=$(openssl x509 -in "$identity/cert.pem" -noout -fingerprint -sha256 | \
+ sed 's/^[^=]*=//;s/://g' | tr 'A-F' 'a-f')
+case "$fingerprint" in *[!a-f0-9]*) exit 1 ;; esac
+[ "${#fingerprint}" = 64 ] || exit 1
+printf '{"schema":1,"certificateSha256":"%s"}\n' "$fingerprint"

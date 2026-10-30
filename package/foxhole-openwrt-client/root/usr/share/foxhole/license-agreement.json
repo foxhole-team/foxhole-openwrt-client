@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "version": 1,
+  "product": "FoxHole OpenWRT Client",
+  "locales": {
+    "en": {
+      "title": "FoxHole OpenWRT Client · license agreement",
+      "body": "1. The package must be used strictly in accordance with applicable law.\n\n2. FoxHole OpenWRT Client is not antivirus software and does not guarantee detection or neutralization of executable malicious files.\n\n3. The developers are not liable for possible damage arising from use of the package.\n\n4. Use of the package constitutes full acceptance of the license terms of all its internal components and data sets.\n\n5. By continuing, you confirm your agreement with every provision of this agreement.",
+      "accept": "I accept the license agreement",
+      "required": "Accept the license agreement first"
+    },
+    "ru": {
+      "title": "FoxHole OpenWRT Client · лицензионное соглашение",
+      "body": "1. Пакет должен использоваться строго в соответствии с действующим законодательством.\n\n2. FoxHole OpenWRT Client не является антивирусным ПО и не гарантирует обнаружение или нейтрализацию исполняемых вредоносных файлов.\n\n3. Разработчики не несут ответственности за возможный ущерб, возникший в процессе эксплуатации пакета.\n\n4. Эксплуатация пакета подразумевает полное принятие лицензионных условий всех его внутренних компонентов и используемых баз данных.\n\n5. Продолжение работы подтверждает ваше согласие со всеми пунктами данного соглашения.",
+      "accept": "Я принимаю условия лицензионного соглашения",
+      "required": "Сначала примите лицензионное соглашение"
+    },
+    "de": {
+      "title": "FoxHole OpenWRT Client · Lizenzvereinbarung",
+      "body": "1. Die App darf nur gemäß geltendem Recht genutzt werden.\n\n2. FoxHole OpenWRT Client ist keine Antivirensoftware und garantiert weder Erkennung noch Neutralisierung ausführbarer Schadsoftware.\n\n3. Die Entwickler haften nicht für mögliche Schäden durch die Nutzung der App.\n\n4. Die Nutzung gilt als vollständige Annahme der Lizenzbedingungen aller enthaltenen Komponenten und Datensätze.\n\n5. Durch Fortfahren stimmen Sie sämtlichen Bestimmungen dieser Vereinbarung zu.",
+      "accept": "Ich akzeptiere die Lizenzvereinbarung",
+      "required": "Zuerst die Lizenzvereinbarung akzeptieren"
+    },
+    "fr": {
+      "title": "FoxHole OpenWRT Client · accord de licence",
+      "body": "1. L’application doit être utilisée dans le strict respect du droit applicable.\n\n2. FoxHole OpenWRT Client n’est pas un antivirus et ne garantit ni la détection ni la neutralisation de fichiers exécutables malveillants.\n\n3. Les développeurs déclinent toute responsabilité pour les dommages éventuels liés à son utilisation.\n\n4. Son utilisation vaut acceptation intégrale des licences de tous ses composants et jeux de données.\n\n5. En continuant, vous acceptez toutes les dispositions de cet accord.",
+      "accept": "J’accepte l’accord de licence",
+      "required": "Acceptez d’abord l’accord de licence"
+    },
+    "es": {
+      "title": "FoxHole OpenWRT Client · acuerdo de licencia",
+      "body": "1. La aplicación debe usarse conforme a la legislación aplicable.\n\n2. FoxHole OpenWRT Client no es un antivirus y no garantiza detectar ni neutralizar archivos ejecutables maliciosos.\n\n3. Los desarrolladores no se responsabilizan de los posibles daños derivados de su uso.\n\n4. Usarla supone aceptar íntegramente las licencias de todos sus componentes y conjuntos de datos.\n\n5. Al continuar, aceptas todas las disposiciones de este acuerdo.",
+      "accept": "Acepto el acuerdo de licencia",
+      "required": "Acepta primero el acuerdo de licencia"
+    },
+    "ja": {
+      "title": "FoxHole OpenWRT Client · 使用許諾契約",
+      "body": "1. 本アプリは、適用される法令に従って使用してください。\n\n2. FoxHole OpenWRT Clientはウイルス対策ソフトではなく、悪意のある実行ファイルの検出や無害化を保証しません。\n\n3. 開発者は、本アプリの使用によって生じた損害について責任を負いません。\n\n4. 本アプリを使用すると、内蔵コンポーネントとデータセットのすべてのライセンス条項に同意したものとみなされます。\n\n5. 続行すると、本契約のすべての条項に同意したことを確認したものとみなされます。",
+      "accept": "使用許諾契約に同意します",
+      "required": "先に使用許諾契約へ同意してください"
+    },
+    "zh": {
+      "title": "FoxHole OpenWRT Client · 许可协议",
+      "body": "1. 必须严格依照适用法律使用本应用。\n\n2. FoxHole OpenWRT Client 不是杀毒软件，不保证检测或清除可执行恶意文件。\n\n3. 开发者不对使用本应用可能造成的损失承担责任。\n\n4. 使用本应用即表示完全接受所有内部组件和数据集的许可条款。\n\n5. 继续即确认同意本协议的全部条款。",
+      "accept": "我接受许可协议",
+      "required": "请先接受许可协议"
+    }
+  }
+}

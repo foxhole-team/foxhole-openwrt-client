@@ -1,3 +1,5 @@
+# Reference recipe only. Authoritative execution belongs to Git LAN / the protected lab.
+# This directory is outside GitHub Actions workflow discovery.
 name: build-unsigned-apk
 on:
   workflow_dispatch:

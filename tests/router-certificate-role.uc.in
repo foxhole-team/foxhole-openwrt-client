@@ -1,0 +1,126 @@
+'use strict';
+import * as digest from 'digest';
+
+const CERT = '/etc/foxhole/mobile-identity/cert.pem';
+const ALIAS = '/etc/foxhole/mobile.crt';
+const BODY = 'Synthetic public certificate bytes\n';
+let metadata, bodies, reads, replace_after_read, passed = 0, failed = 0;
+function copy(value) { return json(sprintf('%J', value)); };
+function leaf(inode, nlink) {
+ return { type: 'file', uid: 0, gid: 0, mode: 0o644, inode, nlink,
+  size: length(BODY), dev: { major: 8, minor: 1 }, mtime: 10, ctime: 10 };
+};
+function reset() {
+ metadata = {}; bodies = {}; reads = []; replace_after_read = false;
+ for (let path in ['/', '/etc', '/etc/foxhole',
+  '/etc/foxhole/mobile-identity', '/etc/apk'])
+  metadata[path] = { type: 'directory', uid: 0, gid: 0,
+   mode: path == '/etc/foxhole' || path == '/etc/foxhole/mobile-identity'
+    ? 0o700 : 0o755, inode: 1, nlink: 1,
+   dev: { major: 8, minor: 1 }, size: 0, mtime: 10, ctime: 10 };
+ metadata[CERT] = leaf(100, 2); metadata[ALIAS] = leaf(100, 2);
+ bodies[CERT] = BODY; bodies[ALIAS] = BODY;
+ bodies['/etc/apk/world'] = 'kernel=1-r1\n';
+ metadata['/etc/apk/world'] = leaf(200, 1);
+ metadata['/etc/apk/world'].size = length(bodies['/etc/apk/world']);
+ bodies['/etc/apk/arch'] = 'x86_64\n';
+ metadata['/etc/apk/arch'] = leaf(201, 1);
+ metadata['/etc/apk/arch'].size = length(bodies['/etc/apk/arch']);
+ bodies['/proc/meminfo'] = 'MemAvailable: 100000 kB\n';
+ bodies['/proc/sys/kernel/random/boot_id'] = 'synthetic-boot-id\n';
+};
+let fs = {
+ lstat: path => metadata[path] ? copy(metadata[path]) : null,
+ dirname: path => path == '/' ? '/' : replace(path, /\/[^/]+$/, '') || '/',
+ readfile: (path, maximum) => {
+  if (match(path, /\/(key\.pem|mobile\.key)$/)) die('private_key_read_forbidden');
+  push(reads, path);
+  let body = bodies[path];
+  if (replace_after_read && path == CERT) metadata[ALIAS].inode++;
+  return body == null ? null : substr(body, 0, maximum);
+ }
+};
+let store = { read: (path, maximum) => null };
+function catalog() { return { value: { schema: 1, entries: [] }, sha256: 'c' }; };
+function legacy_protocols() { return []; };
+function capture(argv, maximum, timeout) {
+ if (argv[0] == '/bin/df') return 'Filesystem 1K-blocks Used Available Use% Mounted\nroot 100000 10000 90000 10% /\n';
+ die('unexpected_native_command');
+};
+
+/* ACTUAL_PRIVATE_PREFIX */
+/* ACTUAL_PUBLIC_CONTEXT */
+
+function context() {
+ return snapshot_context({ servers: [], activeServerId: null });
+};
+function equal(a, b) { if (sprintf('%J', a) != sprintf('%J', b)) die('assertion'); };
+function accepts() {
+ equal(context().routerId, digest.sha256(BODY));
+ equal(filter(reads, path => match(path, /\/(key\.pem|mobile\.key)$/)), []);
+};
+function rejects(fn) {
+ let refused = false;
+ try { fn(); } catch (error) {
+  let message = type(error) == 'string' ? error : error?.message;
+  if (message != 'engine_package_verification_failed') die(error);
+  refused = true;
+ }
+ if (!refused) die('unexpected_certificate_admission');
+};
+function test(name, fn) {
+ reset();
+ try { fn(); passed++; print('ok ', name, '\n'); }
+ catch (error) { failed++; print('not ok ', name, ': ', sprintf('%J', error), '\n'); }
+};
+test('official two-link pair preserves raw public certificate router identity', () => accepts());
+test('single canonical identity certificate keeps generic reader semantics', () => {
+ metadata[CERT].nlink = 1; delete metadata[ALIAS]; delete bodies[ALIAS]; accepts();
+});
+test('separate identical public alias copies remain supported', () => {
+ metadata[CERT].nlink = 1; metadata[ALIAS] = leaf(101, 1); accepts();
+});
+test('legacy single public mobile certificate remains supported', () => {
+ delete metadata[CERT]; delete bodies[CERT]; metadata[ALIAS].nlink = 1; accepts();
+});
+test('third hardlink is refused', () => {
+ metadata[CERT].nlink = 3; metadata[ALIAS].nlink = 3; rejects(context);
+});
+test('missing second alias is refused for a two-link canonical cert', () => {
+ delete metadata[ALIAS]; delete bodies[ALIAS]; rejects(context);
+});
+test('same bytes with a different alias inode are refused', () => {
+ metadata[ALIAS].inode++; rejects(context);
+});
+test('same inode number from another device is refused', () => {
+ metadata[ALIAS].dev.minor++; rejects(context);
+});
+test('symlink alias is refused', () => {
+ metadata[ALIAS].type = 'link'; rejects(context);
+});
+test('foreign owner is refused', () => {
+ metadata[CERT].uid = 1000; metadata[ALIAS].uid = 1000; rejects(context);
+});
+test('writable alias is refused', () => {
+ metadata[CERT].mode = 0o664; metadata[ALIAS].mode = 0o664; rejects(context);
+});
+test('writable identity parent is refused', () => {
+ metadata['/etc/foxhole/mobile-identity'].mode = 0o775; rejects(context);
+});
+test('oversized public certificate is refused', () => {
+ metadata[CERT].size = 16385; metadata[ALIAS].size = 16385; rejects(context);
+});
+test('replacement between canonical read and after-observation is refused', () => {
+ replace_after_read = true; rejects(context);
+});
+test('different alias bytes despite impossible identical metadata are refused', () => {
+ bodies[ALIAS] = 'Different synthetic certificate!!\n'; rejects(context);
+});
+test('generic public_file still refuses a two-link arbitrary public file', () => {
+ bodies['/etc/example-public'] = BODY;
+ metadata['/etc/example-public'] = leaf(300, 2);
+ rejects(() => public_file('/etc/example-public', 16384));
+});
+print('1..', passed + failed, '\n# Public certificate role cases: ', passed,
+ ' passed, ', failed, ' failed\n');
+exit(failed ? 1 : 0);

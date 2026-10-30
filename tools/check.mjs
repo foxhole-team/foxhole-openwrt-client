@@ -67,7 +67,7 @@ try {
   try {
     const result = await exportPublic({ source: root, destination: join(temporary, 'snapshot') });
     const scan = spawnSync('gitleaks', ['dir', '--redact=100', '--no-banner',
-      '--log-level', 'error', result.destination], { encoding: 'utf8', timeout: 60000 });
+      '--log-level', 'error', '--config', resolve(root, '.gitleaks.toml'), result.destination], { encoding: 'utf8', timeout: 60000 });
     if (scan.error || scan.status !== 0) throw new Error('Public snapshot secret scan failed; output withheld');
     process.stdout.write(`Public allowlist and secret scan: ${result.files.length} files.\n`);
   } finally {

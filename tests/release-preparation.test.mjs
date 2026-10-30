@@ -9,8 +9,8 @@ import { root } from './helpers.mjs';
 
 const sha = data => createHash('sha256').update(data).digest('hex');
 const main = 'a'.repeat(40), dev = 'b'.repeat(40), tree = 'c'.repeat(40);
-const names = ['foxhole-openwrt-client-0.1.0-r41.apk', 'hysteria-2.12.2-r2.apk',
-  'hysteria-ram-2.12.2-r1.apk', 'install.sh', 'sdk.config', 'feeds.buildinfo',
+const names = ['foxhole-openwrt-client-1.0.0-r1.apk', 'hysteria-2.12.2-r5.apk',
+  'hysteria-ram-2.12.2-r2.apk', 'install.sh', 'sdk.config', 'feeds.buildinfo',
   'CANDIDATE.json', 'foxhole-openwrt-client-source.zip',
   'foxhole-openwrt-client-source.zip.sha256'];
 const verify = `

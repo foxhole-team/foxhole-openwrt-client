@@ -1,0 +1,57 @@
+#!/usr/bin/ucode
+'use strict';
+import * as fs from 'fs';
+import * as ubus from 'ubus';
+import * as inbound from '/usr/share/foxhole/inbound.uc';
+import * as store from '/usr/share/foxhole/private-store.uc';
+
+let id = ARGV[0];
+if (length(ARGV) != 1 || !match(id || '', /^client-[a-f0-9]{12}$/)) exit(1);
+let raw = store.read('/etc/foxhole/inbound.json', 65536);
+if (!raw) exit(0);
+let base = json(raw), instance = inbound.shared(base) ? 'shared' : id;
+let connection = ubus.connect();
+if (!connection) exit(1);
+function snapshot(pid) {
+	let raw = fs.readfile('/proc/' + pid + '/stat', 8192);
+	if (!raw) return null;
+	let parsed = match(raw, /^[0-9]+ \(.*\) (.*)$/);
+	let fields = parsed ? split(trim(parsed[1]), / +/) : [];
+	if (length(fields) < 20 || !match(fields[19], /^[0-9]+$/)) die('unavailable');
+	return { start: fields[19], zombie: fields[0] == 'Z' };
+};
+try {
+	let service = connection.call('service', 'list', { name: 'foxhole-inbound-services' });
+	let current = service?.['foxhole-inbound-services']?.instances?.[instance];
+	let pid = current?.pid;
+	if (!current) { connection.disconnect(); exit(0); }
+	if (current.running != true || pid == null) {
+		connection.call('service', 'delete', { name: 'foxhole-inbound-services', instance });
+		let remaining = connection.call('service', 'list', { name: 'foxhole-inbound-services' });
+		if (remaining?.['foxhole-inbound-services']?.instances?.[instance]?.running == true)
+			die('unavailable');
+		connection.disconnect(); exit(0);
+	}
+	if (type(pid) != 'int' || pid <= 1 || pid > 4194304) die('unavailable');
+	let before = snapshot(pid), command = fs.readfile('/proc/' + pid + '/cmdline', 8192);
+	let owner = fs.stat('/proc/' + pid);
+	if (!before || owner?.uid != 0 || !command) die('unavailable');
+	let parts = split(command, '\u0000');
+	if (parts[1] != 'server' || parts[2] != '-c' ||
+	    parts[3] != '/tmp/foxhole/inbound/' + instance + '.json') die('unavailable');
+	connection.call('service', 'delete', { name: 'foxhole-inbound-services', instance });
+	let after;
+	for (let retry = 0; retry < 30; retry++) {
+		after = snapshot(pid);
+		if (!after || after.start != before.start || after.zombie) break;
+		system(['/bin/sleep', '0.05'], 100);
+	}
+	after = snapshot(pid);
+	if (after && after.start == before.start && !after.zombie) die('unavailable');
+	connection.disconnect();
+	print(sprintf('%J', { schema: 1, id, targetRevoked: true,
+		sharedRestartPending: inbound.shared(base) }));
+} catch (_) {
+	try { connection.disconnect(); } catch (_) {}
+	exit(1);
+}

@@ -1,0 +1,56 @@
+#!/bin/sh /etc/rc.common
+
+USE_PROCD=1
+START=96
+STOP=9
+
+certificate='/etc/foxhole/mobile.crt'
+private_key='/etc/foxhole/mobile.key'
+policy='/tmp/foxhole/mobile.nft'
+
+start_service() {
+	local address device
+	address=$(/usr/libexec/foxhole-mobile-listen address) || return 1
+	device=$(/usr/libexec/foxhole-mobile-listen device) || return 1
+	/usr/libexec/foxhole-mobile-identity || return 1
+	if [ -d /etc/foxhole/mobile-identity ]; then
+		private_key='/etc/foxhole/mobile-identity/key.pem'
+	fi
+	/usr/libexec/foxhole-private-file write "$policy" <<EOF
+add table inet foxhole_mobile
+delete table inet foxhole_mobile
+table inet foxhole_mobile {
+	chain input {
+		type filter hook input priority filter - 10; policy accept;
+		tcp dport 8443 iifname != "$device" counter drop
+	}
+}
+EOF
+	[ "$?" = 0 ] || return 1
+	/usr/sbin/nft -c -f "$policy" || return 1
+	/usr/sbin/nft -f "$policy" || return 1
+	procd_open_instance
+	procd_set_param command /usr/sbin/uhttpd -f \
+		-h /www/foxhole-mobile -s "$address:8443" \
+		-x /cgi-bin \
+		-C "$certificate" -K "$private_key" \
+		-n 4 -N 16 -t 10 -T 20 -r FoxHole
+	procd_set_param respawn 3600 5 5
+	procd_set_param term_timeout 5
+	procd_set_param file "$certificate" "$private_key"
+	procd_close_instance
+}
+
+stop_service() {
+	/usr/sbin/nft delete table inet foxhole_mobile >/dev/null 2>&1
+	/usr/libexec/foxhole-private-file remove "$policy"
+}
+
+reload_service() {
+	stop
+	start
+}
+
+service_triggers() {
+	procd_add_reload_trigger network firewall foxhole
+}
