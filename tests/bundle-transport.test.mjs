@@ -41,11 +41,14 @@ const select = row => `asset ${selectedName} ${row.sha256} ${row.bytes}\n`;
 const plan = select(descriptor.entries[selectedName]);
 let cases = 0;
 
-function io() {
+function io(identityChange) {
+  let archiveReads = 0;
   return {
     lstat: filename => {
-      try { const s = fs.lstatSync(filename); return { type: s.isDirectory() ? 'directory' : s.isSymbolicLink() ? 'link' : 'file', uid: 0, gid: 0,
-        mode: s.mode, nlink: s.nlink, size: s.size, inode: s.ino, dev: s.dev, mtime: s.mtimeMs, ctime: s.ctimeMs }; } catch { return null; }
+      try { const s = fs.lstatSync(filename); const info = { type: s.isDirectory() ? 'directory' : s.isSymbolicLink() ? 'link' : 'file', uid: 0, gid: 0,
+        mode: s.mode, nlink: s.nlink, size: s.size, inode: s.ino, dev: { major: 0, minor: s.dev }, mtime: s.mtimeMs, ctime: s.ctimeMs };
+        if (filename.endsWith('/native-install.tar') && ++archiveReads === 2) identityChange?.(info);
+        return info; } catch { return null; }
     },
     readfile: (filename, limit) => { const body = fs.readFileSync(filename); return body.subarray(0, limit).toString('latin1'); },
     unlink: filename => { fs.unlinkSync(filename); return true; },
@@ -90,7 +93,7 @@ function run(label, edit, shouldFail = true) {
   fs.writeFileSync(path.join(stage, 'bundle-transport.json'), text, { mode: 0o600 });
   fs.writeFileSync(path.join(stage, 'SHA256SUMS'), sums, { mode: 0o600 });
   fs.writeFileSync(path.join(stage, 'plan.list'), state.plan, { mode: 0o600 });
-  const ctx = vm.createContext({ ...builtins, fs: io(), model, ARGV: ['extract', stage], printf: () => assert.fail('unexpected output') });
+  const ctx = vm.createContext({ ...builtins, fs: io(state.identityChange), model, ARGV: ['extract', stage], printf: () => assert.fail('unexpected output') });
   const call = () => vm.runInContext(adapt(fs.readFileSync(path.join(tools, 'bundle-transport.uc'), 'utf8')), ctx, { timeout: 5000 });
   try {
     if (shouldFail) assert.throws(call, /Invalid|Error/, label);
@@ -112,6 +115,15 @@ function checksum(body, offset = 0) {
 
 try {
   run('actual producer header parity and selected-only extraction', null, false);
+  for (const [label, change] of [
+    ['device major changed', info => info.dev.major++],
+    ['device minor changed', info => info.dev.minor++],
+    ['inode changed', info => info.inode++],
+    ['mtime changed', info => info.mtime++],
+    ['ctime changed', info => info.ctime++],
+    ['device shape invalid', info => { info.dev = 1; }],
+    ['device component invalid', info => { info.dev.minor = '1'; }],
+  ]) run(label, state => { state.identityChange = change; });
   run('unsigned unselected content mismatch', x => { x.archive[512 + 1] ^= 1; });
   run('signed outer but content padding nonzero', x => { x.archive[512 + descriptor.entries[Object.keys(descriptor.entries).sort()[0]].bytes] = 1; });
   run('link type even with valid checksum', x => { x.archive[156] = 50; checksum(x.archive); });

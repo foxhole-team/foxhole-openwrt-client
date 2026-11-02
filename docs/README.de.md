@@ -40,7 +40,7 @@ Kompakte Installationen verwenden ein eigenes Clientmodul je ausgewähltem Proto
 
 <a id="whats-new"></a>
 
-> **🆕 Was ist neu - 1.0.2 Beta**
+> **🆕 Was ist neu - 1.0.3 Beta**
 >
 > - Den API-Zugriff aus dem lokalen Netzwerk und die Weboberfläche korrigiert.
 > - Diagramme und die Anzeige der Einstellungen korrigiert.
@@ -50,6 +50,9 @@ Kompakte Installationen verwenden ein eigenes Clientmodul je ausgewähltem Proto
 > - Kopplung mit bis zu 10 Mobilgeräten wird unterstützt.
 > - Die Prüfung von GitHub-Release-Daten korrigiert.
 > - Benachrichtigungen, Bestätigungsdialoge, Hilfe und Hinweise überarbeitet.
+> - Prüfung des standardmäßigen Zertifikats-Symlinks bei der Vorbereitung der RAM-Paketwiederherstellung korrigiert.
+> - Den Exit-Code des VPN-Prozesses zur Diagnose von Verbindungsabbrüchen hinzugefügt.
+> - Links zu VPN-Modulen für Updates des OpenWrt-Clients korrigiert.
 
 <a id="features"></a>
 

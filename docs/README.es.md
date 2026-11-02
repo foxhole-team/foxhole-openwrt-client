@@ -40,7 +40,7 @@ Las instalaciones compactas usan un módulo cliente por protocolo seleccionado. 
 
 <a id="whats-new"></a>
 
-> **🆕 Novedades - 1.0.2 Beta**
+> **🆕 Novedades - 1.0.3 Beta**
 >
 > - Corregidos el acceso a la API desde la red local y la interfaz web.
 > - Corregidos los gráficos y la visualización de ajustes.
@@ -50,6 +50,9 @@ Las instalaciones compactas usan un módulo cliente por protocolo seleccionado. 
 > - Se admite la vinculación de hasta 10 dispositivos móviles.
 > - Corregida la verificación de los datos de versiones de GitHub.
 > - Mejoradas las notificaciones, las confirmaciones, la ayuda y las sugerencias.
+> - Corregida la validación del enlace simbólico estándar a los certificados al preparar la recuperación del paquete RAM.
+> - Añadido el código de salida del proceso VPN al diagnóstico de desconexiones.
+> - Corregidos los enlaces a los módulos VPN para las actualizaciones del cliente OpenWrt.
 
 <a id="features"></a>
 

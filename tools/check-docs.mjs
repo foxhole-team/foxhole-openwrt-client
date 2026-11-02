@@ -22,9 +22,9 @@ try {
     const prose = (path === 'README.md' ?
       source.replace(languageBar, '') : source).replace(
         /^\[!\[Русский\]\(https:\/\/img\.shields\.io\/badge\/[^)\r\n]+\)\]\((?:docs\/)?README\.ru\.md\)$/m, match => allowLanguageBadge ? '' : match);
-    if (path !== 'docs/README.ru.md' && /[А-Яа-яЁё]/.test(
+    if (!['docs/README.ru.md', 'CHANGELOG.md'].includes(path) && /[А-Яа-яЁё]/.test(
       prose.replace(/<[^>]+>/g, '')))
-      throw new Error(`Russian prose belongs in docs/README.ru.md: ${path}`);
+      throw new Error(`Russian prose belongs in CHANGELOG.md or docs/README.ru.md: ${path}`);
     for (const match of source.matchAll(/\]\(([^\s)]+)\)|(?:href|src)="([^"]+)"/g)) {
       const target = match[1] || match[2];
       if (/^(?:https?:|mailto:|#)/.test(target)) continue;

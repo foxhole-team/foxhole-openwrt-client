@@ -23,6 +23,13 @@ For a legacy profile the supervisor starts Hysteria, waits for `foxhole0` and a 
 probe through Hysteria's local HTTP proxy, applies policy, and reports
 `connected`. Exit removes the runtime credential file and applies the
 configured block/off policy. This probe does not establish LAN acceptance.
+An unexpected exit after connection emits one bounded syslog event containing only
+the engine enum, running stage and child exit status. Explicit Stop emits no such
+event; logging failure does not change the existing cleanup or exit policy.
+
+The engine catalog's `--release-version` selects the router release that hosts
+its APKs and index. Core version, producer, signatures and immutable slot identity
+remain unchanged, so a router patch can reuse the same verified Core packages.
 
 ## Traffic paths
 
@@ -276,3 +283,7 @@ Only the clean fork source archive is tracked under [native/transaction](../nati
 The standalone utility is GPL-2.0-only, with Mbed TLS and its framework selected under their GPL-2.0-or-later version 2 option and original Zlib notices retained. Complete corresponding-source inputs accompany the release separately as `foxhole-apk-transaction-v1-source-inputs.tar.gz`, identified by its actual hash in the [source/build record](../native/transaction/SOURCE.json). Original small notices and the source-offer reference are installed in BASE; the 7.63 MB source-input asset is not stored on router flash. The public source delivery also retains the final SDK build, verification and package installation scripts.
 
 The [recorded rebuild recipe](../native/transaction/README.md) uses the exact SDK/source inputs, normal release flags, stripping and deterministic compression. Static input/build verification is separate from actual native root/layout, rollback, resource and tunneled-traffic acceptance for the distributed artifacts.
+
+## Compact transport file identity
+
+The TAR reader compares the device major/minor numbers returned by native Ucode, together with inode, size, mode, owner, link count and modification/change times, before accepting extraction. Device records are validated values, not object identities. Archive/member hashes, canonical headers, selected paths and private-stage checks remain mandatory.

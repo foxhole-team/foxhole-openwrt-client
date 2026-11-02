@@ -16,6 +16,21 @@ ALLOWED = {SLOT + leaf for leaf in ('foxcore-cli', 'slot.json', 'core-producer.j
 ALLOWED.update('usr/share/licenses/' + IDENTITY + '/' + leaf for leaf in ('LICENSE', 'THIRD_PARTY_NOTICES.md', 'DEPENDENCY-LICENSES.txt', 'RUNTIME-NOTICES.txt', 'LEGAL-PROVENANCE.json'))
 ALLOWED.add('lib/apk/packages/' + IDENTITY + '.list')
 
+class ReleaseURLTests(unittest.TestCase):
+    def test_default_uses_core_release(self):
+        self.assertEqual(CATALOG.release_base_url('1.0.2'),
+                         'https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.2/')
+
+    def test_router_patch_release_can_reuse_the_same_core(self):
+        self.assertEqual(CATALOG.release_base_url('1.0.2', '1.0.3'),
+                         'https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.3/')
+
+    def test_release_version_cannot_change_url_origin_or_path(self):
+        for value in ('', '../1.0.3', '1.0.3/other', '1.0.3?token', 'https://example.com', '1.0.3\n'):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                CATALOG.release_base_url('1.0.2', value)
+
+
 class NativeRootTests(unittest.TestCase):
     def check_document(self, value):
         CATALOG.validate_engine_paths(value, ALLOWED)

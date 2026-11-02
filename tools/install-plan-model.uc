@@ -126,6 +126,13 @@ function compact_ids(requested) {
  if (!length(result) || length(result) > 12) compact_reject();
  return sort(result);
 };
+function compact_release(item) {
+ if (type(item) != 'object' || type(item.indexUrl) != 'string') compact_reject();
+ let reference = match(item.indexUrl,
+  /^(https:\/\/github\.com\/foxhole-team\/foxhole-openwrt-client\/releases\/download\/v((0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*))\/)engines\.adb$/);
+ if (!reference) compact_reject();
+ return { base: reference[1], version: reference[2] };
+};
 function compact_client(value, architecture) {
  compact_exact(value, ['id', 'storage', 'entry', 'producer', 'capabilities', 'slotManifest']);
  let item = value.entry, fields = ['id', 'storage', 'version', 'architecture', 'binarySha256',
@@ -146,7 +153,7 @@ function compact_client(value, architecture) {
      item.installedBytes > 536870912 || item.reserveBytes < 16777216 ||
      (value.storage == 'flash' && item.binarySha256 != item.executableSha256)) compact_reject();
  let expected = 'foxcore-engine-' + value.id + '-' + value.storage + '-' + item.manifestSha256;
- let base = 'https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v' + item.version + '/';
+ let base = compact_release(item).base;
  if (item.packageName != expected || item.packageUrl != base + expected + '-' + item.packageVersion + '.apk' ||
      item.indexUrl != base + 'engines.adb' || compact_asset(value.producer).sha256 != item.producerSha256 ||
      compact_asset(value.capabilities).sha256 != item.capabilitiesSha256 ||
@@ -159,10 +166,16 @@ export function compact_selection(catalog, architecture, release, requested, dev
      (catalog.development && !development) || join(',', catalog.defaultProtocols || []) != 'hysteria2' ||
      join(',', catalog.allProtocols || []) != join(',', protocols) || type(catalog.platforms) != 'array' ||
      !length(catalog.platforms) || length(catalog.platforms) > 16 || type(include_server) != 'bool') compact_reject();
- let wanted = requested == 'all' ? null : compact_ids(requested), platform = null;
+ let wanted = requested == 'all' ? null : compact_ids(requested), platform = null, router_release = null;
  for (let value in catalog.platforms) {
   compact_exact(value, ['id', 'architecture', 'supportedTargets', 'supportedOpenWrt', 'basePackage',
    'engineCatalog', 'packageUniverse', 'clients', 'server']);
+  if (type(value.clients) != 'array' || !length(value.clients) || length(value.clients) > 24) compact_reject();
+  for (let client in value.clients) {
+   let current_release = compact_release(client?.entry).version;
+   if (router_release != null && router_release != current_release) compact_reject();
+   router_release = current_release;
+  }
   if (value.architecture != architecture || index(value.supportedTargets || [], target) < 0 ||
       index(value.supportedOpenWrt || [], release) < 0) continue;
   if (platform || !name(value.id) || type(value.clients) != 'array' || length(value.clients) > 24 ||

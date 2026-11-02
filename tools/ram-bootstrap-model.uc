@@ -55,8 +55,15 @@ export function public_target(path) {
  return type(path)=='string'&&(match(path,/^\/(usr\/libexec|etc\/init.d)\/foxhole-[A-Za-z0-9_.-]+$/)!=null||
   match(path,/^\/usr\/share\/nftables.d\/chain-pre\/(input|forward)\/3[01]-foxhole(-mobile|-inbound)?\.nft$/)!=null);
 };
+const native_ca_alias='root/etc/ssl/cert.pem';
+const native_ca_target='/etc/ssl/certs/ca-certificates.crt';
+const native_ca_file='root/etc/ssl/certs/ca-certificates.crt';
 export function link(path,target) {
- if(type(target)!='string'||!length(target)||length(target)>240||!match(target,/^[A-Za-z0-9_+.,@=:\/-]+$/)||substr(target,0,1)=='/')fail();
+ if(type(target)!='string'||!length(target)||length(target)>240||!match(target,/^[A-Za-z0-9_+.,@=:\/-]+$/))fail();
+ if(substr(target,0,1)=='/') {
+  if(path==native_ca_alias&&target==native_ca_target)return native_ca_file;
+  fail();
+ }
  let parts=split(path,'/');pop(parts);
  for(let piece in split(target,'/')) {
   if(piece=='.')continue;
@@ -82,6 +89,11 @@ export function files(value) {
   let parent=join('/',slice(split(path,'/'),0,-1));
   if(length(parent)&&result[parent]?.type!='directory')fail();
   if(result[path].type=='symlink'&&!result[link(path,result[path].linkTarget)])fail();
+ }
+ if(result[native_ca_alias]?.type=='symlink'&&result[native_ca_alias].linkTarget==native_ca_target) {
+  let ca=result[native_ca_file];
+  // Preserve the native alias; join_inventory binds this regular target to the signed APK.
+  if(ca?.type!='file'||ca.mode!=0o644||!ca.bytes||!sha(ca.sha256))fail();
  }
  return result;
 };

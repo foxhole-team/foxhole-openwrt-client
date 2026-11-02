@@ -61,6 +61,53 @@ function signedFixture(bank,expected){
  paths.get(prefix).files.push({name:'bank.json',acl:acl(0o644),size:2,hash:sha('{}')});
  return {info:{name:'foxhole-ram-bootstrap-bank',version:expected.version,arch:expected.arch,'installed-size':10000},paths:[...paths.values()]};
 }
+function nativeCaFixture(){
+ const value=bankFixture(),body='public CA fixture',target='/etc/ssl/certs/ca-certificates.crt';
+ for(const path of ['root/etc/ssl','root/etc/ssl/certs'])
+  value.bank.files.push({path,type:'directory',mode:0o755,bytes:0,sha256:null,linkTarget:null});
+ value.bank.files.push({path:'root/etc/ssl/certs/ca-certificates.crt',type:'file',mode:0o644,
+  bytes:body.length,sha256:sha(body),linkTarget:null});
+ value.bank.files.push({path:'root/etc/ssl/cert.pem',type:'symlink',mode:0o777,
+  bytes:target.length,sha256:null,linkTarget:target});
+ return value;
+}
+test('native CA alias preserves the exact signed native link bytes and regular target',()=>{
+ const {bank,expected}=nativeCaFixture(),inventory=model.bank(bank,expected);
+ assert.equal(model.link('root/etc/ssl/cert.pem','/etc/ssl/certs/ca-certificates.crt'),
+  'root/etc/ssl/certs/ca-certificates.crt');
+ assert.equal(inventory['root/etc/ssl/cert.pem'].linkTarget,'/etc/ssl/certs/ca-certificates.crt');
+ assert.equal(inventory['root/etc/ssl/certs/ca-certificates.crt'].mode,0o644);
+ const document=model.native_document(signedFixture(bank,expected),expected);
+ assert.equal(model.join_inventory(document,inventory),true);
+ for(const field of ['sha256','mode']){
+  const changed=structuredClone(inventory);
+  changed['root/etc/ssl/certs/ca-certificates.crt'][field]=field=='sha256'?sha('different CA'):0o600;
+  assert.throws(()=>model.join_inventory(document,changed));
+ }
+});
+test('native CA alias requires an exact regular public target and never permits a host CA mount',()=>{
+ const {bank,expected}=nativeCaFixture(),target='root/etc/ssl/certs/ca-certificates.crt';
+ assert.throws(()=>model.files(bank.files.filter(row=>row.path!=target)));
+ for(const patch of [{mode:0o600},{mode:0o755},{mode:0o666},{sha256:null},{bytes:0},
+  {type:'directory',mode:0o755,bytes:0,sha256:null},
+  {type:'symlink',mode:0o777,bytes:20,sha256:null,linkTarget:'../../../lib/libc.so'}])
+  assert.throws(()=>model.files(bank.files.map(row=>row.path==target?{...row,...patch}:row)));
+ for(const path of ['/etc/ssl/cert.pem','/etc/ssl/certs','/etc/ssl/certs/ca-certificates.crt'])
+  assert.equal(model.public_target(path),false);
+ assert.throws(()=>model.bank({...bank,mounts:[...bank.mounts,
+  {target:'/etc/ssl/certs',sourceRelative:'root/etc/ssl/certs',role:'base'}]},expected));
+});
+test('native CA alias exception rejects every different absolute path or traversal spelling',()=>{
+ for(const [path,target]of [
+  ['root/lib/alias','/etc/ssl/certs/ca-certificates.crt'],
+  ['adapters/cert.pem','/etc/ssl/certs/ca-certificates.crt'],
+  ['root/etc/ssl/cert.pem','/etc/passwd'],
+  ['root/etc/ssl/cert.pem','//etc/ssl/certs/ca-certificates.crt'],
+  ['root/etc/ssl/cert.pem','/etc/ssl/certs/../certs/ca-certificates.crt'],
+  ['root/etc/ssl/cert.pem','/etc/ssl/certs/ca-certificates.crt/extra'],
+  ['root/etc/ssl/cert.pem','../../../adapters/openssl']])
+  assert.throws(()=>model.link(path,target),path+' '+target);
+});
 test('descriptor keeps bank version distinct from native BASE version and rejects future/null trust',()=>{
  assert.equal(model.descriptor(descriptor()).baseVersion,'1.0.2-r1');
  const template=JSON.parse(read('tools/ram-bootstrap-descriptor.template.json'));assert.throws(()=>model.descriptor(template));

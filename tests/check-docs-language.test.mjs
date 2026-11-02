@@ -10,7 +10,7 @@ const languageBar = '<p align="center">\n' +
   '  <strong>English</strong> · ' +
   '<a href="docs/README.ru.md">Русский</a>\n</p>';
 
-async function check(readme, security = '# Security\n') {
+async function check(readme, security = '# Security\n', documents = {}) {
   const root = await mkdtemp(join(tmpdir(), 'foxhole-doc-language-'));
   try {
     for (const directory of ['tools', 'docs', 'examples'])
@@ -21,7 +21,8 @@ async function check(readme, security = '# Security\n') {
       'CHANGELOG.md': '# Changes\n',
       'THIRD_PARTY_NOTICES.md': '# Notices\n',
       'examples/README.md': '# Examples\n',
-      'docs/README.ru.md': '# Документация\n'
+      'docs/README.ru.md': '# Документация\n',
+      ...documents
     })) await writeFile(join(root, name), body);
     const result = spawnSync(process.execPath,
       [join(root, 'tools/check-docs.mjs')], {
@@ -61,4 +62,30 @@ test('a duplicate language bar cannot hide Russian text', async () => {
   const result = await check(languageBar + '\n' + languageBar);
   assert.equal(result.status, 1);
   assert.match(result.stderr, /Russian prose belongs/);
+});
+
+
+test('owner Russian release notes are allowed in the exact root changelog', async () => {
+  const result = await check('# Product\n', '# Security\n', { 'CHANGELOG.md': '# Изменения\n\n- Исправлена установка пакета.\n' });
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test('the changelog language exception does not apply to a nested path', async () => {
+  const result = await check('# Product\n', '# Security\n', { 'docs/CHANGELOG.md': '# Изменения\n' });
+  assert.equal(result.status, 1); assert.match(result.stderr, /Russian prose belongs/);
+});
+
+test('Russian changelog still rejects broken local links', async () => {
+  const result = await check('# Product\n', '# Security\n', { 'CHANGELOG.md': '# Изменения\n[Ссылка](missing.md)\n' });
+  assert.equal(result.status, 1); assert.match(result.stderr, /Broken local link/);
+});
+
+test('Russian changelog still rejects an unclosed code fence', async () => {
+  const result = await check('# Product\n', '# Security\n', { 'CHANGELOG.md': '# Изменения\n```sh\necho safe\n' });
+  assert.equal(result.status, 1); assert.match(result.stderr, /Unclosed code fence/);
+});
+
+test('Russian changelog still rejects invalid shell syntax', async () => {
+  const result = await check('# Product\n', '# Security\n', { 'CHANGELOG.md': '# Изменения\n```sh\nif then\n```\n' });
+  assert.equal(result.status, 1); assert.match(result.stderr, /Invalid shell example/);
 });

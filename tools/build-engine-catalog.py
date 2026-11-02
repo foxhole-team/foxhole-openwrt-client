@@ -80,6 +80,13 @@ def validate_unique_index_entry(info: dict, index_entries: list[dict], archive_b
         raise ValueError('Engine APK is not uniquely indexed by immutable name')
 
 
+def release_base_url(core_version: str, release_version: str | None = None) -> str:
+    version = core_version if release_version is None else release_version
+    if not isinstance(version, str) or re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version) is None:
+        raise ValueError('Exact release version required')
+    return 'https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v' + version + '/'
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--apk', required=True)
@@ -88,8 +95,11 @@ def main() -> int:
     parser.add_argument('--packages', type=Path, nargs='+', required=True)
     parser.add_argument('--core-commit', required=True)
     parser.add_argument('--source-sha256', required=True)
+    parser.add_argument('--release-version', help='Router release containing these unchanged Core packages')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
+    if args.release_version is not None:
+        release_base_url('0.0.0', args.release_version)
     if (not 1 <= len(args.packages) <= 72 or len(set(args.packages)) != len(args.packages) or
             re.fullmatch(r'[a-f0-9]{40}', args.core_commit) is None or
             re.fullmatch(r'[a-f0-9]{64}', args.source_sha256) is None or
@@ -180,7 +190,7 @@ def main() -> int:
             if scope in seen:
                 raise ValueError('Only one current artifact per protocol/storage/architecture')
             seen.add(scope)
-            base = 'https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v' + manifest['version'] + '/'
+            base = release_base_url(manifest['version'], args.release_version)
             value = {key: item for key, item in manifest.items() if key != 'schema'}
             value.update(manifestSha256=manifest_sha, archiveBytes=archive.stat().st_size,
                          indexBytes=args.index.stat().st_size, installedBytes=info['installed-size'],

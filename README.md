@@ -40,7 +40,7 @@ connections. Compact installations use a separate client module for each selecte
 
 <a id="whats-new"></a>
 
-> **🆕 What's new - 1.0.2 Beta**
+> **🆕 What's new - 1.0.3 Beta**
 >
 > - Fixed local-network API access and the web interface.
 > - Fixed charts and the display of settings.
@@ -50,6 +50,9 @@ connections. Compact installations use a separate client module for each selecte
 > - Supports pairing with up to 10 mobile devices.
 > - Fixed verification of GitHub release metadata.
 > - Refined notifications, confirmation dialogs, help and tooltips.
+> - Fixed validation of the standard certificate symlink when preparing RAM-package recovery.
+> - Added the VPN process exit code to disconnect diagnostics.
+> - Fixed VPN module URLs for OpenWrt client updates.
 
 <a id="features"></a>
 
@@ -218,6 +221,10 @@ is active. Use verified release packages. Legacy installers and ARM-only downloa
 ## 🤝 Contributing
 
 Report bugs and propose changes through [Issues](https://github.com/foxhole-team/foxhole-openwrt-client/issues).
+
+## Roadmap
+
+See the [project roadmap](ROADMAP.md).
 
 ## 💖 Support development
 

@@ -40,8 +40,12 @@ This list includes exactly all `root` and `adapters` paths, including their root
 directories; it excludes `bank.json` to avoid self-reference. Types are `file`,
 `directory`, `symlink`. Directory bytes are zero, hash/target null. Files have their
 actual bytes/SHA256 and null target. Symlinks have mode 0777, target byte length,
-null hash and their exact relative target. Links must stay inside their own root
-or adapters namespace and point to a listed path. Hardlinks, devices, sockets and
+null hash and their exact target. Relative links must stay inside their own root
+or adapters namespace and point to a listed path. The only absolute link admitted is
+`root/etc/ssl/cert.pem` to `/etc/ssl/certs/ca-certificates.crt`, with its original
+native target bytes. Its in-bank target must be a nonempty regular 0644 file with
+a signed inventory hash. The alias is never a host mount or a trust-store override.
+All other absolute links are refused. Hardlinks, devices, sockets and
 FIFOs are refused. Native UID/GID must be root and regular files nlink1. Native
 file/directory ACLs are preserved exactly, including legitimate 0700 directories;
 there is no recursive chmod. Other-writable files/directories and special mode bits

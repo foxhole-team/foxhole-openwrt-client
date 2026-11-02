@@ -13,6 +13,28 @@ esac
 }
 for tool in curl sha256sum tar zstd make git python3 openssl; do command -v "$tool" >/dev/null; done
 root=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+base_makefile="$root/package/foxhole-openwrt-client/Makefile"
+[ -f "$base_makefile" ] && [ ! -L "$base_makefile" ] || {
+  echo 'Invalid BASE package metadata' >&2; exit 2
+}
+# Read declarations as data; never execute the package Makefile.
+base_version=$(awk '
+  /^[[:space:]]*((export|override)[[:space:]]+)?PKG_VERSION[[:space:]]*[:+?!]?=/ {
+    versions++
+    if ($0 !~ /^PKG_VERSION:=[0-9]+\.[0-9]+\.[0-9]+$/ || length($0) > 45) bad=1
+    version=$0; sub(/^PKG_VERSION:=/, "", version)
+  }
+  /^[[:space:]]*((export|override)[[:space:]]+)?PKG_RELEASE[[:space:]]*[:+?!]?=/ {
+    releases++
+    if ($0 !~ /^PKG_RELEASE:=[1-9][0-9]*$/ || length($0) > 21) bad=1
+    release=$0; sub(/^PKG_RELEASE:=/, "", release)
+  }
+  END {
+    if (bad || versions != 1 || releases != 1) exit 1
+    print version "-r" release
+  }
+' "$base_makefile") || { echo 'Invalid BASE package metadata' >&2; exit 2; }
+base_package_file="foxhole-openwrt-client-$base_version.apk"
 target=arm64
 core_input=''
 core_source=''
@@ -166,7 +188,7 @@ mkdir -p "$out"
 find bin/packages -type f \( -name 'foxhole-openwrt-client-*.apk' \
   -o -name 'hysteria-*.apk' -o -name 'foxcore-cli-*.apk' \) -exec cp '{}' "$out/" \;
 cp "$root/install.sh" "$out/"
-test -f "$out/foxhole-openwrt-client-1.0.2-r3.apk"
+test -f "$out/$base_package_file"
 if find "$out" -name 'hysteria-ram-*.apk' | grep -q .; then
   echo 'Historical unqualified Hysteria RAM package cannot enter a Stable bundle' >&2
   exit 1

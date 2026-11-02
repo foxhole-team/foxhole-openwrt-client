@@ -52,6 +52,15 @@ function read_exact(input, bytes) {
  if (value == null || length(value) != bytes) reject();
  return value;
 };
+function same_identity(before, after) {
+ for (let value in [before, after])
+  if (type(value?.dev) != 'object' || type(value.dev.major) != 'int' ||
+      type(value.dev.minor) != 'int' || value.dev.major < 0 || value.dev.minor < 0) return false;
+ if (before.dev.major != after.dev.major || before.dev.minor != after.dev.minor) return false;
+ for (let key in ['inode', 'size', 'mode', 'uid', 'gid', 'nlink', 'mtime', 'ctime'])
+  if (before[key] != after[key]) return false;
+ return true;
+};
 function extract(root, value) {
  let archive = root + '/native-install.tar';
  let before = regular(archive, 536870912, false);
@@ -98,8 +107,7 @@ function extract(root, value) {
  }
  input.close();
  let after = regular(archive, 536870912, false);
- for (let key in ['dev', 'inode', 'size', 'mode', 'uid', 'gid', 'nlink', 'mtime', 'ctime'])
-  if (before[key] != after[key]) reject();
+ if (!same_identity(before, after)) reject();
  if (length(written) != length(keys(selected.files))) reject();
  let output = fs.open(root + '/bundle-materialized.list', 'wxe', 0600);
  if (!output || output.write(join('\n', written) + '\n') != length(join('\n', written)) + 1 || output.flush() != true) reject();

@@ -6,7 +6,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const publicFiles = ['LICENSE', 'THIRD_PARTY_NOTICES.md',
-  'README.md', 'CHANGELOG.md', 'SECURITY.md', '.gitattributes', '.gitignore', '.gitleaks.toml',
+  'README.md', 'ROADMAP.md', 'CHANGELOG.md', 'SECURITY.md', '.gitattributes', '.gitignore', '.gitleaks.toml',
   'install.sh', 'package.json', 'package-lock.json', 'TODO.md'];
 export const publicDirectories = ['package', 'LICENSES', 'media', 'docs', 'config',
   'examples', '.github', 'tests', 'tools', 'native/transaction'];
@@ -42,7 +42,9 @@ export function validatePublicFile(path, data) {
     fail('Public export contains a prohibited path');
   }
   const text = data.toString('utf8');
-  if (oldBrand.test(text) || text.includes(privateName) ||
+  // Standard syslog priority is public vocabulary.
+  const nameText = text.replaceAll(['dae', 'mon.warn'].join(''), 'syslog.warn');
+  if (oldBrand.test(nameText) || text.includes(privateName) ||
     /\/(?:Users|Volumes)\//.test(text)) {
     fail('Public export contains a private identifier');
   }

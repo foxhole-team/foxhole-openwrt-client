@@ -135,10 +135,18 @@ if [ "$engine" = core ]; then
 	fi
 fi
 
-wait "$child"
+child_status=0
+wait "$child" || child_status=$?
 child=''
 if [ "$stopping" -eq 1 ]; then
 	exit 0
 fi
 reason='tunnel_exited'
+case "$engine" in
+	core|hysteria) report_engine="$engine" ;;
+	*) report_engine='unknown' ;;
+esac
+logger -t foxhole -p daemon.warn \
+	"tunnel_exited engine=$report_engine stage=running exit_status=$child_status" \
+	>/dev/null 2>&1 || :
 exit 1

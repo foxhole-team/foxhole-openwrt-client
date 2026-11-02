@@ -45,16 +45,16 @@ const mocks = {
       *hysteria-server-ram/compile*)
         touch bin/packages/hysteria-server-ram-2.12.2-r2.apk ;;
       *foxcore-cli/compile*)
-        touch bin/packages/foxcore-cli-1.0.0-r1.apk ;;
+        touch bin/packages/foxcore-cli-1.0.2-r1.apk ;;
       *foxcore-cli-ram/compile*)
-        touch bin/packages/foxcore-cli-ram-1.0.0-r1.apk ;;
+        touch bin/packages/foxcore-cli-ram-1.0.2-r2.apk ;;
       *foxhole-openwrt-client/compile*)
-        touch bin/packages/foxhole-openwrt-client-1.0.1-r1.apk ;;
+        touch bin/packages/foxhole-openwrt-client-1.2.3-r4.apk ;;
     esac
   `
 };
 
-async function fixture(t, buildStatus, cleanupFails = false, args = []) {
+async function fixture(t, buildStatus, cleanupFails = false, args = [], metadata = 'PKG_VERSION:=1.2.3\nPKG_RELEASE:=4\n') {
   const directory = await mkdtemp(join(tmpdir(), 'foxhole-sdk-test-'));
   t.after(async () => {
     spawnSync('/bin/chmod', ['-R', 'u+w', directory]);
@@ -72,8 +72,14 @@ if [ "$*" = "-R u+w $MOCK_ROOT/scratch" ]; then exit 41; fi
 exec /bin/chmod "$@"
 `, { mode: 0o755 });
   }
+  const source = join(directory, 'source');
+  await mkdir(join(source, 'tools'), { recursive: true });
+  await mkdir(join(source, 'package/foxhole-openwrt-client'), { recursive: true });
+  for (const name of ['tools/build-openwrt.sh', 'tools/feeds.conf', 'install.sh'])
+    await writeFile(join(source, name), await readFile(join(root, name)));
+  if (metadata !== null) await writeFile(join(source, 'package/foxhole-openwrt-client/Makefile'), metadata);
   const output = join(directory, 'output');
-  const result = spawnSync('/bin/sh', [join(root, 'tools/build-openwrt.sh'), ...args, output], {
+  const result = spawnSync('/bin/sh', [join(source, 'tools/build-openwrt.sh'), ...args, output], {
     cwd: root, encoding: 'utf8', timeout: 10000,
     env: { ...process.env, PATH: bin + ':' + process.env.PATH,
       MOCK_ROOT: directory, MOCK_BUILD_STATUS: String(buildStatus) }
@@ -87,7 +93,7 @@ test('SDK build exports APKs and removes read-only Go module directories', async
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /Unsigned APK bundle:/);
   for (const file of ['hysteria-2.12.2-r5.apk',
-    'foxhole-openwrt-client-1.0.1-r1.apk', 'sdk.config', 'feeds.buildinfo']) {
+    'foxhole-openwrt-client-1.2.3-r4.apk', 'sdk.config', 'feeds.buildinfo']) {
     await readFile(join(output, file));
   }
   await assert.rejects(readFile(join(output, 'hysteria-ram-2.12.2-r2.apk')), { code: 'ENOENT' });
@@ -123,7 +129,7 @@ test('Core SDK mode selects both exact RAM producers without legacy RAM', async 
   assert.match(config, /^CONFIG_PACKAGE_foxcore-cli-ram=m$/m);
   assert.match(config, /^CONFIG_PACKAGE_hysteria-server-ram=m$/m);
   assert.doesNotMatch(config, /^CONFIG_PACKAGE_hysteria-ram=m$/m);
-  await readFile(join(output, 'foxcore-cli-ram-1.0.0-r1.apk'));
+  await readFile(join(output, 'foxcore-cli-ram-1.0.2-r2.apk'));
   await readFile(join(output, 'hysteria-server-ram-2.12.2-r2.apk'));
   await assert.rejects(readFile(join(output, 'hysteria-ram-2.12.2-r2.apk')), { code: 'ENOENT' });
 });
@@ -135,4 +141,19 @@ test('Server RAM without a verified native producer fails before SDK setup', asy
   assert.equal(result.status, 2);
   assert.match(result.stderr, /verified native producer/);
   await assert.rejects(readFile(join(directory, 'scratch')), { code: 'ENOENT' });
+});
+
+for (const [name, metadata] of [
+  ['missing', null],
+  ['missing release', 'PKG_VERSION:=1.2.3\n'],
+  ['duplicate version', 'PKG_VERSION:=1.2.3\nPKG_VERSION:=1.2.3\nPKG_RELEASE:=4\n'],
+  ['duplicate release', 'PKG_VERSION:=1.2.3\nPKG_RELEASE:=4\nPKG_RELEASE:=5\n'],
+  ['unsafe version', 'PKG_VERSION:=$(touch "$MOCK_ROOT/metadata-executed")\nPKG_RELEASE:=4\n'],
+  ['unsafe path', 'PKG_VERSION:=../1.2.3\nPKG_RELEASE:=4\n'],
+  ['zero release', 'PKG_VERSION:=1.2.3\nPKG_RELEASE:=0\n'],
+]) test('invalid BASE metadata is rejected before SDK setup: ' + name, async t => {
+  const { directory, result } = await fixture(t, 0, false, [], metadata);
+  assert.equal(result.status, 2, result.stderr); assert.match(result.stderr, /BASE package metadata/);
+  await assert.rejects(readFile(join(directory, 'scratch')), { code: 'ENOENT' });
+  await assert.rejects(readFile(join(directory, 'metadata-executed')), { code: 'ENOENT' });
 });

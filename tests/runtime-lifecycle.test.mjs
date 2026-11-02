@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -35,12 +35,13 @@ async function readOptional(path) {
   }
 }
 
-async function harness(t, mode = 'tunnel', prepare = 'success') {
+async function harness(t, mode = 'tunnel', prepare = 'success', options = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'foxhole-lifecycle-'));
   const log = join(directory, 'events');
   const release = join(directory, 'release-prepare');
   const sleeper = join(directory, 'sleep.pid');
   const started = join(directory, 'hysteria.pid');
+  const disconnect = join(directory, 'disconnect');
   let supervisor;
   t.after(async () => {
     if (supervisor?.pid) {
@@ -57,6 +58,7 @@ async function harness(t, mode = 'tunnel', prepare = 'success') {
   const controller = await executable('controller', `
 printf '%s\n' "$*" >> "$FH_TEST_LOG"
 case "$1" in
+  engine) echo "$FH_TEST_ENGINE" ;;
   mode) printf '%s\n' "$FH_TEST_MODE" ;;
   prepare)
     case "$FH_TEST_PREPARE" in
@@ -71,8 +73,17 @@ exit 0
 `);
   const hysteria = await executable('hysteria', `
 printf '%s\n' "$$" > "$FH_TEST_STARTED"
+if [ -n "$FH_TEST_CHILD_STATUS" ]; then
+  while [ ! -f "$FH_TEST_DISCONNECT" ]; do /bin/sleep 0.01; done
+  exit "$FH_TEST_CHILD_STATUS"
+fi
 exec /bin/sleep 60
 `);
+  await executable('logger', `
+echo "log $*" >> "$FH_TEST_LOG"
+exit "$FH_TEST_LOGGER_STATUS"
+`);
+  if (options.tun) await mkdir(join(directory, 'tun'));
   await executable('sleep', `
 if [ "$1" = 3600 ]; then
   printf '%s\n' "$$" > "$FH_TEST_SLEEPER"
@@ -94,7 +105,10 @@ exec /bin/sleep "$@"
     env: { ...process.env, PATH: directory + ':' + process.env.PATH,
       FH_TEST_LOG: log, FH_TEST_MODE: mode, FH_TEST_PREPARE: prepare,
       FH_TEST_RELEASE: release, FH_TEST_SLEEPER: sleeper,
-      FH_TEST_STARTED: started }
+      FH_TEST_STARTED: started, FH_TEST_ENGINE: options.engine ?? 'hysteria',
+      FH_TEST_CHILD_STATUS: options.childStatus ?? '',
+      FH_TEST_DISCONNECT: disconnect,
+      FH_TEST_LOGGER_STATUS: options.loggerStatus ?? '0' }
   });
   const exited = new Promise((resolve, reject) => {
     supervisor.once('error', reject);
@@ -104,10 +118,44 @@ exec /bin/sleep "$@"
     supervisor, exited,
     events: async () => (await readOptional(log)).trim().split('\n'),
     release: () => writeFile(release, ''),
+    disconnect: () => writeFile(disconnect, ''),
     started: () => readOptional(started),
     sleeper: async () => Number(await readOptional(sleeper))
   };
 }
+
+for (const childStatus of ['0', '7']) {
+  test(`unexpected running exit ${childStatus} records one bounded diagnostic`,
+    { timeout: 5000 }, async (t) => {
+      const engine = childStatus === '0' ? 'hysteria' : 'private-profile-value';
+      const reportEngine = childStatus === '0' ? 'hysteria' : 'unknown';
+      const fixture = await harness(t, 'tunnel', 'success', {
+        tun: true, childStatus, engine, loggerStatus: '1'
+      });
+      await until(async () => (await fixture.events()).includes('apply connected'));
+      await fixture.disconnect();
+      assert.deepEqual(await fixture.exited, { code: 1, signal: null });
+      const events = await fixture.events();
+      assert.deepEqual(events.filter((line) => line.startsWith('log ')), [
+        `log -t foxhole -p daemon.warn tunnel_exited engine=${reportEngine} stage=running exit_status=${childStatus}`
+      ]);
+      assert.equal(events.at(-1), 'down tunnel_exited');
+      assert.equal(events.some((line) => line.includes('private-profile-value')), false);
+    });
+}
+
+test('explicit Stop after connection does not log an unexpected exit',
+  { timeout: 5000 }, async (t) => {
+    const fixture = await harness(t, 'tunnel', 'success', {
+      tun: true, childStatus: '7'
+    });
+    await until(async () => (await fixture.events()).includes('apply connected'));
+    fixture.supervisor.kill('SIGTERM');
+    assert.deepEqual(await fixture.exited, { code: 0, signal: null });
+    const events = await fixture.events();
+    assert.equal(events.some((line) => line.startsWith('log ')), false);
+    assert.equal(events.at(-1), 'down runtime_stopped');
+  });
 
 test('TERM during prepare cannot start Hysteria afterwards',
   { timeout: 5000 }, async (t) => {

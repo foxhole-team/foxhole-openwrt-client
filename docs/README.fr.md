@@ -40,7 +40,7 @@ Chaque protocole choisi utilise un module client distinct dans une installation 
 
 <a id="whats-new"></a>
 
-> **🆕 Nouveautés - 1.0.2 Beta**
+> **🆕 Nouveautés - 1.0.3 Beta**
 >
 > - Correction de l’accès à l’API depuis le réseau local et de l’interface web.
 > - Correction des graphiques et de l’affichage des paramètres.
@@ -50,6 +50,9 @@ Chaque protocole choisi utilise un module client distinct dans une installation 
 > - Prise en charge de l’appairage de jusqu’à 10 appareils mobiles.
 > - Correction de la vérification des données de version GitHub.
 > - Amélioration des notifications, confirmations, de l’aide et des infobulles.
+> - Correction de la validation du lien symbolique standard vers les certificats lors de la préparation de la récupération du paquet RAM.
+> - Ajout du code de sortie du processus VPN au diagnostic des déconnexions.
+> - Correction des liens vers les modules VPN pour les mises à jour du client OpenWrt.
 
 <a id="features"></a>
 

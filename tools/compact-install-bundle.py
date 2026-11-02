@@ -156,6 +156,30 @@ def assets(root: Path, catalog: dict) -> set[str]:
     return names
 
 
+def catalog_release_version(entries: dict) -> str:
+    if not isinstance(entries, dict) or not entries:
+        raise ValueError('Nonempty engine catalog required')
+    versions = set()
+    number = r'(?:0|[1-9][0-9]*)'
+    pattern = (r'(https://github\.com/foxhole-team/foxhole-openwrt-client/releases/download/v('
+               + number + r'\.' + number + r'\.' + number + r')/)engines\.adb')
+    for entry in entries.values():
+        if not isinstance(entry, dict):
+            raise ValueError('Engine catalog entry required')
+        values = [entry.get(key) for key in ('indexUrl', 'packageUrl', 'packageName', 'packageVersion')]
+        if not all(isinstance(value, str) for value in values):
+            raise ValueError('Exact engine release references required')
+        index_url, package_url, name, version = values
+        reference = re.fullmatch(pattern, index_url)
+        filename = name + '-' + version + '.apk'
+        if reference is None or NAME.fullmatch(filename) is None or package_url != reference[1] + filename:
+            raise ValueError('Canonical engine release references required')
+        versions.add(reference[2])
+    if len(versions) != 1:
+        raise ValueError('One exact router release required for engine catalog')
+    return versions.pop()
+
+
 def verify_payloads(root: Path, catalog: dict, apk: str, temporary: Path,
                     core_commit: str, core_source: str) -> None:
     entries, indexes, archives = {}, set(), {}
@@ -203,7 +227,8 @@ def verify_payloads(root: Path, catalog: dict, apk: str, temporary: Path,
     native(['python3', str(ROOT / 'tools/build-engine-catalog.py'), '--apk', apk,
             '--public-key', str(root / 'foxhole-openwrt-apk.pem'), '--index', str(index),
             '--packages', *map(str, archives.values()), '--core-commit', core_commit,
-            '--source-sha256', core_source, '--output', str(regenerated)], timeout=600)
+            '--source-sha256', core_source, '--release-version', catalog_release_version(entries),
+            '--output', str(regenerated)], timeout=600)
     actual = json.loads(regenerated.read_bytes())
     by_key = {(row['id'], row['storage'], row['architecture']): row for row in actual['entries']}
     if by_key != entries:
