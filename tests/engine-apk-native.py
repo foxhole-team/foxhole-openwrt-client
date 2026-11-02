@@ -79,8 +79,8 @@ exit(failed ? 1 : 0);
 
 
 def fixture(source):
-    fail = source[source.index('function fail(reason)'):source.index('function read(path, limit)')]
-    helper = source[source.index('function apk(argv, timeout)'):source.index('\nfunction candidate(')]
+    fail = source[source.index('function fail(reason)'):source.index('export function asset(')]
+    helper = source[source.index('export function apk(argv, timeout)'):source.index('\nexport function candidate(')].replace('export function ', 'function ')
     assert FIXTURE.count('/* ACTUAL_FAIL */') == FIXTURE.count('/* ACTUAL_HELPER_AND_PARSER */') == 1
     return FIXTURE.replace('/* ACTUAL_FAIL */', fail).replace('/* ACTUAL_HELPER_AND_PARSER */', helper)
 
@@ -88,7 +88,7 @@ def fixture(source):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', type=Path, default=Path(__file__).resolve().parents[1] /
-        'package/foxhole-openwrt-client/root/usr/share/foxhole/engine-service.uc')
+        'package/foxhole-openwrt-client/root/usr/share/foxhole/package-operations.uc')
     args = parser.parse_args()
     result = subprocess.run(['ucode', '-'], input=fixture(args.source.read_text()).encode(),
         capture_output=True, timeout=15, check=False)

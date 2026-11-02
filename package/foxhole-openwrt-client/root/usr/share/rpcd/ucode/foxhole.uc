@@ -16,6 +16,7 @@ import * as pairing from '/usr/share/foxhole/pairing.uc';
 import * as mobile from '/usr/share/foxhole/mobile.uc';
 import * as core_adapter from '/usr/share/foxhole/core-adapter.uc';
 import * as store from '/usr/share/foxhole/private-store.uc';
+import * as pin_policy from '/usr/share/foxhole/pin-policy.uc';
 import * as core_model from '/usr/share/foxhole/core-model.uc';
 import * as handoff from '/usr/share/foxhole/handoff.uc';
 import * as remote from '/usr/share/foxhole/remote.uc';
@@ -25,6 +26,8 @@ import * as observation from '/usr/share/foxhole/client-observation.uc';
 import * as engine_service from '/usr/share/foxhole/engine-service.uc';
 import * as update_service from '/usr/share/foxhole/update-service.uc';
 import * as update_model from '/usr/share/foxhole/update-model.uc';
+import * as backup_service from '/usr/share/foxhole/backup-service.uc';
+import * as protocol_facts from '/usr/share/foxhole/protocol-facts.uc';
 
 const STATE_PATH = '/etc/foxhole/state.json';
 const AUTH_PATH = '/etc/foxhole/auth.json';
@@ -37,7 +40,6 @@ const MAX_STATE = 262144;
 const TOKEN_TTL = 1800;
 const FAILURE_WINDOW = 60;
 const FAILURE_LIMIT = 8;
-const HISTORY_LIMIT = 8640;
 const RUNTIME_PHASES = [
 	'disconnected', 'connecting', 'connected', 'blocked', 'error'
 ];
@@ -53,9 +55,10 @@ const RUNTIME_ERRORS = [
 	'tunnel_start_failed', 'tunnel_exited'
 ];
 const ERRORS = [
+	'backup_invalid', 'backup_busy', 'backup_recovery_required', 'backup_pairing_conflict', 'backup_no_space',
 	...map(update_model.reasons, code => 'update_' + lc(code)),
 	'engine_unknown_protocol', 'engine_not_released', 'engine_unsupported_target', 'engine_unsupported_profile_graph', 'engine_stale_plan', 'engine_stale_session', 'engine_router_unavailable', 'engine_busy', 'engine_no_space', 'engine_authentication_failed', 'engine_download_failed', 'engine_package_verification_failed', 'engine_candidate_check_failed', 'engine_reconnect_failed', 'engine_recovery_required', 'engine_invalid_request', 'engine_in_use',
-	'invalid_pin', 'pin_required', 'pin_unchanged', 'pin_setup_required', 'license_required',
+	'invalid_pin', 'pin_cooldown', 'luci_required', 'pin_required', 'pin_unchanged', 'pin_setup_required', 'license_required',
 	'locked', 'unauthorized', 'revision_conflict',
 	'invalid_config', 'unsupported_config', 'invalid_name',
 	'invalid_address', 'invalid_mac', 'mac_not_found', 'invalid_site',
@@ -67,9 +70,8 @@ const ERRORS = [
 
 let sessions = {};
 let failures = { count: 0, since: 0 };
-let history = [];
+let pin_retry_after = 0;
 let last_cpu = null;
-let last_sample = 0;
 let last_probe_request = 0;
 let last_core_probe_request = 0;
 let provider_resolutions = {};
@@ -78,16 +80,25 @@ function fail(code) {
 	die(index(ERRORS, code) >= 0 ? code : 'storage_error');
 };
 
+function ram_deployment() {
+ return update_service.ram_deployment();
+};
+
+
 function error_code(error) {
 	let code = type(error) == 'string' ? error : error?.message;
 	return index(ERRORS, code) >= 0 ? code : 'storage_error';
 };
 
 function safe(fn) {
+	pin_retry_after = 0;
 	try {
 		return fn();
 	} catch (error) {
-		return { _foxhole_error: error_code(error) };
+		let code = error_code(error);
+		return code == 'pin_cooldown'
+			? { _foxhole_error: code, retryAfterSeconds: pin_retry_after }
+			: { _foxhole_error: code };
 	}
 };
 
@@ -166,29 +177,25 @@ function equal_secret(left, right) {
 };
 
 function check_pin(pin) {
-	if (type(pin) != 'string' || !match(pin, /^[0-9]{4}$/))
-		fail('invalid_pin');
-	let now = time();
-	if (now - failures.since >= FAILURE_WINDOW) {
-		failures.count = 0;
-		failures.since = now;
-	}
-	if (failures.count >= FAILURE_LIMIT) fail('locked');
-	let auth = auth_record();
-	if (auth.changed != true) {
-		let uptime = fs.readfile('/proc/uptime', 256);
-		let boot = trim(fs.readfile('/proc/sys/kernel/random/boot_id', 128) || '');
-		if (!pairing.bootstrap_valid(auth, uptime, boot))
-			fail('invalid_pin');
-	}
-	let valid = equal_secret(pin_hash(auth.salt, pin), auth.hash);
-	if (!valid) {
-		failures.count++;
-		if (!failures.since) failures.since = now;
-		fail('invalid_pin');
-	}
-	failures.count = 0;
-	return true;
+ let auth = auth_record();
+ let stamp = pin_policy.clock(), record = pin_policy.load(stamp);
+ pin_retry_after = pin_policy.remaining(record, stamp.now);
+ if (pin_retry_after) fail('pin_cooldown');
+ let valid = type(pin) == 'string' && match(pin, /^[0-9]{6}$/) != null;
+ if (auth.changed != true) {
+  let uptime = fs.readfile('/proc/uptime', 256);
+  let boot = trim(fs.readfile('/proc/sys/kernel/random/boot_id', 128) || '');
+  valid = valid && pairing.bootstrap_valid(auth, uptime, boot);
+ }
+ valid = valid && equal_secret(pin_hash(auth.salt, pin), auth.hash);
+ if (!valid) {
+  record = pin_policy.failed(record, stamp.now, stamp.boot);
+  pin_policy.write(record);
+  pin_retry_after = pin_policy.remaining(record, stamp.now);
+  fail(pin_retry_after ? 'pin_cooldown' : 'invalid_pin');
+ }
+ pin_policy.write(pin_policy.initial(stamp.now, stamp.boot));
+ return true;
 };
 
 function user_of(request) {
@@ -507,25 +514,8 @@ function telemetry() {
 	let state = state_record();
 	let current = telemetry_sample(state);
 	let sample = current.sample;
-	let stamp = sample.time;
-	history = history_store.read();
-	if (!last_sample || stamp - last_sample >= 300000) {
-		push(history, {
-			t: stamp, measurementVersion: 2, cpu: sample.cpu, ram: sample.ram,
-			wanRx: sample.wan?.rx, wanTx: sample.wan?.tx,
-			wanCountry: sample.wan?.country,
-			lanRx: sample.lan?.rx, lanTx: sample.lan?.tx,
-			vpnRx: sample.vpn?.rx, vpnTx: sample.vpn?.tx,
-			vpnCountry: sample.vpn?.country,
-			wanLatency: sample.latency?.wan,
-			vpnLatency: sample.latency?.vpn,
-			vpnServerId: sample.latency?.serverId,
-		});
-		while (length(history) > HISTORY_LIMIT) shift(history);
-		last_sample = stamp;
-	}
 	return { available: sample.load != null || sample.memory.total != null,
-		sample, history, runtime: current.runtime };
+		sample, history: history_store.read_preview(), runtime: current.runtime };
 };
 
 function admit_server(raw, engine) {
@@ -544,9 +534,25 @@ function test_server(raw, engine) {
 	};
 };
 
+function remote_uplink() {
+	let connection = ubus.connect(), result = { publicIpv4Available: null, address: null };
+	if (!connection) return result;
+	try {
+		let dump = connection.call('network.interface', 'dump', {});
+		result = remote.uplink(dump?.interface);
+	} catch (_) {}
+	try { connection.disconnect(); } catch (_) {}
+	return result;
+};
+
 function public_state(state) {
 	let runtime = runtime_status(state);
 	let result = model.public_state(state, runtime);
+	result.installedProtocols = protocol_facts.installed();
+	result.pairedDeviceCount = length(pairing.public_devices(pairing_record()));
+	let uplink = remote_uplink();
+	result.network = { schema: 1, source: 'default-uplink',
+		publicIpv4Available: uplink.publicIpv4Available };
 	if (runtime.connected) {
 		for (let server in result.servers) {
 			if (server.id != runtime.activeServerId) continue;
@@ -718,7 +724,7 @@ function stop_server(request) {
 	let result = locked(() => {
 		session(request);
 		let state = state_record();
-		if (state.revision != expected) fail('revision_conflict');
+		if (state.revision != expected && !backup_service.revocation_revision_allowed(expected, state)) fail('revision_conflict');
 		engine_service.stop_intent();
 		if (state.activeServerId != null) {
 			state.activeServerId = null;
@@ -871,7 +877,8 @@ function client_access(request) {
 	return locked(() => {
 		session(request);
 		let state = state_record();
-		if (state.revision != expected) fail('revision_conflict');
+		if (state.revision != expected && !(args.allowLan == false &&
+		    backup_service.revocation_revision_allowed(expected, state))) fail('revision_conflict');
 		for (let client in state.clients) {
 			if (client.id != args.id || !client.inbound) continue;
 			client.allowLan = args.allowLan;
@@ -888,7 +895,7 @@ function delete_client(request) {
 	return locked(() => {
 		session(request);
 		let state = state_record();
-		if (state.revision != expected) fail('revision_conflict');
+		if (state.revision != expected && !backup_service.revocation_revision_allowed(expected, state)) fail('revision_conflict');
 		let found = false, revoked = false;
 		for (let i = 0; i < length(state.clients); i++) {
 			if (state.clients[i].id != id) continue;
@@ -965,12 +972,13 @@ function license_choice(auth, acceptance) {
 };
 
 function store_pin(pin, acceptance) {
-	if (type(pin) != 'string' || !match(pin, /^[0-9]{4}$/))
+	if (type(pin) != 'string' || !match(pin, /^[0-9]{6}$/))
 		fail('pin_mismatch');
 	let previous = auth_record(true), accepted = license_choice(previous, acceptance);
 	let auth = { schema: 1, salt: random_hex(16), changed: true };
 	if (accepted) { auth.licenseAccepted = true; auth.licenseVersion = LICENSE_VERSION; }
 	auth.hash = pin_hash(auth.salt, pin);
+	pin_policy.reset();
 	revoke_handoff(null);
 	write_json(PAIRING_PATH, pairing.defaults(), 0o600);
 	write_json(AUTH_PATH, auth, 0o600);
@@ -1005,10 +1013,12 @@ function admin_pin(request) {
 function change_pin(request) {
 	let sid = session(request, true);
 	if (sessions[sid].pairing) fail('unauthorized');
+	if (!sessions[sid].setup || sessions[sid].reset || auth_record().changed == true || auth_record().resetPending == true) fail('luci_required');
 	let pin = request.args.newPin;
-	if (type(pin) != 'string' || !match(pin, /^[0-9]{4}$/)) fail('pin_mismatch');
+	if (type(pin) != 'string' || !match(pin, /^[0-9]{6}$/)) fail('pin_mismatch');
 	return locked(() => {
-		session(request, true);
+		let current = session(request, true);
+		if (!sessions[current].setup || sessions[current].reset || auth_record().changed == true || auth_record().resetPending == true) fail('luci_required');
 		store_pin(pin, request.args);
 		let token = new_token(user_of(request));
 		return { token };
@@ -1091,13 +1101,14 @@ function pair_create(request) {
 		session(request);
 		let args = request.args;
 		let record = pairing.register(pairing_record(), args.id,
-			args.credential, args.name, time());
+			args.credential, args.name, time(), args.client, args.clientVersion);
 		write_json(PAIRING_PATH, record, 0o600);
 		return { id: args.id };
 	});
 };
 
 function pair_unlock(request) {
+ return locked(() => {
 	let now = time();
 	if (now - failures.since >= FAILURE_WINDOW) {
 		failures.count = 0;
@@ -1105,9 +1116,9 @@ function pair_unlock(request) {
 	}
 	if (failures.count >= FAILURE_LIMIT) fail('locked');
 	if (auth_record().changed != true) fail('pin_required');
-	let paired;
+	let record = pairing_record(), paired;
 	try {
-		paired = pairing.authenticate(pairing_record(),
+		paired = pairing.authenticate(record,
 			request.args.id, request.args.credential);
 	} catch (error) {
 		if (error_code(error) != 'unauthorized') die(error_code(error));
@@ -1115,8 +1126,12 @@ function pair_unlock(request) {
 		if (!failures.since) failures.since = now;
 		fail('unauthorized');
 	}
+	let updated = pairing.update_metadata(record, request.args.id, request.args.client, request.args.clientVersion);
+	if (sprintf('%J', updated) != sprintf('%J', record)) write_json(PAIRING_PATH, updated, 0o600);
 	let token = new_token(user_of(request), paired);
 	return { token, state: public_state(state_record()) };
+
+ });
 };
 
 function pair_revoke(request) {
@@ -1142,13 +1157,9 @@ function phone_session(request) {
 };
 
 function remote_wan_address() {
-	let connection = ubus.connect(), address = null;
-	if (!connection) fail('public_address_required');
-	try { address = remote.wan_address(connection.call('network.interface.wan', 'status', {})); }
-	catch (_) {}
-	try { connection.disconnect(); } catch (_) {}
-	if (!address) fail('public_address_required');
-	return address;
+	let result = remote_uplink();
+	if (result.publicIpv4Available != true || !result.address) fail('public_address_required');
+	return result.address;
 };
 
 function phone_capabilities(request) {
@@ -1491,6 +1502,22 @@ function engine_principal(request) {
 	if (item.pairing) return { kind: 'pair', id: item.pairing.id, verifier: item.pairing.verifier };
 	return { kind: 'admin', user: item.user, verifier: digest.sha256(auth_record().hash) };
 };
+function backup_request(request, action) {
+ let principal=engine_principal(request);
+ let context={principal,owner:digest.sha256(sprintf('%J',principal)),
+  authorize:()=>{session(request);return engine_service.update_principal_current(principal);}};
+ let args=request.args;
+ if(action=='export')return backup_service.export_backup(context);
+ if(action=='validate')return backup_service.validate_backup(args.document,valid_revision(args.expectedRevision),context);
+ if(action=='status')return backup_service.status(context);
+ let result=backup_service.queue_backup(args.document,valid_revision(args.expectedRevision),args.confirmed,args.requestId,context);
+ if(result.state=='PREPARED') {
+  let code=system(['/bin/sh','-c','umask 077; /usr/libexec/foxhole-backup-job "$1" >/dev/null 2>&1 &',
+   'foxhole-backup',result.jobId],1000);
+  if(code!=0){backup_service.recover();fail('unavailable');}
+ }
+ return result;
+};
 function update_request(request, action) {
 	let principal = engine_principal(request), args = request.args;
 	try {
@@ -1499,6 +1526,10 @@ function update_request(request, action) {
 	if (action == 'check') return update_service.check({ expectedRevision: args.expectedRevision }, principal);
 	if (action == 'plan') return update_service.plan({ expectedRevision: args.expectedRevision }, principal);
 	if (action == 'settings') return update_service.settings({ expectedRevision: args.expectedRevision, autoUpdateEnabled: args.autoUpdateEnabled }, principal);
+	if (action == 'deviceBegin') return update_service.device_begin(args, principal);
+	if (action == 'deviceChunk') return update_service.device_chunk(args, principal);
+	if (action == 'deviceStatus') return update_service.device_status(args, principal);
+	if (action == 'deviceFinish') return update_service.device_finish(args, principal);
 	return update_service.apply({ planId: args.planId, planSha256: args.planSha256, expectedRevision: args.expectedRevision, confirmed: args.confirmed }, principal);
 	} catch (error) {
 		let code = type(error) == 'string' ? error : error?.message;
@@ -1522,9 +1553,11 @@ function engines_apply(request) {
 function engines_job(request) { return engine_service.job(request.args.jobId, engine_principal(request)); };
 
 function package_status(request) {
-	let auth = auth_record(true);
+	let auth = auth_record(true), deployment = update_service.deployment();
 	return { schema: 1, product: 'foxhole', installed: true,
+		backupSupported: true,
 		pinConfigured: auth?.changed == true, resetSupported: true, packageUpdates: true,
+		version: deployment.version, storage: deployment.storage,
 		licenseRequired: license_required(auth), licenseVersion: LICENSE_VERSION };
 };
 
@@ -1547,6 +1580,7 @@ function setup_reset(request) {
 		let inbound_path = '/etc/foxhole/inbound.json';
 		store.target(inbound_path);
 		if (fs.lstat(inbound_path) && !fs.unlink(inbound_path)) fail('storage_error');
+		pin_policy.reset();
 		let cleared = model.defaults();
 		cleared.revision = state.revision + 1;
 		for (let item in sessions) delete sessions[item];
@@ -1575,16 +1609,34 @@ function state_call(request) {
 };
 
 function call(name, request, fn) {
-	return safe(() => fn(request));
+ return safe(() => {
+  if(ram_deployment() && (name=='engines.plan' || name=='engines.apply'))fail('engine_unsupported_target');
+  let revocation=name=='client.delete'||name=='client.access'&&type(request.args.allowLan)=='bool'&&request.args.allowLan==false;
+  if(!revocation&&index(['unlock','pair.unlock','lock','package.status','backup.status','server.stop','pin.change','pair.revoke','pair.list'],name)<0)
+   backup_service.guard();
+  return fn(request);
+ });
 };
 
 const methods = {
+	'backup.export': { args: { token: '' }, call: request => call('backup.export', request, request => backup_request(request, 'export')) },
+	'backup.validate': { args: { token: '', document: {}, expectedRevision: 0 }, call: request => call('backup.validate', request, request => backup_request(request, 'validate')) },
+	'backup.apply': { args: { token: '', document: {}, expectedRevision: 0, confirmed: false, requestId: '' }, call: request => call('backup.apply', request, request => backup_request(request, 'apply')) },
+	'backup.status': { args: { token: '' }, call: request => call('backup.status', request, request => backup_request(request, 'status')) },
 	'updates.status': { args: { token: '' }, call: request => call('updates.status', request, request => update_request(request, 'status')) },
 	'updates.check': { args: { token: '', expectedRevision: 0 }, call: request => call('updates.check', request, request => update_request(request, 'check')) },
 	'updates.plan': { args: { token: '', expectedRevision: 0 }, call: request => call('updates.plan', request, request => update_request(request, 'plan')) },
 	'updates.apply': { args: { token: '', planId: '', planSha256: '', expectedRevision: 0, confirmed: false }, call: request => call('updates.apply', request, request => update_request(request, 'apply')) },
 	'updates.job': { args: { token: '', jobId: '' }, call: request => call('updates.job', request, request => update_request(request, 'job')) },
 	'updates.settings': { args: { token: '', expectedRevision: 0, autoUpdateEnabled: false }, call: request => call('updates.settings', request, request => update_request(request, 'settings')) },
+	'updates.deviceBegin': { args: { token: '', expectedRevision: 0, requestId: '', releaseTag: '', version: '', fileSha256: '', fileBytes: 0 },
+		call: request => call('updates.deviceBegin', request, request => update_request(request, 'deviceBegin')) },
+	'updates.deviceChunk': { args: { token: '', uploadId: '', offset: 0, dataBase64: '', chunkSha256: '' },
+		call: request => call('updates.deviceChunk', request, request => update_request(request, 'deviceChunk')) },
+	'updates.deviceStatus': { args: { token: '', uploadId: '' },
+		call: request => call('updates.deviceStatus', request, request => update_request(request, 'deviceStatus')) },
+	'updates.deviceFinish': { args: { token: '', uploadId: '' },
+		call: request => call('updates.deviceFinish', request, request => update_request(request, 'deviceFinish')) },
 	'engines.status': { args: { token: '' }, call: request => call('engines.status', request, engines_status) },
 	'engines.plan': { args: { token: '', operation: '', engineIds: [], storage: 'AUTO', expectedRevision: 0, catalogSha256: '' },
 		call: request => call('engines.plan', request, engines_plan) },
@@ -1610,9 +1662,9 @@ const methods = {
 		call: request => call('phone.status', request, phone_status) },
 	unlock: { args: { pin: '' }, call: request => call('unlock', request, unlock) },
 	lock: { args: { token: '' }, call: request => call('lock', request, lock) },
-	'pair.create': { args: { token: '', id: '', credential: '', name: '' },
+	'pair.create': { args: { token: '', id: '', credential: '', name: '', client: '', clientVersion: '' },
 		call: request => call('pair.create', request, pair_create) },
-	'pair.unlock': { args: { id: '', credential: '' },
+	'pair.unlock': { args: { id: '', credential: '', client: '', clientVersion: '' },
 		call: request => call('pair.unlock', request, pair_unlock) },
 	'pair.list': { args: { token: '' }, call: request =>
 		call('pair.list', request, request => {
@@ -1658,6 +1710,10 @@ const methods = {
 	'device.list': { args: { token: '' }, call: request =>
 		call('device.list', request, list_devices) }
 };
+
+// A live worker keeps the engine lock. Authentication, Stop and revocation
+// remain registered while normal product calls are guarded by its journal.
+try {backup_service.recover();}catch(_){}
 
 return { foxhole: methods, 'foxhole.admin': {
 	set_pin: { args: { newPin: '', licenseAccepted: false, licenseVersion: 0 },

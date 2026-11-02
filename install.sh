@@ -6,13 +6,13 @@ show_license() {
  cat <<'FOXHOLE_LICENSE_V1'
 FoxHole OpenWRT Client · license agreement (version 1)
 
-1. The package must be used strictly in accordance with applicable law.
+1. The app must be used strictly in accordance with applicable law.
 
 2. FoxHole OpenWRT Client is not antivirus software and does not guarantee detection or neutralization of executable malicious files.
 
-3. The developers are not liable for possible damage arising from use of the package.
+3. The developers are not liable for possible damage arising from use of the app.
 
-4. Use of the package constitutes full acceptance of the license terms of all its internal components and data sets.
+4. Use of the app constitutes full acceptance of the license terms of all its internal components and data sets.
 
 5. By continuing, you confirm your agreement with every provision of this agreement.
 FOXHOLE_LICENSE_V1

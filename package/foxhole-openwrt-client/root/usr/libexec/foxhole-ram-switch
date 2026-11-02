@@ -1,0 +1,5 @@
+#!/usr/bin/ucode
+'use strict';
+import * as ram_switch from '/usr/share/foxhole/ram-switch-service.uc';
+if(length(ARGV)!=1)die('Fixed RAM update job required\n');
+ram_switch.run(ARGV[0]);

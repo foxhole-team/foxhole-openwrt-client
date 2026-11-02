@@ -1,3 +1,13 @@
+<h1 align="center">FoxHole OpenWrt</h1>
+
+<div align="center">
+
+OpenWrt ルーター向けの VPN プロファイル、ルーティングルール、シンプルな管理パネル。
+外向きの VPN 接続には [FoxHole Core](https://github.com/foxhole-team/foxhole-core) を使用します。
+コンパクト構成では選択プロトコルごとに個別のクライアントモジュールを使います。着信用Hysteriaサーバーは別途提供され、公開済みv1.0.1クライアントセットには含まれません。
+
+</div>
+
 <p align="center">
     <img
       src="../media/fhg.gif"
@@ -23,49 +33,70 @@
   <a href="https://github.com/foxhole-team/foxhole-openwrt-client/releases">
     <img src="https://img.shields.io/github/v/release/foxhole-team/foxhole-openwrt-client?label=version&style=flat-square" alt="Version">
   </a>
+  <img src="https://img.shields.io/badge/status-beta-yellow?style=flat-square" alt="Status: beta">
 </p>
 
-# FoxHole OpenWrt
+<p align="center"><a href="#quickstart">使い始める</a> · <a href="#features">機能</a> · <a href="#details">詳細</a> · <a href="#whats-new">新機能と変更点</a></p>
 
-OpenWrt ルーター向けの VPN プロファイル、ルーティングルール、シンプルな管理パネル。
-外向きの VPN 接続には [FoxCore](https://github.com/foxhole-team/foxhole-core) を使用します。
-コンパクト構成では、選択したプロトコルごとに個別のクライアントモジュールを使います。
-オプションの Hysteria サーバーで、お使いの端末からの接続を受け入れられます。
+<a id="whats-new"></a>
 
-<p align="center">
-  <img src="../media/dashboard.png" width="100%" alt="FoxHole OpenWrt Client dashboard">
-</p>
+> **🆕 新機能と変更点 - 1.0.2 Beta**
+>
+> - ローカルネットワークからのAPIアクセスとWebインターフェースを修正しました。
+> - グラフと設定表示を修正しました。
+> - 設定、VPNプロファイル、クライアントのバックアップと復元を追加しました。
+> - ペアリング済みモバイル端末の一覧を追加しました。
+> - PINを6桁にし、誤入力後のロックを追加しました。PINはLuCIから変更できます。
+> - 最大10台のモバイル端末とのペアリングに対応しました。
+> - GitHubリリースデータの検証を修正しました。
+> - 通知、確認ウィンドウ、ヘルプ、ヒントを改善しました。
+
+<a id="features"></a>
 
 ## 🔌 対応 VPN プロトコル
 
 ルーター向けに現在利用できる FoxHole VPN モジュール：
 
-| プロトコル | インストールオプション |
-| --- | --- |
-| VLESS | `--vless` |
-| Hysteria2 | `--hy2` |
-| WireGuard | `--wg` |
+| プロトコル | インストールオプション | 説明 |
+| --- | --- | --- |
+| VLESS | `--vless` | VPNプロファイルで指定した設定を使い、互換性のあるVLESSサーバーへ接続するプロキシ型のクライアントです。 |
+| Hysteria2 | `--hy2` | QUIC（UDP）を使ってHysteria2サーバーに接続します。選択したプロトコル専用のクライアントモジュールを使用します。 |
+| WireGuard | `--wg` | WireGuardの対向ノードとのL3 IPトンネルです。プロファイルに鍵、アドレス、ネットワーク設定を指定します。 |
 
 ## 📋 必要条件
 
-- APK を使う OpenWrt 25.12.5、root 権限、インターネット接続。
+- apkパッケージマネージャーを備えたOpenWrt 25.12.5とroot権限。直接ダウンロードにはルーターのインターネット接続が必要ですが、ローカル`--bundle`は信頼できるLANで利用できます。
 - 正確なファームウェア、対象、アーキテクチャ、選択したプロトコルに対応する公開済みパッケージ。現在のパッケージ・更新ポリシーは `x86/64` と `mediatek/filogic` を許可します。SDK ビルドや ARM アーキテクチャ名だけでは、すべてのルーターモデルとの互換性を証明できません。
 - 検証済みパッケージ全体の予算に十分なフラッシュと RAM。パッケージを変更する前に、インストーラーが依存関係、カーネル ABI、一時領域を確認します。
-- 信頼できる LAN からのアクセス。新しいルーターで Wi-Fi が無効なら、先に有効にしてください。
+- 信頼できるローカルネットワークからのアクセス。Androidでの検出と初期設定では、電話をルーターのWi-Fiに接続してください。
 
-このパブリックベータでは、送信用 VPN モジュールに FoxHole Core 1.0.1 を使用します。
+このパブリックベータでは、送信用 VPN モジュールに FoxHole Core 1.0.2 を使用します。
 ソースでの対応とクロスコンパイル済みバイナリだけでは、ルーターとの互換性を確認したことにはなりません。
 真正性を確認済みのリリースカタログに含まれるパッケージだけをインストールできます。
 着信接続用サーバーには、未使用の S2/OpenPGP パッケージに関する、精査済みの依存関係の指摘が 2 件残っています。
 対象の厳密なビルド条件と例外の有効期限は、[リリース](RELEASE.md)に記載しています。
 
+<a id="quickstart"></a>
+
 ## 📦 インストール
 
-公開済みでレビュー済みのリリースタグと、その `SHA256SUMS` の真正性を独立した方法で確認した SHA-256 を使用してください。
-次のコマンドは、実行前にインストーラーを検証します。
+自分のVPNサーバーやプロバイダーへ接続するクライアントです。利用可能なVPNサーバーやそのアクセス権は付属しません。
+
+公開済みで検証されたリリースを選び、`RELEASE_TAG`をそのタグ、`MANIFEST_SHA256`を信頼できる`SHA256SUMS`のSHA-256、`INSTALLER_SHA256`を同じリリースの`install.sh`のSHA-256に置き換えてください。値の真正性は独立した方法で確認します。実行前にインストーラーを検証します：
 
 ```sh
-(set -eu; url='https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/RELEASE_TAG'; f=$(mktemp /tmp/foxhole-install.XXXXXX); trap 'rm -f "$f"' EXIT; uclient-fetch -q -T 60 -O "$f" "$url/install.sh"; printf '%s  %s\n' 'fb0a2bad91a1eebd3591801f79dd6b83fc70bf94ddc1b8d6577f94519de1d1d9' "$f" | sha256sum -c -; sh "$f" --base-url "$url" --manifest-sha256 MANIFEST_SHA256 --apply)
+(
+  set -eu
+  release_tag='RELEASE_TAG'
+  manifest_sha256='MANIFEST_SHA256'
+  installer_sha256='INSTALLER_SHA256'
+  url="https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/$release_tag"
+  installer=$(mktemp /tmp/foxhole-install.XXXXXX)
+  trap 'rm -f "$installer"' EXIT
+  uclient-fetch -q -T 60 -O "$installer" "$url/install.sh"
+  printf '%s  %s\n' "$installer_sha256" "$installer" | sha256sum -c -
+  sh "$installer" --base-url "$url" --manifest-sha256 "$manifest_sha256" --apply
+)
 ```
 
 `--apply` を使う対話式インストーラーは同意事項を表示し、`[y/N]` で確認します。既定は「いいえ」です。`sh install.sh --license` で内容を確認できます。非対話式インストールには、明示的に同意した後で `--accept-license` を指定する必要があります。電話の設定ウィザードでは、独立した同意欄は最初は未選択です。
@@ -76,15 +107,12 @@ OpenWrt ルーター向けの VPN プロファイル、ルーティングルー�
 ```sh
 sh install.sh --bundle /tmp/bundle --manifest-sha256 HASH --hy2 --flash --apply
 sh install.sh --bundle /tmp/bundle --manifest-sha256 HASH --vless --wg --flash --apply
-sh install.sh --bundle /tmp/bundle --manifest-sha256 HASH --hy2 --server --ram --apply
+sh install.sh --bundle /tmp/bundle --manifest-sha256 HASH --hy2 --ram --apply
 ```
 
 `-wg` は `--wg` の別名です。他に認識されるフラグは `--vmess`、`--tuic`、
 `--trojan`、`--shadowsocks`、`--naive`、`--anytls`、`--shadowtls`、`--socks`、`--http` です。
-コンパクトカタログでは、同じ保存モードでリリース済みモジュールを組み合わせます。
-選択した各モジュールが、お使いのファームウェアとターゲットで提供されている必要があります。
-`--all` は認識される全プロトコルを要求し、1 つでもモジュールがなければ拒否されます。
-旧 schema 1 カタログでは、厳密に一致する単一のバリアントが必要です。
+各モジュールは対象ファームウェアとプラットフォーム向けに公開されている必要があります。コンパクトカタログの`--all`は、対象向けに公開された全クライアントプロトコルを選びます。共通の保存方式が必要です。明示指定したプロトコルのモジュールがなければ拒否されます。旧schema 1では厳密に一致する構成が必要で、`--all`は認識可能な全プロトコルを意味します。
 
 | 保存先 | 動作 |
 | --- | --- |
@@ -97,7 +125,15 @@ sh install.sh --bundle /tmp/bundle --manifest-sha256 HASH --hy2 --server --ram -
 コンパクトカタログでは、`--server` により着信接続用 Hysteria サーバーの必要リソースを加算します。
 サーバーはリモートアクセスを設定するまで無効のままです。
 
+<p align="center">
+  <img src="../media/dashboard.png" width="100%" alt="FoxHole OpenWrt Client dashboard">
+</p>
+
+<a id="details"></a>
+
 ## 🔗 使用とペアリング
+
+PINを変更するとペアリングがリセットされ、端末の再接続が必要になります。VPNプロファイルと設定は保持されます。
 
 **LuCI → Services → FoxHole** を開き、PIN を決めて VPN プロファイルを追加します。
 ルールにより、端末、ドメイン、国別のトラフィックを VPN または直接接続へ振り分けられます。
@@ -109,6 +145,8 @@ sh install.sh --bundle /tmp/bundle --manifest-sha256 HASH --hy2 --server --ram -
 既存の PIN は保持されます。管理用の接続先はプライベートのままです。
 ペアリングを解除すると管理アクセスが削除されます。VPN 認証情報を失効させるには、リモートクライアントを別途削除してください。
 従来の共有プロファイルの削除では、その記録だけが削除されます。外部 VPN プロバイダーが保持する認証情報は失効させられません。
+
+公開済みv1.0.1クライアントセットに着信用Hysteriaサーバーは含まれません。リモートVPNクライアントの作成には別途検証済みのサーバーパッケージが必要で、`--server`はそれを含むカタログでのみ利用できます。公開WANアドレスと外部から到達可能なUDPポートも必要です。
 
 リモートアクセスには、`--server` で選択した Hysteria サーバーが必要です。
 パブリック WAN アドレスを持つルーターでは、**VPN プロファイルを作成**でリモートクライアントを追加します。
@@ -125,6 +163,12 @@ Wi-Fi アイコンは物理的な Wi-Fi 接続のみを示し、SSID や位置�
 認証済みのペアリング済みルーターからアプリへ直接届く受信 VPN プロファイルにのみ、独立したアプリ連携メタデータが付きます。接続 URI、設定、QR 形式は変わりません。一般のウェブ・QR・プロバイダーのエクスポートには付きません。インポートしたヒントだけでは信頼を確立できません。
 
 自動認識には、保存済みローカルプロファイル、現在の設定、選択したペアリングの一致に加え、そのプロファイルがアプリ自身の VPN で実際に接続中であることも必要です。実際の接続ごとに時間制限付き確認を一度行い、タイマー、自動再試行、プロバイダープロファイルの定期照会はありません。ペアリングを再試行は Wi-Fi・権限・PIN を使う明示的な手順です。認証成功までは元の記録を保持し、変更された証明書の識別情報を自動承認しません。
+
+## 制限
+
+- 国別ルールはIP範囲を使い、ドメインルールはルーターDNSに依存します。サイト所有者の国を特定したりHTTPSの内容を解析したりはしません。
+- 有効なCore接続が予期せず失われると、そのVPN経路がブロックされます。別設定のKill switchは接続プロファイルがない場合のブロックを制御し、初期状態では無効です。
+- ルール優先順位、ローカルアドレスの例外、着信サーバーの制限は[アーキテクチャ](ARCHITECTURE.md)を参照してください。
 
 ## 🧩 後からプロトコルを追加する
 
@@ -151,16 +195,30 @@ CLI/backend から直接インストールした場合、自動更新は既定�
 コンパクトインストーラーは初回設定専用です。非公開の復旧用バックアップを保持し、DHCP 設定が変わっていないことを確認します。
 ルーティング中にパッケージを削除する前に、[ロールバック・削除手順](ROLLBACK.md)を使用してください。
 検証済みのリリースパッケージを使用してください。
-過去の旧インストーラーや ARM 専用ダウンロードは対象外です。既存の HY2 プロファイルは Core で引き続き使用できます。
+旧インストーラーとARM専用ダウンロードは使用しません。FoxHole CoreはHysteria2に対応します。既存のlegacyプロファイルは別のHysteriaランタイムを使い、Coreへ自動移行されません。更新前に稼働中のlegacy Hysteria接続を手動停止してください。
 
 [コマンド](CLI.md) · [アーキテクチャ](ARCHITECTURE.md) ·
 [ビルドとリリース](RELEASE.md) · [セキュリティ](../SECURITY.md)
 
+<a id="ecosystem"></a>
+
+## 🔗 FoxHoleエコシステム
+
+| プロジェクト | 役割 |
+| --- | --- |
+| [FoxHole Guard](https://github.com/foxhole-team/foxhole-guard) | Android：VPN、Tor/I2P、通信ルールとローカル監視 |
+| [FoxHole VPN](https://github.com/foxhole-team/foxhole-vpn) | Android：シンプルなVPNとペアリング済みOpenWrt管理 |
+| [FoxHole Core](https://github.com/foxhole-team/foxhole-core) | 共通Rustネットワークコア。機能はビルドによる |
+| [**FoxHole OpenWrt**](https://github.com/foxhole-team/foxhole-openwrt-client) | ルーターVPNとローカルネットワーク管理 |
+| [FoxHole DB](https://github.com/foxhole-team/foxhole-db) | 署名付きルールと参照データ |
+
+## 🤝 開発への参加
+
+不具合報告や変更提案は[Issues](https://github.com/foxhole-team/foxhole-openwrt-client/issues)へお願いします。
+
 ## 💖 開発を支援する
 
-私たちはAIツールの助けを借りながら、すべて自分たちの時間と資源でFoxHole OpenWrtを開発・保守しています。皆さまのご支援により、プロジェクトにより多くの時間を充て、開発を加速できます。
-
-[プロジェクトを支援する - 暗号資産ウォレット](#cryptocurrency-wallets)
+私たちは、開発にAIツールを使用しながら、すべて自分たちの時間と資源でFoxHole OpenWrtを開発・保守しています。皆さまのご支援により、プロジェクトにより多くの時間を充て、開発を加速できます。
 
 <a id="cryptocurrency-wallets"></a>
 

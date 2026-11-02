@@ -1,3 +1,13 @@
+<h1 align="center">FoxHole OpenWrt</h1>
+
+<div align="center">
+
+Profils VPN, règles de routage et interface simple pour les routeurs OpenWrt.
+Les connexions VPN sortantes utilisent [FoxHole Core](https://github.com/foxhole-team/foxhole-core).
+Chaque protocole choisi utilise un module client distinct dans une installation compacte. Le serveur Hysteria entrant est fourni séparément et n’est pas inclus dans le paquet client publié v1.0.1.
+
+</div>
+
 <p align="center">
     <img
       src="../media/fhg.gif"
@@ -23,49 +33,70 @@
   <a href="https://github.com/foxhole-team/foxhole-openwrt-client/releases">
     <img src="https://img.shields.io/github/v/release/foxhole-team/foxhole-openwrt-client?label=version&style=flat-square" alt="Version">
   </a>
+  <img src="https://img.shields.io/badge/status-beta-yellow?style=flat-square" alt="Status: beta">
 </p>
 
-# FoxHole OpenWrt
+<p align="center"><a href="#quickstart">Démarrer</a> · <a href="#features">Fonctions</a> · <a href="#details">Détails</a> · <a href="#whats-new">Nouveautés</a></p>
 
-Profils VPN, règles de routage et interface simple pour les routeurs OpenWrt.
-Les connexions VPN sortantes utilisent [FoxCore](https://github.com/foxhole-team/foxhole-core).
-Les installations compactes utilisent un module client distinct pour chaque
-protocole sélectionné. Un serveur Hysteria facultatif accepte les connexions de vos appareils.
+<a id="whats-new"></a>
 
-<p align="center">
-  <img src="../media/dashboard.png" width="100%" alt="FoxHole OpenWrt Client dashboard">
-</p>
+> **🆕 Nouveautés - 1.0.2 Beta**
+>
+> - Correction de l’accès à l’API depuis le réseau local et de l’interface web.
+> - Correction des graphiques et de l’affichage des paramètres.
+> - Ajout de la sauvegarde et de la restauration des paramètres, profils VPN et clients.
+> - Ajout de la liste des appareils mobiles appairés.
+> - Le PIN passe à six chiffres, avec blocage après des tentatives incorrectes. Le PIN peut être modifié via LuCI.
+> - Prise en charge de l’appairage de jusqu’à 10 appareils mobiles.
+> - Correction de la vérification des données de version GitHub.
+> - Amélioration des notifications, confirmations, de l’aide et des infobulles.
+
+<a id="features"></a>
 
 ## 🔌 Protocoles VPN pris en charge
 
 Modules VPN FoxHole actuellement disponibles pour le routeur :
 
-| Protocole | Option d’installation |
-| --- | --- |
-| VLESS | `--vless` |
-| Hysteria2 | `--hy2` |
-| WireGuard | `--wg` |
+| Protocole | Option d’installation | Description |
+| --- | --- | --- |
+| VLESS | `--vless` | Connexion proxy à un serveur VLESS compatible avec les paramètres définis dans le profil VPN. |
+| Hysteria2 | `--hy2` | Connexion à un serveur Hysteria2 via QUIC/UDP, assurée par son module client distinct. |
+| WireGuard | `--wg` | Tunnel IP de couche 3 vers un pair WireGuard ; le profil définit clés, adresses et paramètres réseau. |
 
 ## 📋 Prérequis
 
-- OpenWrt 25.12.5 avec APK, un accès root et une connexion Internet.
+- OpenWrt 25.12.5 avec le gestionnaire de paquets apk et l’accès root. Les téléchargements directs nécessitent Internet sur le routeur ; un `--bundle` local ne demande qu’un LAN de confiance.
 - Des paquets publiés pour le micrologiciel, la cible, l’architecture et les protocoles exacts. La politique actuelle des paquets et mises à jour admet `x86/64` et `mediatek/filogic` ; une compilation SDK ou un nom d’architecture ARM ne valide pas tous les modèles de routeur.
 - Assez de mémoire flash et de RAM pour le budget complet et vérifié des paquets. Avant toute modification, l’installateur contrôle les dépendances, l’ABI du noyau et l’espace temporaire.
-- Un accès depuis un LAN de confiance. Activez d’abord le Wi-Fi s’il est désactivé sur un routeur neuf.
+- Accès depuis un réseau local de confiance. Pour la découverte et la première configuration Android, connectez le téléphone au Wi-Fi du routeur.
 
-Dans cette bêta publique, les modules VPN sortants utilisent FoxHole Core 1.0.1. La prise en charge dans les sources et un binaire compilé pour une autre
+Dans cette bêta publique, les modules VPN sortants utilisent FoxHole Core 1.0.2. La prise en charge dans les sources et un binaire compilé pour une autre
 architecture ne suffisent pas à établir la compatibilité du routeur. Seuls les
 paquets figurant dans un catalogue de publication authentifié peuvent être installés.
 Le serveur entrant conserve deux constats examinés concernant des dépendances
 S2/OpenPGP inutilisées ; les vérifications du build exact et l’échéance des exceptions sont documentées dans [Publication](RELEASE.md).
 
+<a id="quickstart"></a>
+
 ## 📦 Installation
 
-Utilisez une étiquette de version publiée et examinée, ainsi que le SHA-256 de son
-fichier `SHA256SUMS`, authentifié par un moyen indépendant. Cette commande vérifie l’installateur avant son exécution :
+Ce client se connecte à votre propre serveur ou fournisseur VPN. Aucun serveur VPN prêt à l’emploi ni accès associé n’est inclus.
+
+Choisissez une version publiée et vérifiée. Remplacez `RELEASE_TAG` par son tag, `MANIFEST_SHA256` par le SHA-256 de confiance de son `SHA256SUMS`, et `INSTALLER_SHA256` par le SHA-256 de son `install.sh`. Authentifiez ces valeurs indépendamment. L’installateur est vérifié avant exécution :
 
 ```sh
-(set -eu; url='https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/RELEASE_TAG'; f=$(mktemp /tmp/foxhole-install.XXXXXX); trap 'rm -f "$f"' EXIT; uclient-fetch -q -T 60 -O "$f" "$url/install.sh"; printf '%s  %s\n' 'fb0a2bad91a1eebd3591801f79dd6b83fc70bf94ddc1b8d6577f94519de1d1d9' "$f" | sha256sum -c -; sh "$f" --base-url "$url" --manifest-sha256 MANIFEST_SHA256 --apply)
+(
+  set -eu
+  release_tag='RELEASE_TAG'
+  manifest_sha256='MANIFEST_SHA256'
+  installer_sha256='INSTALLER_SHA256'
+  url="https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/$release_tag"
+  installer=$(mktemp /tmp/foxhole-install.XXXXXX)
+  trap 'rm -f "$installer"' EXIT
+  uclient-fetch -q -T 60 -O "$installer" "$url/install.sh"
+  printf '%s  %s\n' "$installer_sha256" "$installer" | sha256sum -c -
+  sh "$installer" --base-url "$url" --manifest-sha256 "$manifest_sha256" --apply
+)
 ```
 
 Avec `--apply`, l’installateur interactif affiche l’accord et demande `[y/N]`, avec Non par défaut. Consultez-le avec `sh install.sh --license`. L’installation non interactive exige `--accept-license` après acceptation explicite. Dans l’assistant du téléphone, le choix distinct de consentement est initialement décoché.
@@ -76,15 +107,12 @@ uniquement**, stocké en mémoire flash. Avec un lot de publication local vérif
 ```sh
 sh install.sh --bundle /tmp/bundle --manifest-sha256 HASH --hy2 --flash --apply
 sh install.sh --bundle /tmp/bundle --manifest-sha256 HASH --vless --wg --flash --apply
-sh install.sh --bundle /tmp/bundle --manifest-sha256 HASH --hy2 --server --ram --apply
+sh install.sh --bundle /tmp/bundle --manifest-sha256 HASH --hy2 --ram --apply
 ```
 
 `-wg` est un alias de `--wg`. Autres options reconnues : `--vmess`, `--tuic`,
 `--trojan`, `--shadowsocks`, `--naive`, `--anytls`, `--shadowtls`, `--socks`, `--http`.
-Les catalogues compacts combinent les modules publiés dans un mode de stockage
-commun. Chaque module sélectionné doit être disponible pour votre micrologiciel
-et votre cible. `--all` demande tous les protocoles reconnus et est refusé si un
-module manque. Les anciens catalogues schema 1 exigent une variante précise unique.
+Chaque module doit être publié pour le micrologiciel et la cible. Dans un catalogue compact, `--all` sélectionne tous les protocoles clients publiés pour la cible. Les modules sélectionnés doivent partager un mode de stockage pris en charge. Un protocole explicitement demandé est refusé si son module manque. Les anciens catalogues schema 1 exigent une variante exacte ; `--all` y signifie tous les protocoles reconnus.
 
 | Stockage | Comportement |
 | --- | --- |
@@ -97,7 +125,15 @@ du noyau ne sont jamais mis à niveau pour rendre compatible un lot qui ne l’e
 Pour les catalogues compacts, `--server` ajoute le serveur Hysteria entrant au
 budget de ressources. Il reste désactivé jusqu’à la configuration de l’accès distant.
 
+<p align="center">
+  <img src="../media/dashboard.png" width="100%" alt="FoxHole OpenWrt Client dashboard">
+</p>
+
+<a id="details"></a>
+
 ## 🔗 Utilisation et appairage
+
+Changer le PIN réinitialise les appairages : le téléphone devra être reconnecté, tandis que les profils VPN et les paramètres sont conservés.
 
 Ouvrez **LuCI → Services → FoxHole**, choisissez un PIN et ajoutez un profil VPN.
 Les règles peuvent diriger le trafic des appareils, domaines et pays vers le VPN ou une connexion directe.
@@ -111,6 +147,8 @@ existant est conservé. L’adresse de gestion reste privée.
 Le désappairage retire l’accès d’administration. Supprimez séparément le client
 distant pour révoquer ses identifiants VPN. La suppression d’un ancien profil
 partagé retire uniquement son enregistrement ; elle ne peut pas révoquer les identifiants détenus par un fournisseur VPN externe.
+
+Le paquet client publié v1.0.1 n’inclut pas le serveur Hysteria entrant. Les clients VPN distants nécessitent un paquet serveur vérifié séparément ; `--server` n’est disponible que si le catalogue le contient. Une adresse WAN publique et un port UDP accessible de l’extérieur sont aussi nécessaires.
 
 L’accès distant nécessite le serveur Hysteria sélectionné avec `--server`. Sur un
 routeur disposant d’une adresse WAN publique, **Créer un profil VPN** ajoute un
@@ -128,6 +166,12 @@ Gérer via le VPN domestique est un choix distinct, DÉSACTIVÉ par défaut pour
 Seuls les profils VPN entrants transmis directement à l’application par un routeur associé et authentifié reçoivent des métadonnées distinctes de liaison avec l’application. URI de connexion, configuration et formats QR restent inchangés. Les exports génériques web/QR/fournisseurs restent sans marque ; des indications importées ne créent pas de confiance à elles seules.
 
 La reconnaissance automatique exige aussi le profil local enregistré correspondant, sa configuration actuelle et l’association sélectionnée, avec ce profil réellement connecté via le VPN de l’application. Une vérification bornée est effectuée par connexion réelle, sans minuteur, nouvelle tentative automatique ni interrogation des profils fournisseurs. Réessayer l’association est une procédure explicite Wi-Fi/autorisation/PIN : l’ancien enregistrement est conservé jusqu’à l’authentification réussie, sans accepter silencieusement une identité de certificat différente.
+
+## Limites
+
+- Les règles de pays utilisent des plages IP et les règles de domaine dépendent du DNS du routeur. Elles ne déterminent pas le pays du propriétaire du site et n’analysent pas le contenu HTTPS.
+- La perte inattendue de la connexion Core active bloque son routage VPN. Le réglage Kill switch distinct contrôle le blocage sans profil actif et est désactivé par défaut.
+- Les priorités, exceptions locales et limites du serveur entrant figurent dans l’[architecture](ARCHITECTURE.md).
 
 ## 🧩 Ajouter un protocole ultérieurement
 
@@ -155,17 +199,30 @@ routeur ou le téléphone appairé. L’installateur compact sert uniquement à 
 configuration initiale. Il conserve des sauvegardes de récupération privées et
 vérifie que les paramètres DHCP restent inchangés. Avant de supprimer des paquets
 pendant que le routage est actif, suivez les instructions de [retour arrière/suppression](ROLLBACK.md).
-Utilisez des paquets de publication vérifiés. Les anciens installateurs et les
-téléchargements réservés à ARM sont exclus ; les profils HY2 existants restent pris en charge par Core.
+Utilisez des paquets de publication vérifiés. Les anciens installateurs et téléchargements réservés à ARM ne sont pas utilisés. FoxHole Core prend en charge Hysteria2. Les profils legacy conservent le moteur Hysteria distinct, sans migration automatique vers Core. Arrêtez manuellement une connexion Hysteria legacy active avant la mise à jour.
 
 [Commandes](CLI.md) · [Architecture](ARCHITECTURE.md) ·
 [Compilation et publication](RELEASE.md) · [Sécurité](../SECURITY.md)
 
+<a id="ecosystem"></a>
+
+## 🔗 Écosystème FoxHole
+
+| Projet | Rôle |
+| --- | --- |
+| [FoxHole Guard](https://github.com/foxhole-team/foxhole-guard) | Android : VPN, Tor/I2P, règles de trafic et surveillance locale |
+| [FoxHole VPN](https://github.com/foxhole-team/foxhole-vpn) | Android : client VPN simple et gestion OpenWrt appairée |
+| [FoxHole Core](https://github.com/foxhole-team/foxhole-core) | Cœur réseau Rust commun ; fonctions selon la compilation |
+| [**FoxHole OpenWrt**](https://github.com/foxhole-team/foxhole-openwrt-client) | VPN de routeur et gestion du réseau local |
+| [FoxHole DB](https://github.com/foxhole-team/foxhole-db) | Règles signées et données de référence |
+
+## 🤝 Contribuer
+
+Signalez les erreurs et proposez des modifications via [Issues](https://github.com/foxhole-team/foxhole-openwrt-client/issues).
+
 ## 💖 Soutenir le développement
 
-Nous développons et maintenons FoxHole OpenWrt entièrement avec notre propre temps et nos propres ressources, avec l’aide d’outils d’IA. Votre soutien nous aide à consacrer plus de temps au projet et à accélérer le développement.
-
-[Soutenir le projet - portefeuilles de cryptomonnaies](#cryptocurrency-wallets)
+Nous développons et maintenons FoxHole OpenWrt entièrement avec notre propre temps et nos propres ressources, en utilisant des outils d’IA pendant le développement. Votre soutien nous aide à consacrer plus de temps au projet et à accélérer le développement.
 
 <a id="cryptocurrency-wallets"></a>
 

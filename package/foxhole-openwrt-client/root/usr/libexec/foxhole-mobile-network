@@ -1,0 +1,94 @@
+#!/usr/bin/ucode
+'use strict';
+
+import * as fs from 'fs';
+import * as uci from 'uci';
+import * as ubus from 'ubus';
+import * as network from '/usr/share/foxhole/mobile-network.uc';
+import * as store from '/usr/share/foxhole/private-store.uc';
+
+function fail() { die('Mobile network policy unavailable\n'); };
+function public_set(value) {
+ network.parse_firewall_set(value);
+ let directory='/etc/nftables.d',path=directory+'/30-foxhole-mobile.nft',parent=fs.lstat(directory),before=fs.lstat(path);
+ if(parent?.type!='directory'||parent.uid!=0||(parent.mode&0o022)||
+  before!=null&&(before.type!='file'||before.uid!=0||before.nlink!=1||(before.mode&0o022)||before.size<1||before.size>4096))fail();
+ if(before!=null) {
+  let previous=fs.readfile(path,4097);
+  if(previous==null||length(previous)!=before.size||network.file_identity(before)!=network.file_identity(fs.lstat(path)))fail();
+  network.parse_firewall_set(previous);
+  if(previous==value)return;
+ }
+ let random=fs.readfile('/dev/urandom',12);if(length(random||'')!=12)fail();
+ let temporary=path+'.new-'+hexenc(random),file=fs.open(temporary,'wxe',0o644);
+ if(!file)fail();
+ try {
+  if(file.write(value)!=length(value)||!file.flush())fail();
+  file.close();file=null;
+  let after=fs.lstat(path);
+  if(network.file_identity(before)!=network.file_identity(after)||!fs.rename(temporary,path))fail();
+ } catch(_) {
+  if(file)try { file.close(); } catch(_) {}
+  fs.unlink(temporary);fail();
+ }
+};
+
+function api_accept_present() {
+ let path='/tmp/foxhole/mobile-fw4-input.json';
+ store.write(path,'');store.target(path);
+ // Only this query child inherits the file-size limit, never installers or APK writes.
+ if(system(['/bin/sh','-c','umask 077; ulimit -f 1024 || exit 1; exec /usr/sbin/nft -j list chain inet fw4 input > /tmp/foxhole/mobile-fw4-input.json 2>/dev/null'],5000)!=0)fail();
+ store.target(path);
+ let before=fs.lstat(path);
+ if(!store.file_metadata(before)||before.size<2||before.size>1048576)fail();
+ let raw=store.read(path,1048576);
+ if(raw==null||length(raw)!=before.size||network.file_identity(before)!=network.file_identity(fs.lstat(path)))fail();
+ try { return network.api_accept_present(json(raw)); } catch(_) { fail(); }
+};
+
+function ensure_api_accept() {
+ if(api_accept_present())return;
+ let path='/tmp/foxhole/mobile-fw4-accept.nft';
+ store.write(path,'insert rule inet fw4 input '+network.api_accept_rule());store.target(path);
+ if(system(['/usr/sbin/nft','-c','-f',path],5000)!=0||system(['/usr/sbin/nft','-f',path],5000)!=0)fail();
+ if(!api_accept_present())fail();
+};
+
+if(fs.stat('/proc/self')?.uid!=0||length(ARGV)!=1||index(['prepare','clear'],ARGV[0])<0)fail();
+store.directory('/tmp/foxhole');store.target('/tmp/foxhole/mobile-network.lock');
+let lock=fs.open('/tmp/foxhole/mobile-network.lock','a+',0o600);
+if(!lock?.lock('x')||!store.file_metadata(fs.lstat('/tmp/foxhole/mobile-network.lock')))fail();
+let bindings=[];
+if(ARGV[0]=='prepare') {
+ let cursor=uci.cursor(),connection=ubus.connect();if(!connection)fail();
+ try {
+  let configured=cursor.get('foxhole','panel','mobile_devices');
+  let dump=connection.call('network.interface','dump',{});
+  bindings=network.listeners(dump?.interface,configured);
+  connection.disconnect();cursor.unload();
+ } catch(_) {
+  try { connection.disconnect(); } catch(_) {}
+  try { cursor.unload(); } catch(_) {}
+  fail();
+ }
+}
+let elements=network.firewall_elements(bindings);
+let set=network.firewall_set(bindings);
+let batch='add set inet fw4 foxhole_mobile_endpoints { type ifname . ipv4_addr; }\n'+
+ 'flush set inet fw4 foxhole_mobile_endpoints\n'+
+ (length(elements)?'add element inet fw4 foxhole_mobile_endpoints { '+elements+' }\n':'');
+let filter='add table inet foxhole_mobile\ndelete table inet foxhole_mobile\ntable inet foxhole_mobile {\n'+
+ ' chain input { type filter hook input priority filter - 10; policy accept;\n'+
+ (length(elements)?'  tcp dport 8443 iifname . ip daddr != { '+elements+' } counter drop\n':
+  '  tcp dport 8443 counter drop\n')+
+ '  meta nfproto ipv6 tcp dport 8443 counter drop\n }\n}\n';
+store.write('/tmp/foxhole/mobile-fw4.nft',batch);
+store.write('/tmp/foxhole/mobile.nft',filter);
+if(system(['/usr/sbin/nft','-c','-f','/tmp/foxhole/mobile.nft'],5000)!=0||
+ system(['/usr/sbin/nft','-c','-f','/tmp/foxhole/mobile-fw4.nft'],5000)!=0)fail();
+public_set(set);
+if(system(['/usr/sbin/nft','-f','/tmp/foxhole/mobile.nft'],5000)!=0||
+ system(['/usr/sbin/nft','-f','/tmp/foxhole/mobile-fw4.nft'],5000)!=0)fail();
+if(ARGV[0]=='prepare')ensure_api_accept();
+store.write('/tmp/foxhole/mobile-listeners.json',sprintf('%J',bindings));
+for(let address in network.socket_addresses(bindings))print(address,'\n');

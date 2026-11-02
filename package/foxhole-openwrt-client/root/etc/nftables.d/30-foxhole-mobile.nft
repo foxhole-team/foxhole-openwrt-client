@@ -1,0 +1,1 @@
+set foxhole_mobile_endpoints { type ifname . ipv4_addr; }

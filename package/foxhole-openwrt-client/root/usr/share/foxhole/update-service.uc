@@ -5,10 +5,13 @@ import * as digest from 'digest';
 import * as model from './update-model.uc';
 import * as native from './update-native.uc';
 import * as engine from './engine-service.uc';
+import * as packages from './package-operations.uc';
 import * as engines from './engine-model.uc';
 import * as registry from './engine-registry.uc';
 import * as adapter from './core-adapter.uc';
 import * as store from './private-store.uc';
+import * as backup_service from './backup-service.uc';
+import * as ram from './ram-update-service.uc';
 
 const JOB = '/etc/foxhole/update-job.json';
 const STATE = '/etc/foxhole/update-state.json';
@@ -105,12 +108,21 @@ function reconcile(value) {
 	} catch (_) { return value; }
 };
 function current_version() {
-	let row=engine.update_installed()['foxhole-openwrt-client'];
+	let row=packages.installed()['foxhole-openwrt-client'];
 	if (!row || row.arch!='noarch') model.fail('UNSUPPORTED_TARGET');
 	native.policy('/usr/share/foxhole/update-policy.json',row.version); native.target();
 	return row.version;
 };
+function ram_selected() {
+ if(fs.lstat('/tmp/foxhole-ram-active.json'))return true;
+ let value=read(JOB);return value?.deployment=='RAM_BASE'&&blocked(value);
+};
+export function ram_deployment() { return ram_selected(); };
+export function deployment() {
+ return ram_selected()?ram.deployment():{storage:'FLASH',version:null};
+};
 export function status(principal) {
+ if(ram_selected())return ram.status(principal);
 	let value=current_state(), flag=policy(), job=reconcile(read(JOB)), ctx=context();
 	let version=null, installed=[];
 	try { version=current_version(); installed=native.selected_modules(registry.read()); }
@@ -136,6 +148,8 @@ function check_revision(expected,value) {
 	if (type(expected)!='int' || expected!=value.revision) model.fail('STALE_SESSION');
 };
 export function settings(request,principal) {
+ if(ram_selected())return ram.settings(request,principal);
+	backup_service.guard();
 	transaction(()=>{
 		if (!engine.update_principal_current(principal)) model.fail('AUTHENTICATION_FAILED');
 		if (type(request.autoUpdateEnabled)!='bool') model.fail('INVALID_REQUEST');
@@ -162,6 +176,8 @@ function launch(value) {
 	return public_job(read(JOB));
 };
 export function check(request,principal) {
+ if(ram_selected())return ram.check(request,principal);
+	backup_service.guard();
 	let value=transaction(()=>{
 		if (!engine.update_principal_current(principal)) model.fail('AUTHENTICATION_FAILED');
 		check_revision(request.expectedRevision,current_state());
@@ -198,6 +214,8 @@ function make_plan(principal,automatic) {
 	plan.planSha256=digest_plan(plan); return plan;
 };
 export function plan(request,principal) {
+ if(ram_selected())return ram.plan(request,principal);
+	backup_service.guard();
 	return transaction(()=>{
 		if (!engine.update_principal_current(principal)) model.fail('AUTHENTICATION_FAILED');
 		check_revision(request.expectedRevision,current_state());
@@ -214,6 +232,8 @@ function admit(plan,request,principal) {
 	    !same(plan.binding,binding(context())) || !same(plan.candidate.selected,registry.read())) model.fail('STALE_PLAN');
 };
 export function apply(request,principal) {
+ if(ram_selected())return ram.apply(request,principal);
+	backup_service.guard();
 	let value=transaction(()=>{
 		if (!engine.update_principal_current(principal)) model.fail('AUTHENTICATION_FAILED');
 		if(blocked(read(JOB))||engine_busy())model.fail('BUSY');
@@ -223,10 +243,24 @@ export function apply(request,principal) {
 	return launch(value);
 };
 export function job(id,principal) {
+ let pending=read(JOB);
+ if(ram_selected()||pending?.deployment=='RAM_BASE'&&pending.jobId==id)return ram.job(id,principal);
 	let current=reconcile(read(JOB));
 	if(current?.jobId!=id)current=read('/etc/foxhole/update-last-'+owner(principal)+'.json');
 	if(!current||current.jobId!=id||current.automatic||current.owner!=owner(principal))model.fail('AUTHENTICATION_FAILED');
 	return public_job(current);
+};
+export function device_begin(request,principal) {
+ if(!ram_selected())model.fail('UNSUPPORTED_TARGET');return ram.device_begin(request,principal);
+};
+export function device_chunk(request,principal) {
+ if(!ram_selected())model.fail('UNSUPPORTED_TARGET');return ram.device_chunk(request,principal);
+};
+export function device_status(request,principal) {
+ if(!ram_selected())model.fail('UNSUPPORTED_TARGET');return ram.device_status(request,principal);
+};
+export function device_finish(request,principal) {
+ if(!ram_selected())model.fail('UNSUPPORTED_TARGET');return ram.device_finish(request,principal);
 };
 function minimal_base(base) {
 	let result={};for(let field in ['archive','index','filename','version','sha256','archiveBytes','installedBytes',
@@ -235,7 +269,7 @@ function minimal_base(base) {
 function checked_assets(value,keys) {
 	for(let item in [value.base,value.rollback]){
 		if(registry.hash_file(item.archive)!=item.sha256||registry.hash_file(item.index)!=item.indexSha256)model.fail('PACKAGE_VERIFICATION_FAILED');
-		engine.update_apk(['--keys-dir',keys,'verify',item.archive,item.index]);
+		packages.apk(['--keys-dir',keys,'verify',item.archive,item.index]);
 	}
 };
 function clear_previous_staging(id) {
@@ -419,14 +453,14 @@ function perform_apply(job) {
 		resources(plan.budget,ctx);
 		let directory='/tmp/foxhole/'+job.jobId;store.directory(directory);let key_dir=native.prepare_keys(directory);
 		progress(job,'VERIFYING','VERIFYING_PACKAGE',10);checked_assets(value,key_dir);
-        let before=engine.update_installed(),identities=native.installed_identities(),prepared=[],allowed=[];
+        let before=packages.installed(),identities=native.installed_identities(),prepared=[],allowed=[];
         if(length(keys(before))!=length(keys(identities)))model.fail('STALE_PLAN');
         for(let name in keys(before))if(before[name].version!=identities[name]?.version||before[name].arch!=identities[name]?.arch)model.fail('STALE_PLAN');
         if(before['foxhole-openwrt-client']?.version!=plan.fromVersion)model.fail('STALE_PLAN');
-        native.installed_base({...value.rollback,payload:native.decode(engine.update_apk(['adbdump','--format','json',value.rollback.archive]))});
+        native.installed_base({...value.rollback,payload:native.decode(packages.apk(['adbdump','--format','json',value.rollback.archive]))});
         if(value.baseChanged)push(allowed,{name:'foxhole-openwrt-client',version:value.base.version,arch:'noarch'});
         for(let artifact in value.artifacts){
-            let candidate=engine.update_candidate(artifact,directory,key_dir);
+            let candidate=packages.candidate(artifact,directory,key_dir);
             native.stage_ram(artifact);
             if(!before[artifact.packageName]){
                 push(prepared,candidate);push(allowed,{name:artifact.packageName,version:artifact.packageVersion,arch:artifact.architecture});
@@ -445,7 +479,7 @@ function perform_apply(job) {
         if(identities['foxhole-openwrt-client']?.cas!=tx.oldCas)model.fail('VERSION_IDENTITY_CONFLICT');
         if(!authorized(job)||!same(plan.binding,binding(context())))model.fail('STALE_PLAN');
         resources(plan.budget,context());
-        job.installedBefore=before;job.packageIdentitiesBefore=identities;job.worldBefore=engine.update_world();job.worldMetadataBefore=world_current.metadata;job.nativeTransaction=tx;
+        job.installedBefore=before;job.packageIdentitiesBefore=identities;job.worldBefore=packages.world();job.worldMetadataBefore=world_current.metadata;job.nativeTransaction=tx;
         job.previousRegistry=old;job.protectedBefore=preserve();job.newPackageNames=map(tx.modules,item=>item.name);
         job.stateRevisionBefore=engine.update_state().revision;job.stateWithoutStopSha256=state_without_stop(engine.update_state());
         job.previousGeneration=adapter.generation(adapter.receipt('owner'));job.restartStarted=engine.update_now();
@@ -458,12 +492,12 @@ function perform_apply(job) {
         native.transaction_capture(tx.tool,native.native_args(tx,false,commit_world.sha256));
         end_package_phase(job);
 		progress(job,'CHECKING','CHECKING_PACKAGE',65);
-		model.package_delta(before,engine.update_installed(),allowed);
+		model.package_delta(before,packages.installed(),allowed);
         native.assert_identities(job.packageIdentitiesBefore,native.installed_identities(),job.nativeTransaction,false);
         for(let artifact in job.previousRegistry.slots)registry.verify_slot(artifact);
         let after_world=native.world_state();
         if(after_world.sha256!=job.nativeTransaction.afterSha256||!same(after_world.metadata,job.worldMetadataBefore))model.fail('PACKAGE_VERIFICATION_FAILED');
-        native.installed_base({...job.nativeTransaction.newBase,payload:native.decode(engine.update_apk(['adbdump','--format','json',job.nativeTransaction.newBase.archive]))});
+        native.installed_base({...job.nativeTransaction.newBase,payload:native.decode(packages.apk(['adbdump','--format','json',job.nativeTransaction.newBase.archive]))});
 		if(value.baseChanged&&registry.catalog().sha256!=value.base.catalogSha256)model.fail('PACKAGE_VERIFICATION_FAILED');
 		preserved(job.protectedBefore,job);
 		for(let artifact in value.artifacts){
@@ -504,7 +538,7 @@ function attempt_recovery(job) {
         let tx=job.nativeTransaction;
         if(!tx||!job.packageIdentitiesBefore)model.fail('RECOVERY_REQUIRED');
         native.verify_transaction(job.jobId,tx);
-        let before=job.installedBefore,actual=engine.update_installed(['foxhole-openwrt-client',...job.newPackageNames]),old=job.previousRegistry;
+        let before=job.installedBefore,actual=packages.installed(['foxhole-openwrt-client',...job.newPackageNames]),old=job.previousRegistry;
         let identities=native.installed_identities(),current_world=native.world_state(),current=current_world.sha256;
         if(!same(current_world.metadata,job.worldMetadataBefore))model.fail('RECOVERY_REQUIRED');
         for(let name in keys(job.packageIdentitiesBefore))if(name!='foxhole-openwrt-client'&&!same(identities[name],job.packageIdentitiesBefore[name]))model.fail('RECOVERY_REQUIRED');
@@ -517,12 +551,12 @@ function attempt_recovery(job) {
         if(job.plan.impact=='RECONNECT_REQUIRED'&&system(['/etc/init.d/foxhole-runtime','stop'],15000)!=0)model.fail('RECOVERY_REQUIRED');
         native.transaction_capture(tx.tool,argv);
         end_package_phase(job);
-        model.package_delta(before,engine.update_installed(),[]);
+        model.package_delta(before,packages.installed(),[]);
         native.assert_identities(job.packageIdentitiesBefore,native.installed_identities(),tx,true);
         for(let artifact in job.previousRegistry.slots)registry.verify_slot(artifact);
         let restored_world=native.world_state();
         if(restored_world.sha256!=tx.beforeSha256||!same(restored_world.metadata,job.worldMetadataBefore))model.fail('RECOVERY_REQUIRED');
-        native.installed_base({...tx.oldBase,payload:native.decode(engine.update_apk(['adbdump','--format','json',tx.oldBase.archive]))});
+        native.installed_base({...tx.oldBase,payload:native.decode(packages.apk(['adbdump','--format','json',tx.oldBase.archive]))});
 		restore_registry(old);
 		preserved(job.protectedBefore,job);
 		if(stopped_by_request(job)){
@@ -543,6 +577,9 @@ function auto_conversion_allowed(job) {
   model.auto_authorized(job,policy())&&!engine_busy();
 };
 export function run(id) {
+ let pending=read(JOB);
+ if(ram_selected()||pending?.deployment=='RAM_BASE'&&pending.jobId==id)return ram.run(id);
+	backup_service.guard();
 	let job=transaction(()=>{let value=read(JOB);if(value?.jobId!=id||value.state!='QUEUED')model.fail('STALE_PLAN');
 		value.worker=engine.update_self_worker();progress(value,'VERIFYING','PREPARING',1);return value;});
 	try{
@@ -576,6 +613,8 @@ export function hooks_deferred() {
 		engines.worker_current(job.worker,engine.update_process_snapshot(job.worker?.pid),engine.update_boot());
 };
 export function tick() {
+ if(ram_selected())return ram.tick();
+	backup_service.guard();
 	let value=null;
 	try{reconcile(read(JOB));value=transaction(()=>{
 		let flag=policy(),job=read(JOB);

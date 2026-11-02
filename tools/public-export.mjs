@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 export const publicFiles = ['LICENSE', 'THIRD_PARTY_NOTICES.md',
   'README.md', 'CHANGELOG.md', 'SECURITY.md', '.gitattributes', '.gitignore', '.gitleaks.toml',
-  'install.sh', 'package.json', 'package-lock.json'];
+  'install.sh', 'package.json', 'package-lock.json', 'TODO.md'];
 export const publicDirectories = ['package', 'LICENSES', 'media', 'docs', 'config',
   'examples', '.github', 'tests', 'tools', 'native/transaction'];
 const root = fileURLToPath(new URL('..', import.meta.url));

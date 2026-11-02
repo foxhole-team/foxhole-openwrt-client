@@ -1,0 +1,127 @@
+#!/bin/sh
+set -eu
+umask 077
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+unset LD_PRELOAD LD_LIBRARY_PATH APK_CONFIG SSL_CERT_FILE SSL_CERT_DIR
+trusted_stage() {
+ case "$1" in /tmp/foxhole/engine-command-*.io) ;; *) exit 1 ;; esac
+ case "$1" in *[!a-zA-Z0-9/_.-]*|*/../*|*/./*) exit 1 ;; esac
+ [ "$1" = "${0%/*}" ] || exit 1
+ ucode -e 'import * as fs from "fs";let p=ARGV[0],a=fs.lstat("/tmp/foxhole"),d=fs.lstat(p);if(a?.type!="directory"||a.uid!=0||(a.mode&0o7777)!=0o700||d?.type!="directory"||d.uid!=0||(d.mode&0o7777)!=0o700)exit(1);for(let n in ["helper","utility.uc","descriptor.json"]){let s=fs.lstat(p+"/"+n);if(s?.type!="file"||s.uid!=0||s.nlink!=1||(s.mode&0o7777)!=0o600||s.size<1||s.size>(n=="descriptor.json"?8192:32768))exit(1);}' -- "$1"
+}
+if [ "${1-}" = --owned-child ]; then
+ stage=$2; role=$3; owner=$4; shift 4
+ trusted_stage "$stage"
+ utility=$stage/utility.uc
+ ucode "$utility" register "$stage" "$role" "$owner" "$$"
+ case "$role" in
+  stdout|stderr) set -C; exec ucode "$utility" drain "$stage/$role" "$2" > "$1" ;;
+  timer) exec ucode "$utility" watch "$stage" "$owner" "$1" ;;
+  native)
+   operation=$1; shift
+   case "$operation" in
+    fetch)
+     if [ "$2" = pinned ]; then
+      exec /bin/uclient-fetch --no-proxy -T 60 --ca-certificate /etc/foxhole/ram-update/bootstrap/ca.pem -O - "$1"
+     fi
+     exec /bin/uclient-fetch --no-proxy -T 60 -O - "$1" ;;
+    bank) exec /usr/bin/sha256sum /tmp/foxhole-ram-stage-boot-v1/bank.apk ;;
+    *) exit 1 ;;
+   esac </dev/null > "$stage/stdout" 2> "$stage/stderr" ;;
+  *) exit 1 ;;
+ esac
+fi
+output=${1:?private output}
+limit=${2:?bounded bytes}
+timeout=${3:?native timeout milliseconds}
+shift 3
+case "$output" in /tmp/foxhole/ram-updates/recovery-io-*) ;; *) exit 1 ;; esac
+case "$output" in *[!a-zA-Z0-9/_.-]*|*/../*|*/./*) exit 1 ;; esac
+trusted_stage "${0%/*}"
+ucode -e 'import * as fs from "fs";import * as digest from "digest";
+function fail(){exit(1);};
+let output=ARGV[0],limit=ARGV[1],timeout=ARGV[2],operation=ARGV[3],directory=ARGV[7];
+if(!match(output,/^\/tmp\/foxhole\/ram-updates\/recovery-io-[a-f0-9]{32}$/)||!match(limit,/^[0-9]+$/)||+limit<1||+limit>8388608||!match(timeout,/^[0-9]+$/)||+timeout<1000||+timeout>65000)fail();
+if(operation=="bank"){if(length(ARGV)!=5||+limit>128)fail();}
+else if(operation=="fetch"){
+ if(length(ARGV)!=8||!match(ARGV[6],/^[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}-r[1-9][0-9]{0,5}$/)||index(["system","pinned"],ARGV[5])<0)fail();
+ let d=json(fs.readfile(directory+"/descriptor.json",8193));
+ if(type(d.recoveryOrigin)!="string"||length(d.recoveryOrigin)>1024||!match(d.recoveryOrigin,/^https:\/\/[A-Za-z0-9][A-Za-z0-9.:-]*\/[A-Za-z0-9._~%+\/-]*$/)||substr(d.recoveryOrigin,-1)!="/")fail();
+ if(ARGV[4]!=d.recoveryOrigin+"foxhole-openwrt-client-"+ARGV[6]+".apk"||(d.caFileSha256==null)!=(ARGV[5]=="system"))fail();
+ if(ARGV[5]=="pinned"){
+  let path="/etc/foxhole/ram-update/bootstrap/ca.pem",s=fs.lstat(path),parent=fs.lstat(fs.dirname(path));
+  if(s?.type!="file"||s.uid!=0||s.nlink!=1||(s.mode&0o7777)!=0o600||s.size<1||s.size>262144||parent?.type!="directory"||parent.uid!=0||(parent.mode&0o7777)!=0o700)fail();
+  let raw=fs.readfile(path,262145);if(raw==null||length(raw)!=s.size||digest.sha256(raw)!=d.caFileSha256)fail();
+ }
+}else fail();' -- "$output" "$limit" "$timeout" "$@" "${0%/*}"
+[ ! -e "$output" ] && [ ! -L "$output" ] || exit 1
+[ ! -e "$output.err" ] && [ ! -L "$output.err" ] || exit 1
+utility=${0%/*}/utility.uc
+stage=${0%/*}
+trusted_stage "$stage"
+owner=$(ucode "$utility" owner "$$")
+stdout_pid=''; stderr_pid=''; native_pid=''; timer_pid=''
+finish() {
+ result=$1
+ trap - EXIT HUP INT TERM
+ set +e
+ clean=0
+ for role in timer native stdout stderr; do
+  case "$role" in timer) pid=$timer_pid ;; native) pid=$native_pid ;; stdout) pid=$stdout_pid ;; stderr) pid=$stderr_pid ;; esac
+  if [ -n "$pid" ]; then
+   if ucode "$utility" stop "$stage" "$role" "$owner" "$pid"; then wait "$pid" 2>/dev/null || :; else clean=1; fi
+  fi
+ done
+ if [ "$result" = 143 ] && ucode "$utility" timedout "$stage" "$owner"; then result=124; fi
+ if [ "$clean" = 0 ]; then ucode "$utility" clean "$stage" "$owner" || clean=1; fi
+ if [ "$result" = 0 ] && [ "$clean" != 0 ]; then result=1; fi
+ exit "$result"
+}
+trap 'finish $?' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+ucode "$utility" prepare "$stage" "$owner"
+ucode "$utility" makepipe "$stage" "$owner" stdout
+ucode "$utility" makepipe "$stage" "$owner" stderr
+/bin/sh "$0" --owned-child "$stage" stdout "$owner" "$output" "$limit" &
+stdout_pid=$!
+ucode "$utility" ready "$stage" stdout "$owner" "$stdout_pid"
+error_limit=1048576
+[ "${1-}" != fetch ] || error_limit=16384
+/bin/sh "$0" --owned-child "$stage" stderr "$owner" "$output.err" "$error_limit" &
+stderr_pid=$!
+ucode "$utility" ready "$stage" stderr "$owner" "$stderr_pid"
+/bin/sh "$0" --owned-child "$stage" timer "$owner" "$timeout" &
+timer_pid=$!
+ucode "$utility" ready "$stage" timer "$owner" "$timer_pid"
+# Native writes inherit no capture FSIZE; only sinks are bounded.
+/bin/sh "$0" --owned-child "$stage" native "$owner" "$@" &
+native_pid=$!
+ucode "$utility" ready "$stage" native "$owner" "$native_pid"
+wait_owned() {
+ wait_role=$1; wait_pid=$2; wait_done=false
+ while :; do
+  ucode "$utility" poll "$stage" "$wait_role" "$owner" "$wait_pid"
+  wait_state=$?
+  case "$wait_state" in
+   0) wait_done=true; wait "$wait_pid"; return $? ;;
+   10) ucode -e 'if(sleep(200)!=true)exit(1);' || return 1 ;;
+   *) return 1 ;;
+  esac
+ done
+}
+set +e
+wait_owned native "$native_pid"; native_result=$?
+[ "$wait_done" = true ] || exit 1
+native_pid=''
+wait_owned stdout "$stdout_pid"; stdout_result=$?
+if [ "$wait_done" != true ]; then [ "$native_result" = 0 ] && exit 1; exit "$native_result"; fi
+stdout_pid=''
+wait_owned stderr "$stderr_pid"; stderr_result=$?
+if [ "$wait_done" != true ]; then [ "$native_result" = 0 ] && exit 1; exit "$native_result"; fi
+stderr_pid=''
+set -e
+[ "$native_result" = 0 ] || exit "$native_result"
+[ "$stdout_result" = 0 ] && [ "$stderr_result" = 0 ] || exit 1

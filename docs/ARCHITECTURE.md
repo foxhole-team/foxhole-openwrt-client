@@ -55,7 +55,9 @@ history is checkpointed hourly to flash.
 Phone pairing uses the changed panel PIN to authorize `pair.create`. The
 phone generates and keeps an independent random 256-bit credential; the
 router stores only its SHA-256 verifier in `/etc/foxhole/pairing.json`, with
-at most 16 devices. The phone must retain the same ID/key while retrying an
+at most 10 new paired devices. Existing legacy records remain usable and can
+be revoked; registration cannot add a device above the new limit. Each Android
+app can retain up to 10 routers. The phone must retain the same ID/key while retrying an
 interrupted pairing. `pair.unlock` exchanges it for a short panel session;
 revocation fences that session immediately, including after ID reuse.
 Paired sessions cannot create other pairings or change the panel PIN; PIN
@@ -75,6 +77,14 @@ Paired inbound client exports include separate bounded app metadata.
 URI/config/QR bytes remain protocol-compatible; provider and web exports
 are unmarked. Apps establish origin from the authenticated paired reply,
 never marker text alone. See [profile origin](PROFILE-ORIGIN.md).
+
+Authenticated state includes an optional `network` object with `schema: 1`,
+`source: default-uplink` and `publicIpv4Available` as a boolean or null.
+It selects the lowest-metric physical or PPP default uplink in the main
+routing table, excludes VPN interfaces, and reports ambiguous uplinks or
+unavailable status as unknown. The WAN address remains private to the router. This
+fact qualifies direct-address setup; it does not prove incoming reachability
+or VPN routing. Legacy replies without the object remain unknown.
 
 `phone.provision` accepts only a paired session and the HTTP peer address.
 It resolves the phone's current LAN MAC, journals the pairing-owned intent,

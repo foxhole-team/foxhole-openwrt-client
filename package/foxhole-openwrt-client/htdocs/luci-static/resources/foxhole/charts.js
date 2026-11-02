@@ -1,5 +1,5 @@
 import { countryCode as country, countryFlagPath }
-  from './frontend-model.js?v=1.0.0-r2-ui1';
+  from './frontend-model.js?v=1.0.2-r3-ui1';
 
 const periods = { '24h': 86400000, '7d': 604800000, '30d': 2592000000 };
 const number = (value) => value == null || value === '' || !Number.isFinite(Number(value)) ? null : Number(value);
@@ -111,10 +111,47 @@ export function formatBytes(value, rate = false) {
   return `${amount.toFixed(index ? 1 : 0)} ${units[index]}`;
 }
 
+export function chartDomain(period, end) {
+  const duration = periods[period] || periods['24h'];
+  return { start: end - duration, end, duration };
+}
+
+export function continuousSamples(previous, current) {
+  if (!previous || current.time <= previous.time) return false;
+  const before = number(previous.uptime), after = number(current.uptime);
+  return before == null || after == null || after >= before;
+}
+
+export function segmentSeries(data, key, end) {
+  // History previews sample the long-term log sparsely. Infer that cadence from
+  // source timestamps, never from extrema selected later for painting.
+  const recent = end - 900000;
+  const gaps = [];
+  for (let i = 1; i < data.length; i += 1) {
+    const gap = data[i].time - data[i - 1].time;
+    if (data[i].time < recent && gap > 0 && !data[i].breakBefore) gaps.push(gap);
+  }
+  gaps.sort((a, b) => a - b);
+  const cadence = gaps.length >= 2 ? gaps[Math.floor((gaps.length - 1) / 2)] : 300000;
+  const coarseGap = Math.max(360000, cadence * 1.75);
+  let previous = null, segment = 0;
+  return data.map(item => {
+    if (item[key] == null) {
+      previous = null; segment += 1;
+      return { ...item, segment };
+    }
+    const allowed = previous?.time < recent ? coarseGap : 20000;
+    if (previous && (item.breakBefore || item.time <= previous.time || item.time - previous.time > allowed)) segment += 1;
+    previous = item;
+    return { ...item, segment };
+  });
+}
+
 export function decimateSeries(data, key, start, end, buckets) {
   if (data.length <= buckets * 2) return data;
   const selected = [];
   let bucket = -1;
+  let segment;
   let values = [];
   const flush = () => {
     if (!values.length) return;
@@ -129,6 +166,9 @@ export function decimateSeries(data, key, start, end, buckets) {
     values = [];
   };
   for (const item of data) {
+    if (item.segment !== segment) {
+      flush(); bucket = -1; segment = item.segment;
+    }
     if (item[key] == null) {
       flush();
       if (selected.at(-1)?.[key] != null) selected.push(item);
@@ -265,7 +305,8 @@ export class Charts {
     const before = number(previous?.[key]?.[direction]);
     const after = number(current?.[key]?.[direction]);
     const seconds = previous ? (current.time - previous.time) / 1000 : 0;
-    if (before == null || after == null || seconds <= 0 || after < before) return null;
+    if (before == null || after == null || seconds <= 0 || after < before || !continuousSamples(previous, current) ||
+        previous?.[key]?.device && current?.[key]?.device && previous[key].device !== current[key].device) return null;
     return (after - before) / seconds;
   }
 
@@ -392,8 +433,7 @@ export class Charts {
 
   render(canvas, id, end = Date.now(), styles = null) {
     const latency = id === 'wan-latency' || id === 'vpn-latency';
-    const duration = id === 'wrt' || latency ? periods[this.period] : 780000;
-    const start = end - duration;
+    const { start, duration } = chartDomain(this.period, end);
     const points = this.pointsBetween(start, end);
     if (canvas.closest('.is-collapsed')) {
       this.updateMeta(id, points);
@@ -414,6 +454,7 @@ export class Charts {
     const key = 'wan';
     const data = points.map((point, index) => ({
       time: point.time,
+      breakBefore: index > 0 && !continuousSamples(points[index - 1], point),
       a: id === 'wrt' ? point.cpu : id === 'wan-latency'
         ? point.latency?.wan : id === 'vpn-latency'
           ? this.vpn.connected && point.latency?.serverId === this.vpn.serverId
@@ -457,7 +498,7 @@ export class Charts {
     const gray = document.documentElement.classList.contains('theme-charts-gray');
     const colors = gray ? styles.mono : styles.color;
     (latency ? ['a'] : ['a', 'b']).forEach((series, index) => {
-      const visible = decimateSeries(data, series, start, end,
+      const visible = decimateSeries(segmentSeries(data, series, end), series, start, end,
         Math.max(1, Math.ceil(plotWidth)));
       ctx.strokeStyle = colors[index];
       ctx.lineWidth = 1.15;
@@ -465,8 +506,7 @@ export class Charts {
       let previous = null;
       for (const item of visible) {
         if (item[series] == null) { previous = null; continue; }
-        const maxGap = duration >= periods['24h'] ? 360000 : 20000;
-        if (!previous || item.time - previous.time > maxGap) ctx.moveTo(x(item.time), y(item[series]));
+        if (!previous || item.segment !== previous.segment) ctx.moveTo(x(item.time), y(item[series]));
         else ctx.lineTo(x(item.time), y(item[series]));
         previous = item;
       }

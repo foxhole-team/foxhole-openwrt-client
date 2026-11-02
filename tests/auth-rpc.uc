@@ -2,7 +2,7 @@ import * as pairing from '/workspace/package/foxhole-openwrt-client/root/usr/sha
 import * as digest from 'digest';
 
 let sessions = {}, setup = true, stored = null, locked_depth = 0;
-let bootstrap = null;
+let bootstrap = null, pairing_writes = 0;
 let paired_record = pairing.defaults(), token_number = 0;
 let failures = { count: 0, since: 0 };
 const TOKEN_TTL = 1800;
@@ -21,7 +21,7 @@ function user_of(request) { return request.user || 'root'; };
 function random_hex(bytes) { return sprintf('%064x', ++token_number); };
 function auth_record() { return { ...(bootstrap || {}), changed: !setup }; };
 function check_pin(pin) {
-	if (pin != '5678' || bootstrap?.bootstrapConsumed == true)
+	if (pin != '567800' || bootstrap?.bootstrapConsumed == true)
 		fail('invalid_pin');
 };
 function pairing_record() { return paired_record; };
@@ -40,6 +40,7 @@ function write_json(path, value, mode) {
 	if (!locked_depth || path != PAIRING_PATH || mode != 0o600)
 		die('invalid_pairing_write');
 	paired_record = value;
+	pairing_writes++;
 };
 function locked(fn) {
 	locked_depth++;
@@ -80,23 +81,23 @@ function rejects(fn, expected) {
 let passed = 0, failed = 0;
 function test(name, fn) {
 	sessions = {}; setup = true; stored = null;
-	bootstrap = null;
+	bootstrap = null; pairing_writes = 0;
 	paired_record = pairing.defaults(); failures = { count: 0, since: 0 };
 	try { fn(); passed++; print('ok ', passed + failed, ' - ', name, '\n'); }
 	catch (error) { failed++; print('not ok ', passed + failed, ' - ', name, ': ', error, '\n'); }
 };
 test('fresh bootstrap is consumed while retaining mandatory PIN setup', () => {
 	bootstrap = { bootstrapExpiresUptimeMs: 10000, bootstrapConsumed: false };
-	let result = unlock({ args: { pin: '5678' } });
+	let result = unlock({ args: { pin: '567800' } });
 	equal(result.pinChangeRequired, true);
 	equal(result.licenseRequired, true);
 	equal(result.licenseVersion, LICENSE_VERSION);
 	equal(bootstrap.bootstrapConsumed, true);
-	rejects(() => unlock({ args: { pin: '5678' } }), 'invalid_pin');
+	rejects(() => unlock({ args: { pin: '567800' } }), 'invalid_pin');
 	rejects(() => session({ args: { token: result.token } }), 'pin_required');
-	change_pin({ args: { token: result.token, newPin: '6789',
+	change_pin({ args: { token: result.token, newPin: '678900',
 		licenseAccepted: true, licenseVersion: LICENSE_VERSION } });
-	equal(stored, '6789');
+	equal(stored, '678900');
 });
 test('bootstrap token cannot authorize ordinary operations', () => {
 	let token = new_token('root'), request = { args: { token } };
@@ -105,10 +106,16 @@ test('bootstrap token cannot authorize ordinary operations', () => {
 });
 test('PIN setup replaces the restricted session inside the state lock', () => {
 	let token = new_token('root');
-	let result = change_pin({ args: { token, newPin: '5678' } });
-	equal(stored, '5678');
+	let result = change_pin({ args: { token, newPin: '567800' } });
+	equal(stored, '567800');
 	equal(sessions[result.token].setup, false);
 	equal(session({ args: { token: result.token } }), result.token);
+});
+test('ordinary PIN sessions require LuCI for subsequent PIN change', () => {
+ setup = false;
+ let token = new_token('root');
+ rejects(() => change_pin({ args: { token, newPin: '678900' } }), 'luci_required');
+ equal(stored, null);
 });
 test('foreign and expired sessions cannot set PIN', () => {
 	let token = new_token('root');
@@ -119,7 +126,7 @@ test('foreign and expired sessions cannot set PIN', () => {
 });
 test('LuCI recovery waits for deferred access before acquiring the lock', () => {
 	let reply;
-	let request = { args: { ubus_rpc_session: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', newPin: '5678' },
+	let request = { args: { ubus_rpc_session: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', newPin: '567800' },
 		reply: value => { reply = value; } };
 	permitted = false;
 	equal(admin_pin(request), 'pending');
@@ -132,7 +139,7 @@ test('LuCI recovery waits for deferred access before acquiring the lock', () => 
 	equal(admin_pin(request), 'pending');
 	deferred();
 	equal(reply.changed, true);
-	equal(stored, '5678');
+	equal(stored, '567800');
 });
 test('pairing requires a changed PIN and never accepts short PIN credentials', () => {
 	let token = new_token('root');
@@ -155,13 +162,27 @@ test('paired sessions cannot delegate or change PIN and revoke immediately', () 
 		credential: PAIR_KEY } });
 	equal(substr(reply.token, 0, 3), 'p1.');
 	let request = { args: { token: reply.token, id: PAIR_ID,
-		credential: PAIR_KEY, name: 'Phone', newPin: '5678' } };
+		credential: PAIR_KEY, name: 'Phone', newPin: '567800' } };
 	rejects(() => pair_create(request), 'unauthorized');
 	rejects(() => change_pin(request), 'unauthorized');
 	equal(pair_revoke(request), {});
 	rejects(() => session(request), 'unauthorized');
 	rejects(() => pair_unlock({ args: { id: PAIR_ID,
 		credential: PAIR_KEY } }), 'unauthorized');
+});
+test('successful key login writes display metadata only when changed', () => {
+ setup = false;
+ paired_record = pairing.register(pairing.defaults(), PAIR_ID, PAIR_KEY, 'Phone', 10, 'vpn', '1.0.1');
+ let request = { args: { id: PAIR_ID, credential: PAIR_KEY, client: 'vpn', clientVersion: '1.0.1' } };
+ pair_unlock(request); equal(pairing_writes, 0);
+ request.args.clientVersion = '1.0.2'; pair_unlock(request);
+ equal(pairing_writes, 1); equal(paired_record.devices[0].created, 10);
+ equal(paired_record.devices[0].clientVersion, '1.0.2');
+ pair_unlock(request); equal(pairing_writes, 1);
+ request.args.credential = digest.sha256('synthetic wrong credential');
+ request.args.clientVersion = '1.0.3';
+ rejects(() => pair_unlock(request), 'unauthorized');
+ equal(pairing_writes, 1); equal(paired_record.devices[0].clientVersion, '1.0.2');
 });
 test('key login shares the bounded failure window and rejects unknown devices', () => {
 	setup = false;

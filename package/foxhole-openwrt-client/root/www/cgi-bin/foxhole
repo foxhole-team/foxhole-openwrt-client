@@ -9,7 +9,9 @@ import * as pairing from '/usr/share/foxhole/pairing.uc';
 
 const MAX_BODY = 300000;
 const ACTIONS = [
+	'backup.export', 'backup.validate', 'backup.apply', 'backup.status',
 	'updates.status', 'updates.check', 'updates.plan', 'updates.apply', 'updates.job', 'updates.settings',
+	'updates.deviceBegin', 'updates.deviceChunk', 'updates.deviceStatus', 'updates.deviceFinish',
 	'engines.status', 'engines.plan', 'engines.apply', 'engines.job',
 	'unlock', 'lock', 'state', 'telemetry', 'settings', 'package.status', 'setup.reset',
 	'server.test', 'server.save', 'server.get', 'server.start',
@@ -83,12 +85,15 @@ if (type(request) != 'object' || type(request.action) != 'string' ||
 	(request.payload != null && type(request.payload) != 'object'))
 	reject('400 Bad Request', 'unavailable');
 if ((pairing.requires_tls(request.action, request.payload?.token) ||
-     index(['package.status', 'setup.reset', 'client.status'], request.action) >= 0) &&
+     index(['package.status', 'setup.reset', 'client.status', 'backup.export', 'backup.validate', 'backup.apply', 'backup.status',
+      'updates.deviceBegin', 'updates.deviceChunk', 'updates.deviceStatus', 'updates.deviceFinish'], request.action) >= 0) &&
     env.HTTPS != 'on')
 	reject('403 Forbidden', 'tls_required');
-if (substr(request.action, 0, 6) == 'phone.') {
+if (index(['phone.provision', 'phone.status', 'phone.handoff', 'phone.resolve'], request.action) >= 0) {
 	request.payload ??= {};
 	request.payload._peerAddress = env.REMOTE_ADDR || '';
+}
+if (request.action == 'phone.handoff') {
 	let uptime = fs.readfile('/proc/uptime', 128);
 	request.payload._receivedUptimeMs = int(+split(uptime || '0', ' ')[0] * 1000);
 }
@@ -106,5 +111,5 @@ try {
 	failed = true;
 }
 try { if (connection) connection.disconnect(); } catch (_) {}
-if (failed) reject('503 Service Unavailable', 'unavailable');
-reply('200 OK', result || {});
+if (failed || type(result) != 'object') reject('503 Service Unavailable', 'unavailable');
+reply('200 OK', result);

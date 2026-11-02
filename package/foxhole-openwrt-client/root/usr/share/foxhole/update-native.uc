@@ -4,13 +4,15 @@ import * as fs from 'fs';
 import * as digest from 'digest';
 import * as guard from './update-model.uc';
 import * as engines from './engine-model.uc';
-import * as engine from './engine-service.uc';
+import * as packages from './package-operations.uc';
 import * as registry from './engine-registry.uc';
 import * as store from './private-store.uc';
+import * as network from './mobile-network.uc';
 
 const ORIGIN = 'https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/';
 const KEY = '/usr/share/foxhole/foxhole-openwrt-apk.pem';
 const SIGNER_PUBLIC_PEM_SHA256 = 'fa220a28fd8662fc5f617f46594bafe2415b4f605136570dc3c446caeb7d1ef1';
+const RELEASE_METADATA_BYTES = 1048576;
 export function decode(raw) {
 	try { return json(raw); } catch (_) { guard.fail('PACKAGE_VERIFICATION_FAILED'); }
 };
@@ -52,14 +54,21 @@ export function fetch(url, maximum) {
 	public_raw(path,maximum);
 	return path;
 };
+function release_memory() {
+	let raw = fs.readfile('/proc/meminfo',65536), found = match(raw || '',/\n?MemAvailable:[ \t]+([0-9]+) kB/);
+	// Retain the FLASH process reserve and the existing fourfold input allowance.
+	if (!found || +found[1]*1024 < 33554432 + 4*RELEASE_METADATA_BYTES) guard.fail('NO_SPACE');
+};
 export function latest(directory) {
+	release_memory();
 	let path = directory + '/release-hint.json';
 	store.target(path);
 	if (fs.lstat(path) || system(['/usr/libexec/foxhole-update-hint',path],25000) != 0) guard.fail('RELEASE_UNAVAILABLE');
-	return guard.release_tag(decode(public_raw(path,262144)));
+	release_memory();
+	return guard.release_tag(decode(public_raw(path,RELEASE_METADATA_BYTES)));
 };
 export function compare(a,b) {
-	return trim(engine.update_apk(['--no-network','--repositories-file','/dev/null','version','-t',a,b]));
+	return trim(packages.apk(['--no-network','--repositories-file','/dev/null','version','-t',a,b]));
 };
 function staging_memory(required) {
 	let raw=fs.readfile('/proc/meminfo',65536),found=match(raw||'',/\n?MemAvailable:[ \t]+([0-9]+) kB/);
@@ -69,8 +78,8 @@ export function base(tag,directory,keys_dir) {
 	if (!match(tag || '',/^v[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}$/)) guard.fail('RELEASE_UNAVAILABLE');
 	store.directory(directory);staging_memory(33554432);
 	let index = fetch(ORIGIN + tag + '/base.adb',1048576);
-	engine.update_apk(['--keys-dir',keys_dir,'verify',index]);
-	let document = decode(engine.update_apk(['adbdump','--format','json',index])), rows = document.packages;
+	packages.apk(['--keys-dir',keys_dir,'verify',index]);
+	let document = decode(packages.apk(['adbdump','--format','json',index])), rows = document.packages;
 	if (type(rows) != 'array' || length(rows) != 1) guard.fail('PACKAGE_VERIFICATION_FAILED');
 	let row = rows[0];
 	if (row.name != 'foxhole-openwrt-client' || row.arch != 'noarch' ||
@@ -82,8 +91,8 @@ export function base(tag,directory,keys_dir) {
 	let filename = row.name + '-' + row.version + '.apk';
 	let archive = fetch(ORIGIN + tag + '/' + filename,row['file-size']);
 	if (fs.lstat(archive).size != row['file-size']) guard.fail('PACKAGE_VERIFICATION_FAILED');
-	engine.update_apk(['--keys-dir',keys_dir,'verify',archive]);
-	let payload = decode(engine.update_apk(['adbdump','--format','json',archive]));
+	packages.apk(['--keys-dir',keys_dir,'verify',archive]);
+	let payload = decode(packages.apk(['adbdump','--format','json',archive]));
 	let paths = guard.base_layout(payload,row.version);
 	// A native fetch from the authenticated index binds its package
 	// digest to these exact bytes.
@@ -93,11 +102,11 @@ export function base(tag,directory,keys_dir) {
 	store.write(directory + '/repositories',directory + '/packages.adb\n');
 	let common = ['--root',directory + '/root','--arch',registry.architecture(),'--no-network','--no-cache',
 		'--repositories-file',directory + '/repositories','--keys-dir',keys_dir];
-	engine.update_apk([...common,'add','--initdb']);
-	engine.update_apk([...common,'fetch','--output',directory + '/fetched',row.name]);
+	packages.apk([...common,'add','--initdb']);
+	packages.apk([...common,'fetch','--output',directory + '/fetched',row.name]);
 	if (registry.hash_file(directory + '/fetched/' + filename) != registry.hash_file(archive)) guard.fail('PACKAGE_VERIFICATION_FAILED');
 	store.directory(directory + '/extracted');
-	engine.update_apk(['--keys-dir',keys_dir,'extract','--no-chown','--destination',directory + '/extracted',archive]);
+	packages.apk(['--keys-dir',keys_dir,'extract','--no-chown','--destination',directory + '/extracted',archive]);
 	let embedded = policy(directory + '/extracted/usr/share/foxhole/update-policy.json',row.version);
 	if (embedded.releaseTag != tag || registry.hash_file(directory + '/extracted' + KEY) != SIGNER_PUBLIC_PEM_SHA256) guard.fail('PACKAGE_VERIFICATION_FAILED');
 	let catalog_raw = public_raw(directory + '/extracted/usr/share/foxhole/engine-catalog.json',262144);
@@ -107,14 +116,25 @@ export function base(tag,directory,keys_dir) {
 		indexSha256:registry.hash_file(index),catalog,catalogSha256:digest.sha256(catalog_raw),
 		tag,policy:embedded,paths,payload,directory };
 };
+function mobile_conffile() {
+	for (let directory in ['/','/etc','/etc/nftables.d']) {
+		let info = fs.lstat(directory);
+		if (info?.type != 'directory' || info.uid != 0 || (info.mode & 0o022)) guard.fail('PACKAGE_VERIFICATION_FAILED');
+	}
+	let path = '/etc/nftables.d/30-foxhole-mobile.nft', before = fs.lstat(path), raw = public_raw(path,4096);
+	if (network.file_identity(before) != network.file_identity(fs.lstat(path))) guard.fail('PACKAGE_VERIFICATION_FAILED');
+	try { network.parse_firewall_set(raw); }
+	catch (_) { guard.fail('PACKAGE_VERIFICATION_FAILED'); }
+};
 export function installed_base(value) {
-	let current = engine.update_installed()['foxhole-openwrt-client'];
+	let current = packages.installed()['foxhole-openwrt-client'];
 	if (!current || current.arch != 'noarch' || current.version != value.version) guard.fail('ROLLBACK_UNAVAILABLE');
 	// Configuration is mutable by design; every immutable installed
 	// BASE payload must match.
 	for (let folder in value.payload.paths) for (let file in folder.files || []) {
 		let path = folder.name + '/' + file.name;
 		if (path == 'etc/config/foxhole' || path == 'lib/apk/packages/foxhole-openwrt-client.list') continue;
+		if (path == 'etc/nftables.d/30-foxhole-mobile.nft') { mobile_conffile(); continue; }
 		// Native postinst consumes this one setup script.
 		if (path == 'etc/uci-defaults/99-foxhole-openwrt-client' && !fs.lstat('/' + path)) continue;
 		if (registry.hash_file('/' + path) != file.hash) guard.fail('VERSION_IDENTITY_CONFLICT');
@@ -152,7 +172,7 @@ export function stage_ram(value) {
 	let path = directory + '/foxcore-cli', info = fs.lstat(path);
 	if (!info) {
 		let url = ORIGIN + 'v' + value.version + '/engine-' + value.id + '-' + value.architecture + '-' + value.binarySha256 + '.bin';
-		let raw = engine.update_asset(url,value.binarySha256,value.binaryBytes);
+		let raw = packages.asset(url,value.binarySha256,value.binaryBytes);
 		if (fs.lstat(raw).size != value.binaryBytes || system(['/bin/cp',raw,path],10000) != 0 || !fs.chmod(path,0o700))
 			guard.fail('RAM_STAGE_UNAVAILABLE');
 		info = fs.lstat(path);
@@ -337,8 +357,8 @@ export function verify_transaction(id,tx) {
   repository_asset(CACHE+'/job-'+id+'/assets','index-'+item.indexSha256+'.adb',CACHE+'/'+item.indexSha256,item.indexSha256,fs.lstat(CACHE+'/'+item.indexSha256)?.size);
   regular(item.archive,8388608,item.archiveBytes,true);regular(item.index,1048576,null,true);
   if(registry.hash_file(item.archive)!=item.sha256||registry.hash_file(item.index)!=item.indexSha256)guard.fail('RECOVERY_REQUIRED');
-  engine.update_apk(['--keys-dir',tx.keys,'verify',item.archive,item.index],130000);
-  let rows=decode(engine.update_apk(['adbdump','--format','json',item.index])).packages;
+  packages.apk(['--keys-dir',tx.keys,'verify',item.archive,item.index],130000);
+  let rows=decode(packages.apk(['adbdump','--format','json',item.index])).packages;
   if(type(rows)!='array'||length(rows)!=1||rows[0].name!='foxhole-openwrt-client'||rows[0].version!=item.version||rows[0].hashes!=item.nativeId||rows[0].arch!='noarch')guard.fail('RECOVERY_REQUIRED');push(indices,item.index);
  }
  for(let item in tx.modules){
@@ -347,11 +367,11 @@ export function verify_transaction(id,tx) {
   repository_asset(CACHE+'/job-'+id+'/assets','index-'+item.indexSha256+'.adb',CACHE+'/'+item.indexSha256,item.indexSha256,item.indexBytes);
   regular(item.archive,8388608,item.archiveBytes,true);regular(item.index,8388608,item.indexBytes,true);
   if(registry.hash_file(item.archive)!=item.archiveSha256||registry.hash_file(item.index)!=item.indexSha256)guard.fail('RECOVERY_REQUIRED');
-  engine.update_apk(['--keys-dir',tx.keys,'verify',item.archive,item.index],130000);
-  let rows=decode(engine.update_apk(['adbdump','--format','json',item.index])).packages;
+  packages.apk(['--keys-dir',tx.keys,'verify',item.archive,item.index],130000);
+  let rows=decode(packages.apk(['adbdump','--format','json',item.index])).packages;
   let found=type(rows)=='array'?filter(rows,row=>row.name==item.name):[];
   if(length(found)!=1||found[0].version!=item.version||found[0].arch!=item.arch||found[0].hashes!=item.nativeId)guard.fail('RECOVERY_REQUIRED');
-  let payload=decode(engine.update_apk(['adbdump','--format','json',item.archive]));
+  let payload=decode(packages.apk(['adbdump','--format','json',item.archive]));
   if(sprintf('%J',owned_payload_files(payload))!=sprintf('%J',item.payloadFiles))guard.fail('RECOVERY_REQUIRED');push(indices,item.index);
  }
  let unique=[];for(let path in indices)if(index(unique,path)<0)push(unique,path);

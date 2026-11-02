@@ -1,0 +1,10 @@
+#!/usr/bin/ucode
+'use strict';
+
+import * as fs from 'fs';
+import * as updates from '/usr/share/foxhole/ram-update-service.uc';
+
+if(fs.stat('/proc/self')?.uid!=0||length(ARGV)!=1||!match(ARGV[0],/^update-job-[a-f0-9]{32}$/))
+ die('Root RAM update worker required\n');
+try {updates.run(ARGV[0]);}
+catch(_) {die('RAM update worker failed; inspect its private job record\n');}

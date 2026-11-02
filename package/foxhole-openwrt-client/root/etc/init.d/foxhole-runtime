@@ -8,9 +8,19 @@ controller='/usr/libexec/foxhole-runtime'
 supervisor='/usr/libexec/foxhole-supervisor'
 
 start_service() {
-	local mode
+	local mode recovery=0
+	/usr/libexec/foxhole-backup-recover --allow-stopped >/dev/null 2>&1 || recovery=$?
+	[ "$recovery" = 0 ] || [ "$recovery" = 10 ] || return 1
 
 	mode="$($controller mode)" || return 1
+	if [ "$recovery" = 10 ]; then
+		case "$mode" in
+			off) $controller cleanup >/dev/null 2>&1 ;;
+			block) $controller apply blocked >/dev/null 2>&1 ;;
+			*) return 1 ;;
+		esac
+		return $?
+	fi
 	if [ "$mode" = 'off' ]; then
 		$controller cleanup >/dev/null 2>&1
 		return $?

@@ -1,7 +1,9 @@
-import { UpdatePanel } from './update-panel.js?v=1.0.0-r3-ui1';
-import { EnginePanel } from './engine-panel.js?v=1.0.0-r3-ui1';
-import { hasHost, request, cancelPending, PanelError } from './bridge.js?v=1.0.0-r3-ui1';
-import { Charts, formatBytes, setCountryLabel } from './charts.js?v=1.0.0-r3-ui1';
+import { UpdatePanel } from './update-panel.js?v=1.0.2-r3-ui1';
+import { EnginePanel } from './engine-panel.js?v=1.0.2-r3-ui1';
+import { BackupPanel } from './backup-panel.js?v=1.0.2-r3-ui1';
+import { PairingPanel } from './pairing-panel.js?v=1.0.2-r3-ui1';
+import { hasHost, request, cancelPending, PanelError } from './bridge.js?v=1.0.2-r3-ui1';
+import { Charts, formatBytes, setCountryLabel } from './charts.js?v=1.0.2-r3-ui1';
 import {
   clientDeviceIcon, clientDeviceType, clone, countryCodes,
   countryFlagPath, finite, maskIpv4, maskMac, networkDeviceIcon,
@@ -9,10 +11,10 @@ import {
   randomId,
   serverCountryCode,
   validAddress
-} from './frontend-model.js?v=1.0.0-r3-ui1';
+} from './frontend-model.js?v=1.0.2-r3-ui1';
 import {
   ModalFlow, PopupController, waitForMotion
-} from './ui-controller.js?v=1.0.0-r3-ui1';
+} from './ui-controller.js?v=1.0.2-r3-ui1';
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -43,6 +45,8 @@ let busy = false;
 let pollTimer = 0;
 let polling = false;
 let failures = 0;
+let pinCooldownDeadline = 0;
+let pinCooldownTimer = null;
 let epoch = 0;
 let toastTimer = 0;
 let runtimeNoticeKey = null;
@@ -65,6 +69,7 @@ function t(key, values = {}) {
 const charts = new Charts(t);
 const selectSizingRoots = new Set();
 let selectSizingFrame = 0;
+let pickerLabelSequence = 0;
 let lastAppearance = null;
 let renderedEntities = '';
 
@@ -75,6 +80,11 @@ function translate(root = document) {
       node.setAttribute(attribute, t(node.getAttribute(`data-i18n-${attribute}`)));
     }
   }
+  syncSettingPickers(root);
+  syncRoutePickers(root);
+  syncFontStyleLabel(root);
+  pairingPanel.renderHeader(state?.pairedDeviceCount);
+  pairingPanel.render();
   selectSizingRoots.add(root);
   if (!selectSizingFrame) {
     selectSizingFrame = requestAnimationFrame(() => {
@@ -87,6 +97,14 @@ function translate(root = document) {
 
 let selectMeasure;
 const selectWidths = [56, 68, 80, 96, 112, 132, 156, 190, 224];
+
+function syncFontStyleLabel(root = document) {
+  const input = $('[data-setting="plainHeadings"]', root);
+  if (!input) return;
+  const key = preferredPlainHeadings ? 'font.jetbrains_mono' : 'font.tiny5';
+  const label = `${t('settings.foxhole_style')}: ${t(key)}`;
+  if (input.getAttribute('aria-label') !== label) input.setAttribute('aria-label', label);
+}
 
 function selectTextWidth(select, text) {
   selectMeasure ||= document.createElement('canvas').getContext('2d');
@@ -113,6 +131,8 @@ function sizeCompactSelects(root = document) {
 }
 
 function errorText(error) {
+  if (error?.code === 'pin_cooldown' && Number.isInteger(error.retryAfterSeconds) && error.retryAfterSeconds >= 1 && error.retryAfterSeconds <= 300)
+    return t('auth.pin_cooldown', { seconds: error.retryAfterSeconds });
   const key = `error.${error?.code || 'unavailable'}`;
   return dictionary[language]?.[key] ? t(key) : t('error.unavailable');
 }
@@ -240,6 +260,19 @@ const modalDefinitions = {
       tone: 'accent', disabled: true
     }]
   },
+  pairings: {
+    icon: 'mobile', actions: () => [closeAction, {
+      action: 'pairing-refresh', icon: 'refresh', label: 'pairing.refresh'
+    }]
+  },
+  'pairing-revoke': {
+    icon: 'trash', actions: () => [backAction, {
+      action: 'pairing-revoke', icon: 'trash', label: 'pairing.revoke', tone: 'danger'
+    }]
+  },
+  backup: {
+    icon: 'floppy', actions: () => [backAction, closeAction]
+  },
   'confirm-delete': {
     icon: 'trash', actions: () => [backAction, {
       action: 'confirm-delete', icon: 'trash', label: 'action.confirm',
@@ -306,8 +339,20 @@ function renderModalChrome(view) {
 function prepareModalView(view) {
   renderModalChrome(view);
   if (view.name === 'updates') void updatePanel.open();
+  if (view.name === 'pairings') void pairingPanel.open();
+  if (view.name === 'pairing-revoke') $('[data-pairing-revoke-name]').textContent = view.data.name;
   if (view.name === 'update-plan') updatePanel.render();
-  if (view.name === 'settings-home') void updatePanel.summary();
+  if (view.name === 'settings-home') {
+    void updatePanel.summary();
+    const entry = $('[data-backup-entry]');
+    void backupPanel.capability().then(supported => {
+      if (entry?.isConnected) entry.hidden = !supported;
+    });
+  }
+  if (view.name === 'backup') {
+    backupPanel.render();
+    void backupPanel.status().catch(error => toast(errorText(error), 'error'));
+  }
   if (view.name === 'engines') void enginePanel.open();
   if (view.name === 'engine-plan') enginePanel.renderPlan();
   if (view.name === 'engine-progress') enginePanel.renderJob();
@@ -331,7 +376,8 @@ function prepareModalView(view) {
   if (view.name === 'router-stats') renderRouterStats();
   if (view.name === 'pin-change') {
     $('[data-pin-setup-copy]').hidden = !pinSetupRequired;
-    $$('[data-license-setup]').forEach(node => { node.hidden = !licenseRequired; });
+    $('[data-pin-change-warning]').hidden = pinSetupRequired;
+    renderLicenseGate();
     syncPinSaveState();
   }
   syncViewport();
@@ -340,6 +386,8 @@ function prepareModalView(view) {
 function finishModal() {
   enginePanel.close();
   updatePanel.close();
+  backupPanel.close();
+  pairingPanel.close();
   presentToast();
   popups.closeAll();
   charts.setSuspended(false);
@@ -371,6 +419,28 @@ const updatePanel = new UpdatePanel({
 const enginePanel = new EnginePanel({
   call: api, text: t, element, icon, show: openView, scope: () => epoch,
   error: (error) => toast(errorText(error), 'error'), notice: toast
+});
+const backupPanel = new BackupPanel({
+  call: api, text: t, scope: () => epoch, revision: () => state.revision, notice: toast,
+  restored: async () => {
+    draft = null;
+    applyState(await api('state'));
+    beginSettingsDraft();
+  }
+});
+
+const pairingPanel = new PairingPanel({
+  call: api, text: t, element, icon, scope: () => epoch, language: () => language,
+  error: error => {
+    if (['locked', 'unauthorized', 'luci_required'].includes(error.code)) localLock();
+    else toast(errorText(error), 'error');
+  },
+  confirm: device => openView('pairing-revoke', { id: device.id, name: device.name }),
+  refreshed: async () => {
+    const scope = epoch;
+    const next = await api('state');
+    if (scope === epoch && token) applyState(next);
+  }
 });
 
 function latency(value) {
@@ -445,6 +515,7 @@ function appearance(settings, renderEntities = true) {
   storage.set('theme', preferredTheme);
   preferredPlainHeadings = next.plainHeadings;
   storage.set('plainHeadings', preferredPlainHeadings ? '1' : '0');
+  syncFontStyleLabel();
   if (languageChanged) {
     translate();
     if (modal.current) renderModalChrome(modal.current);
@@ -478,8 +549,10 @@ function toast(message, kind = 'success') {
   clearTimeout(toastTimer);
   const node = $('[data-toast]');
   $('[data-toast-text]', node).replaceChildren(message);
-  $('[data-toast-icon]', node).setAttribute('href', kind === 'error'
-    ? '#icon-close' : '#icon-check');
+  const toastIcon = {
+    success: '#icon-check', error: '#icon-close', info: '#icon-info'
+  }[kind] ?? '#icon-info';
+  $('[data-toast-icon]', node).setAttribute('href', toastIcon);
   node.className = `toast is-${kind}`;
   node.hidden = false;
   presentToast();
@@ -503,6 +576,7 @@ async function api(action, payload = {}) {
 function applyState(next) {
   if (!next || next.schema !== 1 || !next.settings || !Array.isArray(next.servers) || !Array.isArray(next.clients)) throw new PanelError('unavailable');
   state = normalizedState(next);
+  pairingPanel.renderHeader(state.pairedDeviceCount);
   syncVpnContext();
   if (!draft) appearance(state.settings, false);
   renderLists();
@@ -684,6 +758,8 @@ async function openView(name, data = {}, reset = false) {
 async function back() {
   if (busy || modal.transitioning || pinSetupRequired) return;
   popups.closeAll();
+  if (modal.current?.name === 'engines') enginePanel.close();
+  if (modal.current?.name === 'pairings') pairingPanel.close();
   await modal.back();
 }
 
@@ -810,6 +886,23 @@ function queueVisibleCountryFlags(list) {
     loadVisibleCountryFlags(list)));
 }
 
+function syncPickerLabel(picker, current) {
+  const trigger = $('[data-popup-trigger]', picker);
+  const key = trigger?.dataset.pickerLabelKey;
+  if (!key || !current) return;
+  let label = $('[data-picker-label-text]', trigger);
+  if (!label) {
+    label = element('span', 'visually-hidden');
+    label.dataset.pickerLabelText = '';
+    label.id = `foxhole-picker-label-${++pickerLabelSequence}`;
+    trigger.prepend(label);
+  }
+  if (!current.id) current.id = `foxhole-picker-value-${++pickerLabelSequence}`;
+  label.dataset.i18n = key;
+  label.textContent = t(key);
+  trigger.setAttribute('aria-labelledby', `${label.id} ${current.id}`);
+}
+
 function syncRoutePicker(picker) {
   if (!picker) return;
   const input = $('[data-route-value]', picker);
@@ -822,6 +915,7 @@ function syncRoutePicker(picker) {
     current.dataset.i18n = `route.${route}`;
     current.textContent = t(current.dataset.i18n);
   }
+  syncPickerLabel(picker, current);
   for (const option of $$('[data-route]', picker))
     option.setAttribute('aria-selected', String(option.dataset.route === route));
 }
@@ -832,6 +926,7 @@ function syncSettingPicker(picker) {
   const current = $('[data-setting-current]', picker);
   const selected = input?.selectedOptions[0];
   if (current) current.textContent = selected?.textContent?.trim() || '';
+  syncPickerLabel(picker, current);
   for (const option of $$('[data-value]', picker))
     option.setAttribute('aria-selected', String(option.dataset.value ===
       input?.value));
@@ -947,7 +1042,7 @@ function inlineRuleRoute(type, id, route) {
   trigger.dataset.action = 'toggle-popup';
   trigger.dataset.popupTrigger = '';
   trigger.setAttribute('aria-expanded', 'false');
-  trigger.setAttribute('aria-label', t('exceptions.route_label'));
+  trigger.dataset.pickerLabelKey = 'exceptions.route_label';
   const current = element('span');
   current.dataset.routeCurrent = '';
   const routeIcon = icon(route === 'direct' ? 'globe' : 'shield');
@@ -1528,7 +1623,7 @@ async function savePin() {
   const form = $('[data-pin-change-form]');
   const first = $('[data-new-pin]').value;
   const repeat = $('[data-repeat-pin]').value;
-  if (!/^\d{4}$/.test(first) || first !== repeat) {
+  if (!/^\d{6}$/.test(first) || first !== repeat) {
     form.classList.remove('is-error');
     void form.offsetWidth;
     form.classList.add('is-error');
@@ -1546,8 +1641,10 @@ async function savePin() {
   await operation(async () => {
     const result = await api('pin.change', { newPin: first,
       licenseAccepted: licenseRequired && accepted, licenseVersion: licenseRequired && accepted ? LICENSE_VERSION : 0 });
+    if (typeof result.token !== 'string' || !/^[a-f0-9]{64}$/.test(result.token)) throw new PanelError('unavailable');
     token = result.token;
     pinSetupRequired = false;
+    licenseRequired = false;
     $('[data-pin-change-form]').reset();
     saved = true;
   });
@@ -1559,10 +1656,19 @@ async function savePin() {
   } else await back();
 }
 
+function renderLicenseGate() {
+  $$('[data-license-setup]').forEach(node => { node.hidden = !licenseRequired; });
+  const accept = $('[data-license-accept]');
+  if (accept) {
+    accept.required = licenseRequired;
+    accept.disabled = !licenseRequired;
+  }
+}
+
 function syncPinSaveState() {
   const first = $('[data-new-pin]')?.value || '';
   const repeat = $('[data-repeat-pin]')?.value || '';
-  const disabled = (!first && !repeat) || (licenseRequired &&
+  const disabled = !/^[0-9]{6}$/.test(first) || first !== repeat || (licenseRequired &&
     (!$('[data-license-accept]')?.checked || licenseRequiredVersion !== LICENSE_VERSION));
   const save = $('[data-modal-footer] [data-action="save-pin"]');
   if (save) save.disabled = disabled;
@@ -1770,9 +1876,21 @@ async function poll() {
   }
 }
 
+function renderPinCooldown() {
+  clearTimeout(pinCooldownTimer);
+  pinCooldownTimer = null;
+  const seconds = Math.max(0, Math.ceil((pinCooldownDeadline - performance.now()) / 1000));
+  $('#pin-input').disabled = !hasHost || seconds > 0;
+  $('#pin-prompt').textContent = seconds ? t('auth.pin_cooldown', { seconds }) : t('auth.pin_prompt');
+  if (seconds && !document.hidden && !$('#pin-gate').hidden)
+    pinCooldownTimer = setTimeout(renderPinCooldown, Math.min(1000, Math.max(1, pinCooldownDeadline - performance.now() - (seconds - 1) * 1000)));
+}
+
 function localLock() {
   enginePanel.close();
   updatePanel.close();
+  backupPanel.close();
+  pairingPanel.close();
   clearTimeout(toastTimer);
   hideToast();
   runtimeNoticeKey = connectedNoticeKey = null;
@@ -1802,19 +1920,21 @@ function localLock() {
   $('#pin-input').disabled = !hasHost;
   $$('[data-pin-dot]').forEach((dot) => dot.classList.remove('is-filled'));
   $('#pin-gate').classList.remove('is-loading', 'is-unlocking', 'is-error');
-  $('#pin-prompt').textContent = t('auth.pin_prompt');
+  renderPinCooldown();
 }
 
 async function unlock(event) {
   event.preventDefault();
   if (!hasHost || $('#pin-input').disabled) return;
   const pin = $('#pin-input').value;
-  if (!/^\d{4}$/.test(pin)) return;
+  if (!/^\d{6}$/.test(pin)) return;
   $('#pin-input').disabled = true;
   $('#pin-gate').classList.add('is-loading');
   $('#pin-prompt').textContent = t('auth.loading');
   try {
     const result = await request('unlock', { pin });
+    pinCooldownDeadline = 0;
+    clearTimeout(pinCooldownTimer);
     token = result.token;
     pinSetupRequired = result.pinChangeRequired === true;
     licenseRequired = result.licenseRequired === true || (result.licenseRequired == null && pinSetupRequired);
@@ -1833,6 +1953,8 @@ async function unlock(event) {
     }, true);
     else await poll();
   } catch (error) {
+    if (error.code === 'pin_cooldown' && Number.isInteger(error.retryAfterSeconds) && error.retryAfterSeconds >= 1 && error.retryAfterSeconds <= 300)
+      pinCooldownDeadline = performance.now() + error.retryAfterSeconds * 1000;
     localLock();
     if (error.code === 'invalid_pin') {
       void $('#pin-gate').offsetWidth;
@@ -1854,7 +1976,11 @@ async function perform(action, target) {
   if (busy || modal.transitioning) return;
   const id = target.dataset.id;
   switch (action) {
-    case 'scroll-top': $('#app-shell').scrollTo({ top: 0, behavior: 'smooth' }); break;
+    case 'scroll-top': {
+      const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      $('#app-shell').scrollTo({ top: 0, behavior: reduced ? 'instant' : 'smooth' });
+      break;
+    }
     case 'toggle-section': {
       const section = target.dataset.sectionToggle;
       setSectionCollapsed(section,
@@ -1924,7 +2050,20 @@ async function perform(action, target) {
       }
       break;
     }
-    case 'open-pin-change': await openView('pin-change'); break;
+    case 'open-pin-change':
+      if (pinSetupRequired) await openView('pin-change');
+      else window.top.location.assign('/cgi-bin/luci/admin/services/foxhole/pin');
+      break;
+    case 'open-pairings': await openView('pairings'); break;
+    case 'pairing-refresh': await pairingPanel.open(); break;
+    case 'pairing-revoke': {
+      if (modal.current?.name !== 'pairing-revoke') break;
+      const pairingId = modal.current.data.id;
+      let revoked = false;
+      await operation(async () => { revoked = await pairingPanel.revoke(pairingId); });
+      if (revoked) { await back(); toast(t('pairing.revoked')); }
+      break;
+    }
     case 'open-updates': await openView('updates'); break;
     case 'update-check': await updatePanel.action('check'); break;
     case 'update-plan': await updatePanel.action('plan'); break;
@@ -1935,6 +2074,15 @@ async function perform(action, target) {
     case 'engine-apply': await enginePanel.apply(); break;
     case 'engine-job': await enginePanel.showJob(); break;
     case 'open-interface-settings': await openView('interface-settings'); break;
+    case 'open-backup':
+      if (draftSaving || draftSaved < draftChange) { toast(t('error.backup_busy'), 'error'); break; }
+      if (!backupPanel.supported) { toast(t('error.backup_unavailable'), 'error'); break; }
+      await openView('backup'); break;
+    case 'backup-save': await operation(() => backupPanel.save()); backupPanel.render(); break;
+    case 'backup-choose':
+      try { backupPanel.choose(); } catch (error) { toast(errorText(error), 'error'); }
+      break;
+    case 'backup-status': await operation(() => backupPanel.status()); backupPanel.render(); break;
     case 'open-help': await openView('help'); break;
     case 'open-router-stats': await openView('router-stats', {}, true); break;
     case 'test-server': await testServer(); break;
@@ -2013,9 +2161,9 @@ document.addEventListener('input', (event) => {
   const input = event.target;
   if (input.id === 'pin-input') {
     $('#pin-gate').classList.remove('is-error');
-    input.value = input.value.replace(/\D/g, '').slice(0, 4);
+    input.value = input.value.replace(/\D/g, '').slice(0, 6);
     $$('[data-pin-dot]').forEach((dot, index) => dot.classList.toggle('is-filled', index < input.value.length));
-    if (input.value.length === 4) $('#pin-form').requestSubmit();
+    if (input.value.length === 6) $('#pin-form').requestSubmit();
   }
   const current = views[views.length - 1];
   if (current?.name === 'server-config') {
@@ -2032,14 +2180,21 @@ document.addEventListener('input', (event) => {
       ? maskMac(input.value) : maskIpv4(input.value);
   }
   if (input.matches('[data-site-input]')) syncSiteAddState();
-  if (input.matches('[data-new-pin], [data-repeat-pin], [data-license-accept]')) {
-    input.value = input.value.replace(/\D/g, '').slice(0, 4);
+  if (input.matches('[data-license-accept]')) syncPinSaveState();
+  if (input.matches('[data-new-pin], [data-repeat-pin]')) {
+    input.value = input.value.replace(/\D/g, '').slice(0, 6);
     syncPinSaveState();
   }
 });
 
 document.addEventListener('change', (event) => {
   const input = event.target;
+  if (input.matches('[data-backup-file]')) {
+    const file = input.files?.[0];
+    input.value = '';
+    if (file) void operation(() => backupPanel.restore(file)).finally(() => backupPanel.render());
+    return;
+  }
   if (input.matches('[data-client-lan]')) {
     const view = modal.current;
     if (!view?.data?.export) return;
@@ -2178,8 +2333,11 @@ appShell.addEventListener('scroll', () => {
   topbarSolid = solid;
   topbar.classList.toggle('has-glass', solid);
 }, { passive: true });
-document.addEventListener('visibilitychange', () => { if (document.hidden) stopPolling(); else { syncViewport(); void poll(); } });
-window.addEventListener('pagehide', () => { stopPolling(); cancelPending(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { stopPolling(); clearTimeout(pinCooldownTimer); }
+  else { syncViewport(); if (!$('#pin-gate').hidden) renderPinCooldown(); void poll(); }
+});
+window.addEventListener('pagehide', () => { stopPolling(); clearTimeout(pinCooldownTimer); cancelPending(); });
 
 async function boot() {
   try {

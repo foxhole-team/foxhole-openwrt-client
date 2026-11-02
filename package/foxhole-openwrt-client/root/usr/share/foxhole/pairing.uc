@@ -2,7 +2,8 @@
 
 import * as digest from 'digest';
 
-const MAX_DEVICES = 16;
+const MAX_DEVICES = 10;
+const LEGACY_MAX_DEVICES = 16;
 
 export function bootstrap_valid(auth, uptime, boot) {
 	return auth?.bootstrapConsumed == false &&
@@ -20,6 +21,15 @@ function valid_id(id) {
 function valid_name(name) {
 	return type(name) == 'string' && length(name) > 0 &&
 		length(name) <= 128 && !match(name, /[[:cntrl:]]/);
+};
+
+function client_metadata(client, version) {
+ let result = {};
+ if (client == 'guard' || client == 'vpn') result.client = client;
+ if (result.client && type(version) == 'string' && length(version) <= 64 &&
+     match(version, /^(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?(\+[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$/))
+  result.clientVersion = version;
+ return result;
 };
 
 function verifier(credential) {
@@ -42,7 +52,7 @@ function equal_secret(left, right) {
 function checked(record) {
 	if (type(record) != 'object' || record.schema != 1 ||
 	    type(record.devices) != 'array' ||
-	    length(record.devices) > MAX_DEVICES) die('storage_error');
+	    length(record.devices) > LEGACY_MAX_DEVICES) die('storage_error');
 	for (let key in keys(record))
 		if (index(['schema', 'devices'], key) < 0)
 			die('storage_error');
@@ -54,11 +64,17 @@ function checked(record) {
 		    type(device.created) != 'int' || device.created < 0 ||
 		    seen[device.id]) die('storage_error');
 		for (let key in keys(device))
-			if (index(['id', 'hash', 'name', 'created'], key) < 0)
+			if (index(['id', 'hash', 'name', 'created', 'client', 'clientVersion'], key) < 0)
 				die('storage_error');
 		seen[device.id] = true;
 	}
-	return json(sprintf('%J', record));
+	let result = json(sprintf('%J', record));
+	for (let device in result.devices) {
+		let metadata = client_metadata(device.client, device.clientVersion);
+		delete device.client; delete device.clientVersion;
+		for (let key, value in metadata) device[key] = value;
+	}
+	return result;
 };
 
 export function defaults() { return { schema: 1, devices: [] }; };
@@ -66,17 +82,25 @@ export function requires_tls(action, token) {
 	return (type(action) == 'string' && match(action, /^(pair|phone)\./)) ||
 		(type(token) == 'string' && match(token, /^p1\./)) ? true : false;
 };
-export function register(record, id, credential, name, created) {
+export function update_metadata(record, id, client, clientVersion) {
+ let result = checked(record), metadata = client_metadata(client, clientVersion);
+ for (let device in result.devices) {
+  if (device.id != id) continue;
+  for (let key, value in metadata) device[key] = value;
+ }
+ return result;
+};
+export function register(record, id, credential, name, created, client, clientVersion) {
 	let result = checked(record), hash = verifier(credential);
 	if (!valid_id(id) || !valid_name(name) ||
 	    type(created) != 'int' || created < 0) die('invalid_pairing');
 	for (let device in result.devices) {
 		if (device.id != id) continue;
 		if (!equal_secret(device.hash, hash)) die('pairing_conflict');
-		return result;
+		return update_metadata(result, id, client, clientVersion);
 	}
 	if (length(result.devices) >= MAX_DEVICES) die('pairing_limit');
-	push(result.devices, { id, hash, name, created });
+	push(result.devices, { id, hash, name, created, ...client_metadata(client, clientVersion) });
 	return result;
 };
 export function authenticate(record, id, credential) {
@@ -112,6 +136,6 @@ export function public_devices(record) {
 	let result = [];
 	for (let device in checked(record).devices)
 		push(result, { id: device.id, name: device.name,
-			created: device.created });
+			created: device.created, ...client_metadata(device.client, device.clientVersion) });
 	return result;
 };

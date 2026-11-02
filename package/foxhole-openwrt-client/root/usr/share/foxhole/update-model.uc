@@ -70,7 +70,8 @@ export function base_path(path) {
 	if (type(path) != 'string' || length(path) > 256 ||
 	    !match(path, /^[a-zA-Z0-9_+./-]+$/) || match(path, /(^|\/)\.\.?($|\/)/)) return false;
 	if (index(['etc/config/foxhole','etc/uci-defaults/99-foxhole-openwrt-client',
-		'etc/nftables.d/31-foxhole-inbound.nft','www/foxhole.html',
+		'etc/nftables.d/31-foxhole-inbound.nft','etc/nftables.d/30-foxhole-mobile.nft',
+		'usr/share/nftables.d/chain-pre/input/30-foxhole-mobile.nft','www/foxhole.html',
 		'www/cgi-bin/foxhole','www/foxhole-mobile/cgi-bin/foxhole',
 		'usr/share/rpcd/ucode/foxhole.uc','usr/share/rpcd/acl.d/luci-app-foxhole.json',
 		'usr/share/luci/menu.d/luci-app-foxhole.json','lib/apk/packages/foxhole-openwrt-client.list',

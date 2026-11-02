@@ -83,6 +83,11 @@ export function updatePlan(v, status) {
   return v;
 }
 
+export function availabilityLabel(value, text) {
+  if (value.availability === 'NOT_CHECKED') return '';
+  return text(`updates.${value.availability === 'CURRENT' ? 'up_to_date' : value.availability.toLowerCase()}`);
+}
+
 export class UpdatePanel {
   constructor({ call, text, element, show, scope, error }) {
     Object.assign(this, { call, text, element, show, scope, error });
@@ -111,7 +116,7 @@ export class UpdatePanel {
       const value = updateStatus(await this.call('updates.status'));
       if (!this.fresh(sequence, scope)) return;
       const node = document.querySelector('[data-update-summary]');
-      if (node) node.textContent = `${value.currentVersion || '—'} · ${this.text(`updates.${value.availability === 'CURRENT' ? 'up_to_date' : value.availability.toLowerCase()}`)}`;
+      if (node) node.textContent = [value.currentVersion || '—', availabilityLabel(value, this.text)].filter(Boolean).join(' · ');
     } catch { /* Older or unreachable packages never appear current. */ }
   }
   async action(name, payload = {}) {
@@ -166,7 +171,9 @@ export class UpdatePanel {
       const versions = this.element('dl', 'engine-budget');
       for (const [key, value] of [['current', v.currentVersion], ['available_version', v.availableVersion]])
         versions.append(this.element('dt', '', this.text(`updates.${key}`)), this.element('dd', '', value || '—'));
-      root.append(versions, this.element('p', 'muted', this.text(`updates.${v.availability === 'CURRENT' ? 'up_to_date' : v.availability.toLowerCase()}`)));
+      root.append(versions);
+      const availability = availabilityLabel(v, this.text);
+      if (availability) root.append(this.element('p', 'muted', availability));
       if (v.failureReason) root.append(this.element('p', 'muted', this.text(`error.update_${v.failureReason.toLowerCase()}`)));
       if (v.autoUpdate.enabled && v.autoUpdate.suspendedReason && v.autoUpdate.suspendedReason !== v.failureReason)
         root.append(this.element('p', 'muted', this.text(`error.update_${v.autoUpdate.suspendedReason.toLowerCase()}`)));

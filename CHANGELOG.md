@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.2 Beta
+
+- Исправлены доступ к API из локальной сети и работа веб-интерфейса.
+- Исправлены графики и отображение настроек.
+- Добавлены резервное копирование и восстановление настроек, VPN-профилей и клиентов.
+- Добавлен просмотр сопряжённых мобильных устройств.
+- PIN увеличен до 6 цифр, добавлена блокировка после неверных попыток ввода. Смена PIN доступна через LuCI.
+- Поддерживается сопряжение до 10 мобильных устройств.
+- Исправлена проверка данных релиза с GitHub.
+- Доработаны уведомления, окна подтверждения, справка и подсказки.
+
 ## 1.0.1 Public Beta - 2026-10-30
 
 - Update selectable Linux engines to FoxHole Core 1.0.1, including DNS policy, reload, import and bootstrap fixes.
@@ -63,7 +74,7 @@
 - Select authenticated package checksums when replacing same-version
   feature builds; retain complete payload and capability readback.
 
-## 0.1.0-r41 — public beta 1.0 (unreleased)
+## 0.1.0-r41 - public beta 1.0 (unreleased)
 
 - Local agent instructions are excluded from Git and source archives.
 - P-256 APK signatures, pinned installer trust bootstrap and local release

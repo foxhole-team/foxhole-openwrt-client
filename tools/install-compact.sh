@@ -21,6 +21,8 @@ file_info() {
 
 
 bundle='' base_url='' manifest_hash='' mode=flash protocols=hysteria2 apply=0 license_accepted=0 development=0 include_server=0
+archive_ready=0
+transport_budget=0
 while [ "$#" -gt 0 ]; do
  case "$1" in
   --bundle) bundle=${2-}; shift 2 ;;
@@ -101,7 +103,7 @@ ucode -e '
  if (type(rows)!="array" || length(rows)>4096) exit(1);
  for (let row in rows) if (index(["foxhole-openwrt-client","foxcore-cli","foxcore-cli-ram","hysteria","hysteria-server-ram"],row.name)>=0 || match(row.name||"",/^foxcore-engine-/)) exit(1);
 ' -- "$stage/prior-owned.json"
-fetch() {
+fetch_flat() {
  name=$1
  limit_bytes=${2:-2097152}
  case "$name" in ''|*[!A-Za-z0-9_.-]*|.*) exit 1 ;; esac
@@ -116,6 +118,17 @@ fetch() {
  fi
  [ "$(wc -c < "$stage/$name")" -le "$limit_bytes" ] || exit 1
 }
+fetch() {
+ name=$1
+ limit_bytes=${2:-2097152}
+ case "$name" in ''|*[!A-Za-z0-9_.-]*|.*) exit 1 ;; esac
+ if [ "$archive_ready" = 1 ] && grep -Fxq "$name" "$stage/bundle-materialized.list"; then
+  [ -f "$stage/$name" ] && [ ! -L "$stage/$name" ] || exit 1
+  [ "$(wc -c < "$stage/$name")" -le "$limit_bytes" ] || exit 1
+ else
+  fetch_flat "$@"
+ fi
+}
 verify() {
  hash=$(awk -v name="$1" '$2==name {print $1}' "$stage/SHA256SUMS")
  case "$hash" in *[!a-f0-9]*) exit 1 ;; esac
@@ -125,9 +138,19 @@ verify() {
 }
 fetch SHA256SUMS
 printf '%s  %s\n' "$manifest_hash" "$stage/SHA256SUMS" | sha256sum -c - >/dev/null
-for name in package-catalog.json install-plan.uc install-plan-model.uc install-compact-plan.uc engine-package-layout.uc register-compact-engines.uc indexed-install.uc; do
+for name in package-catalog.json install-plan.uc install-plan-model.uc install-compact-plan.uc engine-package-layout.uc register-compact-engines.uc indexed-install.uc bundle-transport-model.uc bundle-transport.uc; do
  fetch "$name"; verify "$name"
 done
+transport_count=$(awk '$2=="bundle-transport.json" {n++} END {print n+0}' "$stage/SHA256SUMS")
+case "$transport_count" in
+ 0) ;;
+ 1)
+  fetch_flat bundle-transport.json 1048576; verify bundle-transport.json
+  transport_budget=$(ucode "$stage/bundle-transport.uc" budget "$stage")
+  case "$transport_budget" in ''|*[!0-9]*) exit 1 ;; esac
+  ;;
+ *) exit 1 ;;
+esac
 ucode "$stage/install-plan.uc" select "$stage/package-catalog.json" "$architecture" \
  "$DISTRIB_RELEASE" "$protocols" "$development" "$target" "$include_server" > "$stage/metadata.list"
 while read -r file digest; do fetch "$file"; verify "$file" "$digest"; done < "$stage/metadata.list"
@@ -148,10 +171,20 @@ if [ -e /etc/foxhole ] || [ -L /etc/foxhole ]; then
  case "$private_backup" in ''|*[!0-9]*) exit 1 ;; esac
  backup_bytes=$((backup_bytes + private_backup * 1024 + 4096))
 fi
+transport_ram=$((ram * 1024 - transport_budget))
+[ "$transport_ram" -gt 0 ] || { echo 'Insufficient RAM for authenticated bundle transport; nothing installed' >&2; exit 1; }
 ucode "$stage/install-compact-plan.uc" budget "$stage/package-catalog.json" "$architecture" \
  "$DISTRIB_RELEASE" "$protocols" "$development" "$target" "$stage" "$mode" \
- "$((flash * 1024))" "$((ram * 1024))" "$backup_bytes" "$include_server" > "$stage/compact-budget.json"
+ "$((flash * 1024))" "$transport_ram" "$backup_bytes" "$include_server" > "$stage/compact-budget.json"
 ucode "$stage/install-compact-plan.uc" list "$stage/compact-budget.json" > "$stage/plan.list"
+if [ "$transport_budget" -gt 0 ]; then
+ transport_bytes=$(ucode "$stage/bundle-transport.uc" bytes "$stage")
+ fetch_flat native-install.tar "$transport_bytes"; verify native-install.tar
+ [ "$(wc -c < "$stage/native-install.tar")" -eq "$transport_bytes" ] || exit 1
+ ucode "$stage/bundle-transport.uc" extract "$stage"
+ archive_ready=1
+ rm "$stage/native-install.tar"
+fi
 key=foxhole-openwrt-apk.pem
 public_sha256=fa220a28fd8662fc5f617f46594bafe2415b4f605136570dc3c446caeb7d1ef1
 mkdir "$stage/keys"

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { updateStatus, updatePlan, updateJob, UpdatePanel } from '../package/foxhole-openwrt-client/htdocs/luci-static/resources/foxhole/update-panel.js';
+import { updateStatus, updatePlan, updateJob, UpdatePanel, availabilityLabel } from '../package/foxhole-openwrt-client/htdocs/luci-static/resources/foxhole/update-panel.js';
 
 const H = 'a'.repeat(64), B = 'b'.repeat(64);
 function status() {
@@ -24,6 +24,13 @@ function job() {
     operation: 'APPLY', automatic: false, state: 'QUEUED', step: 'PREPARING', progressPercent: 0,
     revision: 3, failureReason: null, previousConnectionRestored: null };
 }
+test('unchecked update availability adds no redundant status copy and never becomes CURRENT', () => {
+  const value = { ...status(), availability: 'NOT_CHECKED', availableVersion: null };
+  assert.equal(availabilityLabel(updateStatus(value), () => assert.fail('No unchecked label requested')), '');
+  assert.equal(value.availability, 'NOT_CHECKED');
+  for (const [availability, key] of [['CURRENT', 'up_to_date'], ['CHECK_FAILED', 'check_failed'], ['AVAILABLE', 'available'], ['UNSUPPORTED', 'unsupported']])
+    assert.equal(availabilityLabel({ availability }, key => key), `updates.${key}`);
+});
 test('unverified and failed check statuses never become current', () => {
   for (const availability of ['NOT_CHECKED', 'CHECK_FAILED', 'UNSUPPORTED']) {
     const value = status(); Object.assign(value, { availability, availableVersion: null, supported: availability !== 'UNSUPPORTED',

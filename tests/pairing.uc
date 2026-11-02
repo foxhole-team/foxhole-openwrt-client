@@ -72,7 +72,7 @@ test('revocation also fences short sessions after a device ID is reused', () => 
 });
 test('storage refuses duplicate devices and registration has a hard limit', () => {
 	let record = pairing.defaults();
-	for (let i = 0; i < 16; i++)
+	for (let i = 0; i < 10; i++)
 		record = pairing.register(record, sprintf('pair-%032x', i), KEY,
 			'Phone', 10);
 	rejects(() => pairing.register(record, ID, KEY, 'Phone', 10),
@@ -81,6 +81,16 @@ test('storage refuses duplicate devices and registration has a hard limit', () =
 	corrupt.devices = [record.devices[0], record.devices[0]];
 	rejects(() => pairing.public_devices(corrupt), 'storage_error');
 });
+test('legacy pairings remain readable and revocable above the new admission limit', () => {
+	let record = pairing.defaults();
+	for (let i = 0; i < 16; i++)
+		push(record.devices, { id: sprintf('pair-%032x', i), name: 'Phone', hash: digest.sha256(KEY), created: 10 });
+	equal(length(pairing.public_devices(record)), 16);
+	equal(pairing.authenticate(record, record.devices[0].id, KEY).id, record.devices[0].id);
+	equal(pairing.register(record, record.devices[0].id, KEY, 'Phone', 20), record);
+	rejects(() => pairing.register(record, ID, KEY, 'Phone', 20), 'pairing_limit');
+	equal(length(pairing.revoke(record, record.devices[0].id).devices), 15);
+});
 test('every paired session action requires TLS as well as pairing login', () => {
 	for (let action in ['pair.create', 'pair.unlock', 'pair.list', 'pair.revoke'])
 		equal(pairing.requires_tls(action, null), true);
@@ -88,6 +98,29 @@ test('every paired session action requires TLS as well as pairing login', () => 
 		equal(pairing.requires_tls(action, 'p1.' + KEY), true);
 	equal(pairing.requires_tls('state', KEY), false);
 	equal(pairing.requires_tls('state', null), false);
+});
+test('optional client metadata is public display only', () => {
+ let value = pairing.register(pairing.defaults(), ID, KEY, 'Phone', 10, 'guard', '1.0.2');
+ equal(pairing.public_devices(value), [{ id: ID, name: 'Phone', created: 10, client: 'guard', clientVersion: '1.0.2' }]);
+ equal(pairing.authenticate(value, ID, KEY).id, ID);
+});
+test('invalid legacy client metadata becomes unknown without revocation', () => {
+ let value = pairing.register(pairing.defaults(), ID, KEY, 'Phone', 10);
+ value.devices[0].client = 'other'; value.devices[0].clientVersion = '<invalid>';
+ equal(pairing.public_devices(value), [{ id: ID, name: 'Phone', created: 10 }]);
+ equal(pairing.authenticate(value, ID, KEY).id, ID);
+});
+test('client version updates preserve authorization date and credential', () => {
+ let value = pairing.register(pairing.defaults(), ID, KEY, 'Phone', 10, 'vpn', '1.0.1');
+ let updated = pairing.update_metadata(value, ID, 'vpn', '1.0.2-beta.1');
+ equal(updated.devices[0].created, 10); equal(updated.devices[0].hash, value.devices[0].hash);
+ equal(updated.devices[0].clientVersion, '1.0.2-beta.1');
+ equal(pairing.update_metadata(updated, ID, 'vpn', '1.0.2-beta.1'), updated);
+ equal(pairing.update_metadata(updated, ID, null, null), updated);
+});
+test('malformed self-reported version cannot inject public markup', () => {
+ let value = pairing.register(pairing.defaults(), ID, KEY, 'Phone', 10, 'guard', '<script>');
+ equal(pairing.public_devices(value), [{ id: ID, name: 'Phone', created: 10, client: 'guard' }]);
 });
 print('# pairing tests: ', passed, ' passed, ', failed, ' failed\n');
 exit(failed ? 1 : 0);

@@ -1,0 +1,4 @@
+/etc/config/foxhole
+/etc/foxhole/
+/etc/nftables.d/30-foxhole-mobile.nft
+/etc/nftables.d/31-foxhole-inbound.nft

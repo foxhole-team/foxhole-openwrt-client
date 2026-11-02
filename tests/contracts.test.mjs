@@ -4,14 +4,14 @@ import vm from 'node:vm';
 import { functionBody, hostHarness, modelPath, packageRoot, panelRoot,
   plain, read, rpcMethods } from './helpers.mjs';
 
-const readMethods = ['updates.status', 'updates.plan', 'updates.job', 'engines.status', 'engines.plan', 'engines.job', 'package.status', 'unlock', 'lock', 'state', 'telemetry', 'server.test',
+const readMethods = ['backup.export', 'backup.validate', 'backup.status', 'updates.deviceStatus', 'updates.status', 'updates.plan', 'updates.job', 'engines.status', 'engines.plan', 'engines.job', 'package.status', 'unlock', 'lock', 'state', 'telemetry', 'server.test',
   'server.get', 'client.get', 'client.status', 'device.resolve', 'device.list',
   'pair.unlock', 'pair.list', 'phone.status', 'phone.capabilities', 'phone.resolve'];
-const writeMethods = ['updates.check', 'updates.apply', 'updates.settings', 'engines.apply', 'setup.reset', 'settings', 'server.save', 'server.delete',
+const writeMethods = ['backup.apply', 'updates.deviceBegin', 'updates.deviceChunk', 'updates.deviceFinish', 'updates.check', 'updates.apply', 'updates.settings', 'engines.apply', 'setup.reset', 'settings', 'server.save', 'server.delete',
   'server.start', 'server.stop', 'client.save', 'client.update', 'client.access',
   'client.delete', 'pin.change', 'pair.create', 'pair.revoke', 'phone.provision',
   'phone.handoff'];
-const mobileMethods = ['package.status', 'setup.reset', 'client.status', 'pair.create', 'pair.unlock', 'pair.list', 'pair.revoke',
+const mobileMethods = ['setup.reset', 'client.status', 'pair.create', 'pair.unlock', 'pair.list', 'pair.revoke',
   'phone.status', 'phone.provision', 'phone.capabilities', 'phone.handoff', 'phone.resolve'];
 
 test('LuCI declarations match RPC names, arguments and ACL scopes', async () => {
@@ -38,7 +38,7 @@ test('LuCI declarations match RPC names, arguments and ACL scopes', async () => 
     assert.equal(declaration.object, 'foxhole', name);
     assert.ok(Array.isArray(declaration.params), `${name}: positional LuCI params`);
     assert.deepEqual(declaration.params, Object.keys(methods[name].args), name);
-    if (name !== 'unlock') assert.ok(declaration.params.includes('token'), name);
+    if (!['unlock', 'package.status'].includes(name)) assert.ok(declaration.params.includes('token'), name);
   }
 });
 

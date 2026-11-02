@@ -33,7 +33,7 @@ return view.extend({
 		let saving = false;
 		const input = name => E('input', {
 			id: name, type: 'password', inputmode: 'numeric',
-			maxlength: 4, pattern: '[0-9]{4}', autocomplete: 'new-password',
+			maxlength: 6, pattern: '[0-9]{6}', autocomplete: 'new-password',
 			required: true, 'class': 'cbi-input-password'
 		});
 		const first = input('foxhole-new-pin');
@@ -65,7 +65,7 @@ return view.extend({
 				message.textContent = text('error.license_required');
 				return;
 			}
-			if (!/^[0-9]{4}$/.test(first.value) || first.value !== repeat.value) {
+			if (!/^[0-9]{6}$/.test(first.value) || first.value !== repeat.value) {
 				message.textContent = text('error.pin_mismatch');
 				return;
 			}
@@ -81,7 +81,8 @@ return view.extend({
 		});
 		return E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, text('pin_change.title')),
-			E('p', {}, text('luci.pin_description')), form
+			E('p', {}, text('luci.pin_description')),
+			E('p', {}, text('pin_change.warning')), form
 		]);
 	},
 	handleSaveApply: null,

@@ -8,7 +8,9 @@ import * as core from './core-model.uc';
 import * as adapter from './core-adapter.uc';
 import * as registry from './engine-registry.uc';
 import * as pairing from './pairing.uc';
+import * as backup_service from './backup-service.uc';
 import * as store from './private-store.uc';
+import * as packages from './package-operations.uc';
 
 const JOB = '/etc/foxhole/engine-job.json';
 const LOCK = '/etc/foxhole/engine.lock';
@@ -64,6 +66,7 @@ function locked(fn) {
 function active(job) { return job != null && index(TERMINAL, job.state) < 0; };
 function busy(job) { return active(job) || job?.state == 'RECOVERY_REQUIRED'; };
 export function guard_mutation() {
+	backup_service.guard();
 	let update = read('/etc/foxhole/update-job.json', 524288);
 	if (active(update) || update?.state == 'RECOVERY_REQUIRED') fail('BUSY');
 	let value = read(JOB, 524288);
@@ -88,74 +91,8 @@ function job_ref(job, current_owner) {
 function progress(job, phase, step, percent) {
 	job.state = phase; job.step = step; job.progressPercent = percent; write(JOB, job);
 };
-function asset(url, expected, maximum) {
-	store.directory('/tmp/foxhole/engine-assets');
-	let path = '/tmp/foxhole/engine-assets/' + expected;
-	store.target(path);
-	if (!fs.lstat(path) && system(['/usr/libexec/foxhole-engine-fetch', url, path, '' + maximum], 130000) != 0)
-		fail('DOWNLOAD_FAILED');
-	let info = fs.lstat(path);
-	if (!store.file_metadata(info) || info.size <= 0 || info.size > maximum || registry.hash_file(path) != expected)
-		fail('PACKAGE_VERIFICATION_FAILED');
-	return path;
-};
-function apk(argv, timeout) { return registry.capture(['/usr/bin/apk', ...argv], 8388608, timeout || 30000); };
-function decode(raw) { try { return json(raw); } catch (_) { fail('PACKAGE_VERIFICATION_FAILED'); } };
-function installed(tolerate) {
-	let rows = decode(apk(['--no-network', '--repositories-file', '/dev/null', 'query', '--from', 'installed', '--all-matches', '--format', 'json', '--fields', 'name,version,arch,status', '*']));
-	if (type(rows) != 'array' || length(rows) > 4096) fail('PACKAGE_VERIFICATION_FAILED');
-	let result = {};
-	for (let row in rows) {
-		if (type(row.name) != 'string' || result[row.name] ||
-		    (sprintf('%J', row.status) != sprintf('%J', ['installed']) && index(tolerate || [], row.name) < 0)) fail('PACKAGE_VERIFICATION_FAILED');
-		result[row.name] = { name: row.name, version: row.version, arch: row.arch };
-	}
-	return result;
-};
-
-function candidate(value, directory, keys) {
-	let package = asset(value.packageUrl, value.packageSha256, value.archiveBytes);
-	if (fs.lstat(package).size != value.archiveBytes) fail('PACKAGE_VERIFICATION_FAILED');
-	let index = asset(value.indexUrl, value.indexSha256, value.indexBytes);
-	if (fs.lstat(index).size != value.indexBytes) fail('PACKAGE_VERIFICATION_FAILED');
-	apk(['--keys-dir', keys, 'verify', package, index]);
-	let document = decode(apk(['adbdump', '--format', 'json', package]));
-	engines.package_layout(document, value);
-	let entries = decode(apk(['adbdump', '--format', 'json', index])).packages;
-	let matching = type(entries) == 'array' ? filter(entries, row => row.name == value.packageName) : [];
-	if (length(matching) != 1 || matching[0].version != value.packageVersion ||
-	    matching[0].arch != value.architecture || matching[0]['file-size'] != value.archiveBytes ||
-	    !match(matching[0].hashes || '', /^[a-f0-9]{64}$/))
-		fail('PACKAGE_VERIFICATION_FAILED');
-	let target = directory + '/' + value.packageName + '-' + value.packageVersion + '.apk';
-	if (system(['/bin/cp', package, target], 10000) != 0) fail('PACKAGE_VERIFICATION_FAILED');
-	let repository = directory + '/fetch-' + value.id;
-	store.directory(repository); store.directory(repository + '/root'); store.directory(repository + '/output');
-	if (system(['/bin/cp', index, repository + '/packages.adb'], 10000) != 0 ||
-	    system(['/bin/cp', package, repository + '/' + value.packageName + '-' + value.packageVersion + '.apk'], 10000) != 0)
-		fail('PACKAGE_VERIFICATION_FAILED');
-	store.write(repository + '/repositories', repository + '/packages.adb\n');
-	let common = ['--root', repository + '/root', '--arch', value.architecture, '--no-network', '--no-cache',
-		'--repositories-file', repository + '/repositories', '--keys-dir', keys];
-	apk([...common, 'add', '--initdb']);
-	apk([...common, 'fetch', '--output', repository + '/output', value.packageName]);
-	if (registry.hash_file(repository + '/output/' + value.packageName + '-' + value.packageVersion + '.apk') != value.packageSha256)
-		fail('PACKAGE_VERIFICATION_FAILED');
-	return { package: target, index, value, nativeId:matching[0].hashes, payload:document };
-};
-function world() {
-	let raw = fs.readfile('/etc/apk/world', 65536);
-	if (type(raw) != 'string' || length(raw) > 65536) fail('PACKAGE_VERIFICATION_FAILED');
-	let rows = filter(map(split(raw, '\n'), item => trim(item)), item => length(item));
-	let seen = {};
-	for (let row in rows) {
-		if (length(row) > 512 || seen[row]) fail('PACKAGE_VERIFICATION_FAILED');
-		seen[row] = true;
-	}
-	return rows;
-};
 function world_after(before, additions, removals) {
-	if (!engines.world_pins(before, world(), additions, removals)) fail('PACKAGE_VERIFICATION_FAILED');
+	if (!engines.world_pins(before, packages.world(), additions, removals)) fail('PACKAGE_VERIFICATION_FAILED');
 };
 
 function boot() { return trim(fs.readfile('/proc/sys/kernel/random/boot_id', 128) || ''); };
@@ -275,6 +212,7 @@ export function status(principal) {
 	return value;
 };
 export function plan(request, principal) {
+ if(fs.lstat('/tmp/foxhole-ram-active.json'))fail('UNSUPPORTED_TARGET');
 	guard_mutation();
 	if (read(JOB, 524288)?.state == 'RECOVERY_REQUIRED') fail('RECOVERY_REQUIRED');
 	if (active(read(JOB, 524288))) fail('BUSY');
@@ -291,6 +229,7 @@ export function job(id, principal) {
 	return public_job(value);
 };
 export function apply(request, principal) {
+ if(fs.lstat('/tmp/foxhole-ram-active.json'))fail('UNSUPPORTED_TARGET');
 	let result = locked(() => {
 		guard_mutation();
 		if (read(JOB, 524288)?.state == 'RECOVERY_REQUIRED') fail('RECOVERY_REQUIRED');
@@ -320,6 +259,7 @@ export function apply(request, principal) {
 };
 
 export function recover(id) {
+	backup_service.guard();
 	return locked(() => {
 		let job = read(JOB, 524288), database_lock = null;
 		if (!job || job.jobId != id || job.state != 'RECOVERY_REQUIRED') fail('STALE_PLAN');
@@ -331,12 +271,12 @@ export function recover(id) {
 				if (index(REASONS, job.failureReason) < 0) job.failureReason = 'ROUTER_UNAVAILABLE'; progress(job, 'FAILED', 'FAILED', job.progressPercent);
 			} else {
 				if (type(before) != 'object' || type(before_world) != 'array') fail('RECOVERY_REQUIRED');
-				let after = installed(), additions = map(job.plan.artifacts, item => item.packageName);
+				let after = packages.installed(), additions = map(job.plan.artifacts, item => item.packageName);
 				let removals = map(filter(job.previousRegistry.slots, item => index(job.plan.removals, item.id) >= 0), item => item.packageName);
 				for (let name, item in before)
 					if (index(removals, name) < 0 && sprintf('%J', after[name]) != sprintf('%J', item)) fail('RECOVERY_REQUIRED');
 				for (let name in keys(after)) if (!before[name] && index(additions, name) < 0) fail('RECOVERY_REQUIRED');
-				let actual_world = world();
+				let actual_world = packages.world();
 				for (let pin in before_world)
 					if (index(actual_world, pin) < 0 && index(removals, pin) < 0) fail('RECOVERY_REQUIRED');
 				for (let pin in actual_world)
@@ -370,6 +310,8 @@ export function recover(id) {
 	});
 };
 export function run(id) {
+ if(fs.lstat('/tmp/foxhole-ram-active.json'))fail('UNSUPPORTED_TARGET');
+	backup_service.guard();
 	return locked(() => {
 		let update = read('/etc/foxhole/update-job.json', 524288);
 		if (active(update) || update?.state == 'RECOVERY_REQUIRED') fail('BUSY');
@@ -387,13 +329,13 @@ export function run(id) {
 			store.directory(directory); store.directory(directory + '/keys');
 			if (registry.hash_file(KEY) != PUBLIC_RELEASE_PEM_DIGEST) fail('PACKAGE_VERIFICATION_FAILED');
 			if (system(['/bin/cp', KEY, directory + '/keys/foxhole.pem'], 3000) != 0) fail('PACKAGE_VERIFICATION_FAILED');
-			let before = installed(), before_world = world(), prepared = [], repositories = [], roots = [], removed_packages = [];
+			let before = packages.installed(), before_world = packages.world(), prepared = [], repositories = [], roots = [], removed_packages = [];
 			job.installedBefore = before; job.worldBefore = before_world; write(JOB, job);
 			for (let value in job.plan.artifacts) {
 				if (!principal_current(job.principal)) fail('AUTHENTICATION_FAILED');
 				if (now() > job.plan.expiresAtUptimeMs) fail('STALE_PLAN');
 				progress(job, 'DOWNLOADING', 'DOWNLOADING_PACKAGE', 10);
-				let item = candidate(value, directory, directory + '/keys');
+				let item = packages.candidate(value, directory, directory + '/keys');
 				push(prepared, item); push(roots, value.packageName);
 				let index = directory + '/index-' + value.indexSha256 + '.adb';
 				if (!fs.lstat(index) && system(['/bin/cp', item.index, index], 3000) != 0) fail('PACKAGE_VERIFICATION_FAILED');
@@ -403,7 +345,7 @@ export function run(id) {
 			store.write(directory + '/repositories', join('\n', repositories) + '\n');
 			let common = ['--no-network', '--no-cache', '--repositories-file', directory + '/repositories', '--keys-dir', directory + '/keys'];
 			if (length(roots)) {
-				let selected = decode(apk([...common, 'query', '--format', 'json', '--world', '--recursive', ...roots]));
+				let selected = packages.decode(packages.apk([...common, 'query', '--format', 'json', '--world', '--recursive', ...roots]));
 				let delta = [];
 				if (type(selected) != 'array' || length(selected) > 4096) fail('PACKAGE_VERIFICATION_FAILED');
 				for (let row in selected) {
@@ -412,25 +354,25 @@ export function run(id) {
 					} else push(delta, { name: row.name, action: 'install' });
 				}
 				if (!engines.add_only_delta(delta, filter(job.plan.artifacts, item => before[item.packageName] == null))) fail('PACKAGE_VERIFICATION_FAILED');
-				apk([...common, 'add', '--simulate', ...roots]);
+				packages.apk([...common, 'add', '--simulate', ...roots]);
 			}
 			if (!principal_current(job.principal)) fail('AUTHENTICATION_FAILED');
 			engines.admit_apply(job.plan, apply_request, registry.read(), registry.snapshot_context(state()), job.owner, now());
 			if (length(roots)) {
 				progress(job, 'INSTALLING', 'INSTALLING_PACKAGE', 40); job.mutationStarted = true; write(JOB, job);
-				apk([...common, 'add', ...roots], 120000);
+				packages.apk([...common, 'add', ...roots], 120000);
 			}
 			if (length(job.plan.removals)) {
 				let remove = filter(old.slots, item => index(job.plan.removals, item.id) >= 0);
 				let names = map(remove, item => item.packageName); removed_packages = names;
 				if (!length(names)) fail('INVALID_REQUEST');
-				let simulated = apk(['--no-network', '--repositories-file', '/dev/null', 'del', '--simulate', ...names]);
+				let simulated = packages.apk(['--no-network', '--repositories-file', '/dev/null', 'del', '--simulate', ...names]);
 				if (!engines.purge_only(simulated, names, before)) fail('PACKAGE_VERIFICATION_FAILED');
 				job.mutationStarted = true; progress(job, 'INSTALLING', 'INSTALLING_PACKAGE', 50);
-				apk(['--no-network', '--repositories-file', '/dev/null', 'del', ...names], 120000);
+				packages.apk(['--no-network', '--repositories-file', '/dev/null', 'del', ...names], 120000);
 			}
 			world_after(before_world, roots, removed_packages);
-			let after = installed();
+			let after = packages.installed();
 			for (let name, row in before) {
 				let removed = length(filter(old.slots, item => item.packageName == name && index(job.plan.removals, item.id) >= 0)) > 0;
 				if (removed ? after[name] != null : sprintf('%J', after[name]) != sprintf('%J', row)) fail('PACKAGE_VERIFICATION_FAILED');
@@ -442,7 +384,7 @@ export function run(id) {
 				progress(job, 'CHECKING', 'CHECKING_ENGINE', 65);
 				registry.verify_slot(value);
 				let path = registry.executable(value);
-				let capabilities = decode(registry.capture([path, 'capabilities'], 131072, 130000));
+				let capabilities = packages.decode(registry.capture([path, 'capabilities'], 131072, 130000));
 				if (capabilities.router_contract_version != 1 || capabilities.platform != 'linux' ||
 				    capabilities.core_version != value.version || sprintf('%J', capabilities.protocols) != sprintf('%J', [value.id]))
 					fail('CANDIDATE_CHECK_FAILED');
@@ -496,11 +438,11 @@ export function run(id) {
 // primitives.
 export function update_locked(fn) { return locked(fn); };
 export function update_principal_current(principal) { return principal_current(principal); };
-export function update_apk(argv, timeout) { return apk(argv, timeout); };
-export function update_installed(tolerate) { return installed(tolerate); };
-export function update_asset(url, expected, maximum) { return asset(url, expected, maximum); };
-export function update_candidate(value, directory, keys) { return candidate(value, directory, keys); };
-export function update_world() { return world(); };
+export function update_apk(argv, timeout) { return packages.apk(argv, timeout); };
+export function update_installed(tolerate) { return packages.installed(tolerate); };
+export function update_asset(url, expected, maximum) { return packages.asset(url, expected, maximum); };
+export function update_candidate(value, directory, keys) { return packages.candidate(value, directory, keys); };
+export function update_world() { return packages.world(); };
 export function update_state() { return state(); };
 export function update_now() { return now(); };
 export function update_process_snapshot(pid) { return process_snapshot(pid); };

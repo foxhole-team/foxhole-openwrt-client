@@ -242,6 +242,14 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--source',type=Path,default=ROOT/MODULE);parser.add_argument('--only-terminal-reconcile',action='store_true');args=parser.parse_args()
     source=args.source.resolve(strict=True);assert source.is_file()and not args.source.is_symlink()and source.stat().st_size<=262144
     raw=source.read_text();module=raw
+    package_path=source.with_name('package-operations.uc')
+    assert package_path.is_file()and not package_path.is_symlink()and package_path.stat().st_size<=262144
+    package_raw=package_path.read_text()
+    before="import * as fs from 'fs';";after="import * as fs from './fixture-fs.uc';"
+    assert package_raw.count(before)==1
+    package_module=package_raw.replace(before,after)
+    package_module=package_module.replace("'use strict';\n","'use strict';\nimport { system } from './fixture-system.uc';\n",1)
+    assert package_module.replace("import { system } from './fixture-system.uc';\n",'',1).replace(after,before)==package_raw
     for name in('fs','digest'):
         before="import * as "+name+" from '"+name+"';"
         after="import * as "+name+" from './fixture-"+name+".uc';"
@@ -259,7 +267,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='foxhole-engine-service-native-')as directory:
         work=Path(directory)
         main_case=MAIN.replace('__FIXTURE_CASE_SCOPE__','terminal-reconcile'if args.only_terminal_reconcile else'all')
-        for name,text in {**MOCKS,'engine-service.uc':module,'main.uc':main_case}.items():(work/name).write_text(text)
+        for name,text in {**MOCKS,'engine-service.uc':module,'package-operations.uc':package_module,'main.uc':main_case}.items():(work/name).write_text(text)
         result=subprocess.run([executable,str(work/'main.uc')],cwd=work,capture_output=True,text=True,timeout=15)
         assert len(result.stdout.encode())+len(result.stderr.encode())<=1024**2
         sys.stdout.write(result.stdout);sys.stderr.write(result.stderr)

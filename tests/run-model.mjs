@@ -89,7 +89,7 @@ try {
   let failed = false;
   for (const path of ['tests/model.uc', 'tests/runtime-model.uc',
     'tests/client-rpc.uc', 'tests/runtime-rpc.uc', 'tests/auth-rpc.uc', 'tests/setup-rpc.uc',
-    'tests/inbound-history.uc', 'tests/pairing.uc', 'tests/mobile.uc',
+    'tests/inbound-history.uc', 'tests/pairing.uc', 'tests/pin-policy.uc', 'tests/mobile.uc',
     'tests/core-model.uc', 'tests/update-model.uc', 'tests/engine-rpc.uc', 'tests/engine-model.uc', 'tests/core-bootstrap-rpc.uc', 'tests/device-model.uc', 'tests/client-observation.uc', 'tests/handoff.uc', 'tests/private-store.uc', 'tests/install-plan.uc',
     'tests/inbound-process.uc']) {
     let source = await readFile(resolve(root, path), 'utf8');

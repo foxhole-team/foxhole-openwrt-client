@@ -6,18 +6,20 @@ const direct = /^https?:$/.test(location.protocol);
 export const hasHost = embedded || direct;
 
 export class PanelError extends Error {
-  constructor(code) {
+  constructor(code, retryAfterSeconds) {
     super(code);
     this.code = code;
+    if (code === 'pin_cooldown' && Number.isInteger(retryAfterSeconds) && retryAfterSeconds >= 1 && retryAfterSeconds <= 300)
+      this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
-function settle(id, result, error) {
+function settle(id, result, error, retryAfterSeconds) {
   const request = pending.get(id);
   if (!request) return;
   pending.delete(id);
   clearTimeout(request.timer);
-  if (error) request.reject(new PanelError(error));
+  if (error) request.reject(new PanelError(error, retryAfterSeconds));
   else request.resolve(result);
 }
 
@@ -26,7 +28,7 @@ window.addEventListener('message', (event) => {
   const message = event.data;
   if (!message || message.source !== 'foxhole-host') return;
   settle(message.id, message.result,
-    message.error ? message.error.code || 'unavailable' : null);
+    message.error ? message.error.code || 'unavailable' : null, message.error?.retryAfterSeconds);
 });
 
 function frameRequest(action, payload) {
@@ -60,7 +62,7 @@ function directRequest(action, payload) {
       try { result = await response.json(); }
       catch { settle(id, null, 'unavailable'); return; }
       if (result?._foxhole_error) {
-        settle(id, null, String(result._foxhole_error).slice(0, 48));
+        settle(id, null, String(result._foxhole_error).slice(0, 48), result.retryAfterSeconds);
       } else if (!response.ok) settle(id, null, 'unavailable');
       else settle(id, result || {}, null);
     }).catch((error) => {

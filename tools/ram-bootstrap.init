@@ -1,0 +1,14 @@
+#!/bin/sh /etc/rc.common
+START=99
+STOP=01
+start() {
+ umask 077
+ PATH=/usr/sbin:/usr/bin:/sbin:/bin
+ export PATH
+ unset LD_PRELOAD LD_LIBRARY_PATH APK_CONFIG
+ /usr/bin/ucode /etc/foxhole/ram-update/bootstrap/ram-bootstrap.uc boot
+}
+stop() {
+ # The runtime owns Stop; this one-shot loader never unmounts an active generation.
+ return 0
+}

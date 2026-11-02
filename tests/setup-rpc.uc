@@ -11,9 +11,16 @@ const LICENSE_VERSION = 1;
 const LICENSE_RECORD_PATH = '/etc/foxhole/license.json';
 const FAILURE_WINDOW = 60, FAILURE_LIMIT = 8;
 const RUNTIME_INIT = '/etc/init.d/foxhole-runtime';
-const OLD_PIN = '5678', PAIR_ID = 'pair-0123456789abcdef0123456789abcdef';
+const OLD_PIN = '567800', PAIR_ID = 'pair-0123456789abcdef0123456789abcdef';
 const PAIR_KEY = digest.sha256('synthetic setup-pair fixture');
 let records, sessions, failures, writes, commands, handoffs, sequence;
+let pin_retry_after = 0;
+let update_service = { deployment: () => ({ version: '1.0.2-r2', storage: 'ram' }) };
+let pin_policy = {
+ clock: () => ({ now: 1000, boot: 'synthetic-boot' }),
+ load: stamp => ({ failures: 0 }), remaining: (record, now) => 0,
+ failed: record => record, write: record => {}, initial: (now, boot) => ({}), reset: () => {}
+};
 let locked_depth, stop_failed, corrupt_write, inbound_present;
 let permitted = false, deferred;
 function fail(code) { die(code); };
@@ -93,8 +100,8 @@ function test(name, fn) {
 };
 test('missing auth has no default PIN and metadata performs no writes', () => {
 	delete records[AUTH_PATH];
-	equal(package_status({}), { schema: 1, product: 'foxhole', installed: true,
-		pinConfigured: false, resetSupported: true, packageUpdates: true, licenseRequired: true, licenseVersion: 1 });
+	equal(package_status({}), { schema: 1, product: 'foxhole', installed: true, backupSupported: true,
+		pinConfigured: false, resetSupported: true, packageUpdates: true, version: '1.0.2-r2', storage: 'ram', licenseRequired: true, licenseVersion: 1 });
 	rejects(() => check_pin('1234'), 'pin_setup_required');
 	equal(writes, []); equal(length(keys(sessions)), 0);
 });
@@ -106,14 +113,14 @@ test('legacy unconfigured default auth cannot grant a PIN session', () => {
 });
 test('direct-install first PIN requires a genuine deferred LuCI owner ACL', () => {
 	delete records[AUTH_PATH]; let response;
-	let request = { args: { ubus_rpc_session: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', newPin: '6789', licenseAccepted: true, licenseVersion: 1 },
+	let request = { args: { ubus_rpc_session: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', newPin: '678900', licenseAccepted: true, licenseVersion: 1 },
 		reply: value => { response = value; } };
-	rejects(() => admin_pin({ args: { ubus_rpc_session: '00000000000000000000000000000000', newPin: '6789' } }), 'unauthorized');
+	rejects(() => admin_pin({ args: { ubus_rpc_session: '00000000000000000000000000000000', newPin: '678900' } }), 'unauthorized');
 	equal(admin_pin(request), 'pending'); deferred();
 	equal(response._foxhole_error, 'unauthorized'); equal(writes, []);
 	permitted = true; equal(admin_pin(request), 'pending'); deferred();
 	equal(response.changed, true); equal(auth_record().changed, true);
-	equal(check_pin('6789'), true); equal(package_status({}).pinConfigured, true);
+	equal(check_pin('678900'), true); equal(package_status({}).pinConfigured, true);
 });
 test('reset requires old-PIN admin session, explicit consent and exact revision', () => {
 	rejects(() => setup_reset(reset_request('f')), 'unauthorized');
@@ -141,16 +148,21 @@ test('reset clears owned data, preserves TLS and OS identity and restricts new P
 	equal([records['/etc/foxhole/mobile-tls.key'], records['/etc/config/network'], records['/etc/shadow']], preserved);
 	rejects(() => session(request), 'unauthorized');
 	rejects(() => check_pin(OLD_PIN), 'invalid_pin');
-	let restricted = { args: { token: result.token, newPin: '7890', licenseAccepted: true, licenseVersion: 1 } };
+	let restricted = { args: { token: result.token, newPin: '789000', licenseAccepted: true, licenseVersion: 1 } };
 	rejects(() => session(restricted), 'pin_required');
 	let deadline = sessions[result.token].expires;
 	equal(session(restricted, true), result.token);
 	equal(sessions[result.token].expires, deadline, 'setup_deadline_extended');
 	if (sessions[result.token].expires < time() + 299 || sessions[result.token].expires > time() + 300)
 		die('reset_session_not_bounded');
-	let ready = change_pin(restricted);
-	equal(check_pin('7890'), true); equal(sessions[ready.token].setup, false);
-	equal(pair_create({ args: { token: ready.token, id: PAIR_ID, credential: PAIR_KEY, name: 'Phone' } }), { id: PAIR_ID });
+	rejects(() => change_pin(restricted), 'luci_required');
+ let reply;
+ permitted = true;
+ admin_pin({ args: { ubus_rpc_session: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', newPin: '789000',
+  licenseAccepted: true, licenseVersion: 1 }, reply: value => { reply = value; } });
+ deferred(); equal(reply.changed, true); equal(check_pin('789000'), true);
+ let ready = new_token('root'); equal(sessions[ready].setup, false);
+ equal(pair_create({ args: { token: ready, id: PAIR_ID, credential: PAIR_KEY, name: 'Phone' } }), { id: PAIR_ID });
 });
 test('failed owned runtime stop never acknowledges or clears configuration', () => {
 	let before = copy(records); stop_failed = true;
@@ -167,7 +179,7 @@ test('restricted reset session expires and cannot reset again', () => {
 	let result = setup_reset(reset_request(new_token('root')));
 	rejects(() => setup_reset(reset_request(result.token)), 'pin_required');
 	sessions[result.token].expires = time() - 1;
-	rejects(() => change_pin({ args: { token: result.token, newPin: '7890' } }), 'unauthorized');
+	rejects(() => change_pin({ args: { token: result.token, newPin: '789000' } }), 'unauthorized');
 });
 print('1..', passed + failed, '\n');
 print('# setup tests: ', passed, ' passed, ', failed, ' failed\n');

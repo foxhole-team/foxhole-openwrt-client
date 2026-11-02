@@ -1,0 +1,20 @@
+#!/usr/bin/ucode
+'use strict';
+
+import * as fs from 'fs';
+import * as backup from '/usr/share/foxhole/backup-service.uc';
+import * as engine from '/usr/share/foxhole/engine-service.uc';
+
+if(fs.stat('/proc/self')?.uid!=0||length(ARGV)!=1||!match(ARGV[0],/^restore-[a-f0-9]{32}$/))
+ die('Root backup worker required\n');
+let context=backup.worker_context(ARGV[0]);
+context.authorize=()=>engine.update_principal_current(context.principal);
+context.quiesce=()=>system(['/etc/init.d/foxhole-inbound','stop'],15000)==0&&
+ system(['/etc/init.d/foxhole-runtime','stop'],15000)==0;
+context.resume=current=>{
+ let runtime=system(['/etc/init.d/foxhole-runtime','restart'],30000)==0;
+ let inbound=system(['/etc/init.d/foxhole-inbound','restart'],15000)==0;
+ return runtime&&inbound;
+};
+try {backup.run_backup(ARGV[0],context);}
+catch(_){die('Backup restore failed; inspect its private journal\n');}

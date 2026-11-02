@@ -25,7 +25,11 @@
           "engines.job",
           "updates.status",
           "updates.plan",
-          "updates.job"
+          "updates.job",
+          "backup.export",
+          "backup.validate",
+          "backup.status",
+          "updates.deviceStatus"
         ]
       },
       "uci": [
@@ -53,7 +57,11 @@
           "engines.apply",
           "updates.check",
           "updates.apply",
-          "updates.settings"
+          "updates.settings",
+          "backup.apply",
+          "updates.deviceBegin",
+          "updates.deviceChunk",
+          "updates.deviceFinish"
         ]
       },
       "uci": [

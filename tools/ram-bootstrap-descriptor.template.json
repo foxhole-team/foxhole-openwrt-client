@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "kind": "foxhole-ram-bootstrap-v1",
+  "artifact": { "url": null, "bytes": null, "sha256": null },
+  "version": null,
+  "baseVersion": null,
+  "arch": null,
+  "target": null,
+  "osRelease": "25.12.5",
+  "baseSha256": null,
+  "signerPemSha256": null,
+  "caFileSha256": null,
+  "recoveryOrigin": null,
+  "overlay": null
+}

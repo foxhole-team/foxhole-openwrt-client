@@ -24,7 +24,7 @@ INSTALLERS = {
     **{name: ROOT / 'tools' / name for name in (
         'install-core.sh', 'install-compact.sh', 'install-plan.uc', 'install-plan-model.uc',
         'install-compact-plan.uc', 'engine-package-layout.uc', 'register-compact-engines.uc',
-        'indexed-install.uc')},
+        'indexed-install.uc', 'bundle-transport-model.uc', 'bundle-transport.uc')},
 }
 
 

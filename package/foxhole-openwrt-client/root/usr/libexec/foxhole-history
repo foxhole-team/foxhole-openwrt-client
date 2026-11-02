@@ -45,7 +45,9 @@ let row = {
 	vpnServerId: runtime?.value?.desiredServerId
 };
 push(rows, row);
-history.write(rows);
+let compacted = history.write(rows);
+// Optional previews must not prevent full-history persistence or hourly checkpoints.
+try { history.write_preview(compacted); } catch (_) {}
 let checkpoint = fs.stat(history.archive);
 if (ARGV[0] == 'checkpoint' || !checkpoint ||
     time() - checkpoint.mtime >= 3600) {

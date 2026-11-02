@@ -75,7 +75,7 @@ if [ -n "$core_input" ]; then
   architecture=aarch64
   [ "$target" != x86_64 ] || architecture=x86_64
   python3 "$root/tools/check-core-package-input.py" --input "$core_input" \
-    --architecture "$architecture" --version 1.0.1 --source-sha256 "$core_source"
+    --architecture "$architecture" --version 1.0.2 --source-sha256 "$core_source"
   python3 - "$core_input/core-producer.json" "$requested" <<'PY'
 import json, sys
 protocols = set(json.load(open(sys.argv[1]))['protocols'])
@@ -166,13 +166,13 @@ mkdir -p "$out"
 find bin/packages -type f \( -name 'foxhole-openwrt-client-*.apk' \
   -o -name 'hysteria-*.apk' -o -name 'foxcore-cli-*.apk' \) -exec cp '{}' "$out/" \;
 cp "$root/install.sh" "$out/"
-test -f "$out/foxhole-openwrt-client-1.0.1-r1.apk"
+test -f "$out/foxhole-openwrt-client-1.0.2-r3.apk"
 if find "$out" -name 'hysteria-ram-*.apk' | grep -q .; then
   echo 'Historical unqualified Hysteria RAM package cannot enter a Stable bundle' >&2
   exit 1
 fi
-[ -z "$core_input" ] || test -f "$out/foxcore-cli-1.0.0-r1.apk"
-[ -z "$core_download" ] || test -f "$out/foxcore-cli-ram-1.0.0-r1.apk"
+[ -z "$core_input" ] || test -f "$out/foxcore-cli-1.0.2-r1.apk"
+[ -z "$core_download" ] || test -f "$out/foxcore-cli-ram-1.0.2-r2.apk"
 [ -z "$server_download" ] || test -f "$out/hysteria-server-ram-2.12.2-r2.apk"
 test -f "$out/hysteria-2.12.2-r5.apk"
 cp .config "$out/sdk.config"

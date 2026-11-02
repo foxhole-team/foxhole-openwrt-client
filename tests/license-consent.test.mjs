@@ -82,22 +82,27 @@ test('corrupted CLI consent cannot be overwritten by a new PIN request', () => {
 
 const app = await readFile(new URL('../package/foxhole-openwrt-client/htdocs/luci-static/resources/foxhole/app.js', import.meta.url), 'utf8');
 
-async function webPin(required, accepted, version = 1) {
-  const calls = [], notices = [];
+async function webPin(required, accepted, version = 1, options = {}) {
+  const calls = [], notices = [], errors = [];
   const form = { classList: { remove() {}, add() {} }, reset() {}, offsetWidth: 0 };
   const context = vm.createContext({
-    pinSetupRequired: required, licenseRequired: required, licenseRequiredVersion: version,
+    pinSetupRequired: options.pinSetupRequired ?? required, licenseRequired: required, licenseRequiredVersion: version,
     LICENSE_VERSION: 1, token: 'old',
     $: selector => selector === '[data-pin-change-form]' ? form :
       selector === '[data-license-accept]' ? { checked: accepted } : { value: '6789' },
     t: key => key, toast: key => notices.push(key),
-    operation: async fn => fn(),
-    api: async (method, args) => { calls.push(JSON.parse(JSON.stringify({ method, args }))); return { token: 'new' }; },
+    operation: async fn => { try { await fn(); } catch (error) { errors.push(error.code || error.message); } },
+    api: async (method, args) => {
+      calls.push(JSON.parse(JSON.stringify({ method, args })));
+      if (options.reject) throw Object.assign(new Error('unavailable'), { code: 'unavailable' });
+      return { token: options.serverToken === undefined ? 'f'.repeat(64) : options.serverToken };
+    },
+    PanelError: class extends Error { constructor(code) { super(code); this.code = code; } },
     openView: async () => {}, back: async () => {}, poll() {}
   });
   vm.runInContext(`async function savePin() ${functionBody(app, 'savePin')};`, context);
   await context.savePin();
-  return { calls, notices };
+  return { calls, notices, errors, context };
 }
 
 test('web first PIN refuses an unchecked agreement before its request', async () => {
@@ -123,4 +128,44 @@ test('web existing configured router keeps ordinary PIN change available', async
 test('web cannot accept a server agreement version that the displayed text does not cover', async () => {
   const result = await webPin(true, true, 2);
   assert.equal(result.calls.length, 0);
+});
+
+test('Android or CLI recorded acceptance suppresses the web gate even during first PIN setup', async () => {
+  const result = await webPin(false, false, 1, { pinSetupRequired: true });
+  assert.equal(result.calls.length, 1);
+  assert.equal(result.calls[0].args.licenseAccepted, false);
+  assert.equal(result.calls[0].args.licenseVersion, 0);
+  assert.equal(result.context.licenseRequired, false);
+});
+
+test('successful accepted first PIN clears only the session UI requirement', async () => {
+  const result = await webPin(true, true);
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.context.licenseRequired, false);
+  assert.equal(result.context.pinSetupRequired, false);
+});
+
+test('failed or malformed PIN response cannot create UI acceptance', async () => {
+  for (const options of [{ reject: true }, { serverToken: null }, { serverToken: '' }]) {
+    const result = await webPin(true, true, 1, options);
+    assert.equal(result.context.licenseRequired, true);
+    assert.equal(result.context.pinSetupRequired, true);
+    assert.equal(result.context.token, 'old');
+    assert.equal(result.errors.length, 1);
+  }
+});
+
+test('license gate follows server requirement without prechecking acceptance', () => {
+  const nodes = [{ hidden: true }, { hidden: true }], checkbox = { checked: false, required: false, disabled: false };
+  const context = vm.createContext({ licenseRequired: true,
+    $$: () => nodes, $: () => checkbox
+  });
+  vm.runInContext(`function renderLicenseGate() ${functionBody(app, 'renderLicenseGate')}`, context);
+  context.renderLicenseGate();
+  assert.ok(nodes.every(node => node.hidden === false));
+  assert.equal(checkbox.checked, false); assert.equal(checkbox.required, true); assert.equal(checkbox.disabled, false);
+  checkbox.checked = true; context.renderLicenseGate(); assert.equal(checkbox.checked, true);
+  context.licenseRequired = false; context.renderLicenseGate();
+  assert.ok(nodes.every(node => node.hidden === true));
+  assert.equal(checkbox.required, false); assert.equal(checkbox.disabled, true);
 });

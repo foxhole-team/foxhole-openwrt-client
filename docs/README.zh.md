@@ -1,3 +1,13 @@
+<h1 align="center">FoxHole OpenWrt</h1>
+
+<div align="center">
+
+为 OpenWrt 路由器提供 VPN 配置、路由规则和简洁的管理面板。
+出站 VPN 连接使用 [FoxHole Core](https://github.com/foxhole-team/foxhole-core)。
+精简安装为每个选定协议使用独立客户端模块。入站Hysteria服务器单独提供，不包含在已发布的v1.0.1客户端套件中。
+
+</div>
+
 <p align="center">
     <img
       src="../media/fhg.gif"
@@ -23,49 +33,70 @@
   <a href="https://github.com/foxhole-team/foxhole-openwrt-client/releases">
     <img src="https://img.shields.io/github/v/release/foxhole-team/foxhole-openwrt-client?label=version&style=flat-square" alt="Version">
   </a>
+  <img src="https://img.shields.io/badge/status-beta-yellow?style=flat-square" alt="Status: beta">
 </p>
 
-# FoxHole OpenWrt
+<p align="center"><a href="#quickstart">开始使用</a> · <a href="#features">功能</a> · <a href="#details">详情</a> · <a href="#whats-new">更新内容</a></p>
 
-为 OpenWrt 路由器提供 VPN 配置、路由规则和简洁的管理面板。
-出站 VPN 连接使用 [FoxCore](https://github.com/foxhole-team/foxhole-core)。
-精简安装为每个选定的协议使用独立的客户端模块。
-可选的 Hysteria 服务器用于接收来自您设备的连接。
+<a id="whats-new"></a>
 
-<p align="center">
-  <img src="../media/dashboard.png" width="100%" alt="FoxHole OpenWrt Client dashboard">
-</p>
+> **🆕 更新内容 - 1.0.2 Beta**
+>
+> - 修复本地网络 API 访问和 Web 界面。
+> - 修复图表和设置显示。
+> - 新增设置、VPN 配置和客户端的备份与恢复。
+> - 新增已配对移动设备列表。
+> - PIN 增至六位，并在错误尝试后锁定。PIN 可通过 LuCI 更改。
+> - 支持最多 10 台移动设备配对。
+> - 修复 GitHub 发布数据验证。
+> - 改进通知、确认窗口、帮助和提示。
+
+<a id="features"></a>
 
 ## 🔌 支持的 VPN 协议
 
 当前可用于路由器的 FoxHole VPN 模块：
 
-| 协议 | 安装选项 |
-| --- | --- |
-| VLESS | `--vless` |
-| Hysteria2 | `--hy2` |
-| WireGuard | `--wg` |
+| 协议 | 安装选项 | 说明 |
+| --- | --- | --- |
+| VLESS | `--vless` | 使用VPN配置中给定的参数，通过客户端模块连接兼容的VLESS代理服务器。 |
+| Hysteria2 | `--hy2` | 通过QUIC/UDP连接Hysteria2服务器，使用该协议独立的客户端模块。 |
+| WireGuard | `--wg` | 与WireGuard对等节点建立L3 IP隧道，由配置提供密钥、地址及网络参数。 |
 
 ## 📋 要求
 
-- 使用 APK 的 OpenWrt 25.12.5、root 权限和互联网连接。
+- 带apk包管理器的OpenWrt 25.12.5和root权限。直接下载需要路由器联网；本地`--bundle`只需可信局域网。
 - 适用于准确固件、目标、架构及所选协议的已发布软件包。当前软件包与更新策略允许 `x86/64` 和 `mediatek/filogic`；SDK 构建或 ARM 架构名称本身不能证明所有路由器型号均兼容。
 - 足以容纳完整且经过验证的软件包预算的闪存和 RAM。更改软件包前，安装程序会检查依赖关系、内核 ABI 和暂存空间。
-- 来自可信 LAN 的访问。如果新路由器的 Wi-Fi 已关闭，请先启用。
+- 从可信本地网络访问。通过Android查找和初次设置时，请将手机连接到路由器Wi-Fi。
 
-此公开测试版的出站 VPN 模块使用 FoxHole Core 1.0.1。
+此公开测试版的出站 VPN 模块使用 FoxHole Core 1.0.2。
 仅有源码支持和交叉编译的二进制文件，并不能证明路由器兼容性。
 只能安装已验证真实性的发布目录中包含的软件包。
 入站服务器在未使用的 S2/OpenPGP 软件包中仍有两项经过审查的依赖问题；
 针对确切构建的检查及例外的到期时间见[发布说明](RELEASE.md)。
 
+<a id="quickstart"></a>
+
 ## 📦 安装
 
-请使用已发布且经过审查的版本标签，以及通过独立方式验证真实性的 `SHA256SUMS` 的 SHA-256 值。
-以下命令会先验证安装器，再执行：
+此客户端连接您自己的VPN服务器或服务商，不附带现成VPN服务器或其访问权限。
+
+选择已发布且经过验证的版本。将`RELEASE_TAG`替换为其标签，`MANIFEST_SHA256`替换为可信`SHA256SUMS`的SHA-256，`INSTALLER_SHA256`替换为同一版本`install.sh`的SHA-256。请通过独立途径确认这些值的真实性。执行前会验证安装器：
 
 ```sh
-(set -eu; url='https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/RELEASE_TAG'; f=$(mktemp /tmp/foxhole-install.XXXXXX); trap 'rm -f "$f"' EXIT; uclient-fetch -q -T 60 -O "$f" "$url/install.sh"; printf '%s  %s\n' 'fb0a2bad91a1eebd3591801f79dd6b83fc70bf94ddc1b8d6577f94519de1d1d9' "$f" | sha256sum -c -; sh "$f" --base-url "$url" --manifest-sha256 MANIFEST_SHA256 --apply)
+(
+  set -eu
+  release_tag='RELEASE_TAG'
+  manifest_sha256='MANIFEST_SHA256'
+  installer_sha256='INSTALLER_SHA256'
+  url="https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/$release_tag"
+  installer=$(mktemp /tmp/foxhole-install.XXXXXX)
+  trap 'rm -f "$installer"' EXIT
+  uclient-fetch -q -T 60 -O "$installer" "$url/install.sh"
+  printf '%s  %s\n' "$installer_sha256" "$installer" | sha256sum -c -
+  sh "$installer" --base-url "$url" --manifest-sha256 "$manifest_sha256" --apply
+)
 ```
 
 使用 `--apply` 时，交互式安装程序会显示协议并询问 `[y/N]`，默认为“否”。可用 `sh install.sh --license` 阅读协议。非交互式安装须在明确接受后提供 `--accept-license`。手机设置向导中，独立的同意选项默认不勾选。
@@ -76,15 +107,12 @@
 ```sh
 sh install.sh --bundle /tmp/bundle --manifest-sha256 HASH --hy2 --flash --apply
 sh install.sh --bundle /tmp/bundle --manifest-sha256 HASH --vless --wg --flash --apply
-sh install.sh --bundle /tmp/bundle --manifest-sha256 HASH --hy2 --server --ram --apply
+sh install.sh --bundle /tmp/bundle --manifest-sha256 HASH --hy2 --ram --apply
 ```
 
 `-wg` 是 `--wg` 的别名。其他可识别选项包括 `--vmess`、`--tuic`、
 `--trojan`、`--shadowsocks`、`--naive`、`--anytls`、`--shadowtls`、`--socks`、`--http`。
-精简目录将已发布的模块组合在同一种存储模式下。
-每个选定模块都必须适用于您的固件和目标平台。
-`--all` 请求所有可识别协议；只要缺少任何模块，请求就会被拒绝。
-旧版 schema 1 目录要求使用一个完全匹配的变体。
+每个模块都必须针对您的固件和目标平台发布。在精简目录中，`--all`选择为目标平台发布的全部客户端协议，所选模块必须支持同一种存储模式。明确指定但缺少模块的协议会被拒绝。旧版schema 1需要完全匹配的构建变体，其中`--all`表示所有可识别协议。
 
 | 存储方式 | 行为 |
 | --- | --- |
@@ -97,7 +125,15 @@ sh install.sh --bundle /tmp/bundle --manifest-sha256 HASH --hy2 --server --ram -
 对于精简目录，`--server` 会将入站 Hysteria 服务器计入资源预算。
 在配置远程访问之前，服务器保持关闭。
 
+<p align="center">
+  <img src="../media/dashboard.png" width="100%" alt="FoxHole OpenWrt Client dashboard">
+</p>
+
+<a id="details"></a>
+
 ## 🔗 使用与配对
+
+更改 PIN 会重置配对：手机需要重新连接，但 VPN 配置和设置会保留。
 
 打开 **LuCI → Services → FoxHole**，设置 PIN 并添加 VPN 配置。
 规则可将设备、域名和国家/地区流量通过 VPN 或直接连接发送。
@@ -109,6 +145,8 @@ sh install.sh --bundle /tmp/bundle --manifest-sha256 HASH --hy2 --server --ram -
 已有 PIN 保持不变。管理地址仍为私有地址。
 解除配对会移除管理权限。若要撤销远程客户端的 VPN 凭据，请另行删除该客户端。
 删除旧的共享配置只会移除其记录，无法撤销外部 VPN 服务商持有的凭据。
+
+已发布的v1.0.1客户端套件不包含入站Hysteria服务器。创建远程VPN客户端需要单独验证的服务器包，只有包含该包的目录才可使用`--server`。还需要公网WAN地址和可从外部访问的UDP端口。
 
 远程访问需要通过 `--server` 选中的 Hysteria 服务器。
 在具有公网 WAN 地址的路由器上，**创建 VPN 配置**会添加一个远程客户端。
@@ -126,6 +164,12 @@ Wi-Fi 图标仅表示实际的 Wi-Fi 连接，不读取 SSID 或访问定位。�
 只有已配对且经过认证的路由器直接发送到应用的入站 VPN 配置，才带有独立的应用关联元数据。连接 URI、配置和 QR 格式均不改变。通用网页/QR/服务商导出仍不带标记；导入的提示本身不能建立信任。
 
 自动识别还要求已保存的本地配置、当前配置内容及所选配对相匹配，且该配置确实通过应用自身的 VPN 连接。每次实际连接只进行一次有时间限制的检查，没有定时器、自动重试或服务商配置轮询。“重试配对”是明确的 Wi-Fi/权限/PIN 流程：认证成功前保留原有记录，绝不自动接受已改变的证书身份。
+
+## 限制
+
+- 国家规则使用IP范围，域名规则依赖路由器DNS，不识别网站所有者的国家，也不分析HTTPS内容。
+- 活动Core连接意外断开会阻止其VPN路由。单独的Kill switch设置控制没有活动配置时的阻止，默认关闭。
+- 规则优先级、本地地址例外和入站服务器限制见[架构](ARCHITECTURE.md)。
 
 ## 🧩 稍后添加协议
 
@@ -152,16 +196,30 @@ Wi-Fi 图标仅表示实际的 Wi-Fi 连接，不读取 SSID 或访问定位。�
 精简安装器仅用于初始设置。它会保留私有恢复备份，并检查 DHCP 设置未发生变化。
 在路由仍处于活动状态时，删除软件包前请先按照[回滚/移除说明](ROLLBACK.md)操作。
 请使用经过验证的发布软件包。
-不包含历史旧版安装器和仅面向 ARM 的下载；Core 继续支持现有 HY2 配置。
+不使用旧版安装器和ARM专用下载。FoxHole Core支持Hysteria2。现有legacy配置继续使用独立的Hysteria运行时，不会自动迁移到Core。更新前请手动停止正在运行的legacy Hysteria连接。
 
 [命令](CLI.md) · [架构](ARCHITECTURE.md) ·
 [构建与发布](RELEASE.md) · [安全](../SECURITY.md)
 
+<a id="ecosystem"></a>
+
+## 🔗 FoxHole生态系统
+
+| 项目 | 用途 |
+| --- | --- |
+| [FoxHole Guard](https://github.com/foxhole-team/foxhole-guard) | Android：VPN、Tor/I2P、流量规则和本地监控 |
+| [FoxHole VPN](https://github.com/foxhole-team/foxhole-vpn) | Android：简洁VPN客户端及已配对OpenWrt管理 |
+| [FoxHole Core](https://github.com/foxhole-team/foxhole-core) | 共用Rust网络核心；功能取决于构建 |
+| [**FoxHole OpenWrt**](https://github.com/foxhole-team/foxhole-openwrt-client) | 路由器VPN及局域网管理 |
+| [FoxHole DB](https://github.com/foxhole-team/foxhole-db) | 签名规则和参考数据 |
+
+## 🤝 参与开发
+
+请通过[Issues](https://github.com/foxhole-team/foxhole-openwrt-client/issues)报告错误或提出修改建议。
+
 ## 💖 支持开发
 
-我们完全利用自己的时间和资源，并借助 AI 工具开发和维护 FoxHole OpenWrt。您的支持能让我们为项目投入更多时间，加快开发进度。
-
-[支持项目 - 加密货币钱包](#cryptocurrency-wallets)
+我们完全利用自己的时间和资源开发和维护FoxHole OpenWrt，并在开发中使用AI工具。您的支持能让我们为项目投入更多时间，加快开发进度。
 
 <a id="cryptocurrency-wallets"></a>
 
