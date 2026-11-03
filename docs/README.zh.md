@@ -1,15 +1,5 @@
 <h1 align="center">FoxHole OpenWrt</h1>
 
-<a id="whats-new"></a>
-
-> **🆕 更新内容 - 1.0.4 Beta**
->
-> - 新增软件包日志、内核内存不足事件及最近记录的FoxHole Core状态查看界面。
-> - 降低了处理保留流量历史记录时的内存占用。
-> - 修复RAM模块下载，并更新已准备的RAM恢复组件文档。
->
-> 持久bootstrap注册仍未启用。冷启动恢复尚未验证，ELF库路径检查问题仍未解决。
-
 <div align="center">
 
 为 OpenWrt 路由器提供 VPN 配置、路由规则和简洁的管理面板。
@@ -48,6 +38,15 @@
 
 <p align="center"><a href="#quickstart">开始使用</a> · <a href="#features">功能</a> · <a href="#details">详情</a> · <a href="#whats-new">更新内容</a></p>
 
+<a id="whats-new"></a>
+
+> **🆕 更新内容 - 1.0.4 Beta**
+>
+> - 新增软件包日志、内核内存不足事件及最近记录的FoxHole Core状态查看界面。
+> - 降低了处理保留流量历史记录时的内存占用。
+> - 修复RAM模块下载，并更新已准备的RAM恢复组件文档。
+>
+> 持久bootstrap注册仍未启用。冷启动恢复尚未验证，ELF库路径检查问题仍未解决。
 
 <a id="features"></a>
 
