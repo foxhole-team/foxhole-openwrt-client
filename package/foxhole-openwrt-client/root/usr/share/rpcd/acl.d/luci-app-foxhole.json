@@ -29,7 +29,8 @@
           "backup.export",
           "backup.validate",
           "backup.status",
-          "updates.deviceStatus"
+          "updates.deviceStatus",
+          "diagnostics.logs"
         ]
       },
       "uci": [

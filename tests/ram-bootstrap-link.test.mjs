@@ -18,7 +18,7 @@ const BOOT='/etc/foxhole/ram-update/boot.json',BANK='/tmp/foxhole-ram-stage-boot
 const key=readFileSync(new URL('../config/foxhole-openwrt-apk.pem',import.meta.url),'utf8'),bank='signed-bank',apk='signed-next-base';
 const desc=()=>({schema:1,kind:'foxhole-ram-bootstrap-v1',artifact:{url:'https://example.test/bank.apk',bytes:bank.length,sha256:sha(bank)},version:'1.0.2-r1',baseVersion:'1.0.2-r1',arch:'aarch64_cortex-a53',target:'mediatek/filogic',osRelease:'25.12.5',baseSha256:'a'.repeat(64),signerPemSha256:sha(key),caFileSha256:null,recoveryOrigin:'https://example.test/recovery/'});
 function fixture(){
- const files=new Map([[BOOT,JSON.stringify(desc())],[TRUST+'/keys/foxhole.pem',key],[BANK,bank],['/tmp/foxhole-ram-active.json',JSON.stringify({schema:1,phase:'active',storage:'RAM',version:'1.0.2-r1',baseSha256:'a'.repeat(64)})]]);
+ const files=new Map([[BOOT,JSON.stringify(desc())],[TRUST+'/keys/signer.pem',key],[BANK,bank],['/tmp/foxhole-ram-active.json',JSON.stringify({schema:1,phase:'active',storage:'RAM',version:'1.0.2-r1',baseSha256:'a'.repeat(64)})]]);
  const calls=[],writes=[],captures=[];let bankInode=30,redirect=false,badFetch=false,sequence=0,api;
  const fs={dirname,lstat:p=>files.has(p)?{type:'file',uid:0,gid:0,mode:0o600,nlink:1,size:files.get(p).length,dev:{major:0,minor:1},inode:p==BANK?bankInode:20,mtime:1,ctime:1}:{type:'directory',uid:0,mode:p=='/tmp'?0o1777:p.startsWith('/etc/foxhole')||p.startsWith('/tmp/foxhole')?0o700:0o755},readfile:p=>files.get(p),unlink:p=>files.delete(p)};
  const store={read:p=>files.get(p)??null,write:(p,v)=>{writes.push(p);files.set(p,v);},directory_metadata:v=>v?.type=='directory'&&v.mode==0o700,file_metadata:v=>v?.type=='file'&&v.mode==0o600};
@@ -34,6 +34,11 @@ function fixture(){
  return {api,files,calls,writes,captures,redirect:()=>{redirect=true;},badFetch:()=>{badFetch=true;},changeBank:()=>{bankInode++;}};
 }
 const candidate=()=>({version:'1.0.2-r2',sha256:sha(apk),bytes:apk.length});
+test('boot-installed signer path is reused by the later RAM overlay transaction',()=>{
+ const loader=readFileSync(new URL('../tools/ram-bootstrap.uc',import.meta.url),'utf8');
+ assert.match(loader,/write\(model.trust\+'\/keys\/signer.pem',pem\)/);
+ const f=fixture();assert.ok(f.api.prove(candidate(),sha('metadata')));
+});
 test('descriptor keeps pinned bank and requires exact direct monotonic recovery overlay',()=>{
  const f=fixture(),next=f.api.recovery_overlay(desc(),'1.0.2-r2',sha(apk),apk.length);
  assert.equal(next.artifact.url,'https://example.test/recovery/foxhole-openwrt-client-1.0.2-r2.apk');assert.equal(f.api.descriptor({...desc(),overlay:next}).artifact.sha256,sha(bank));
@@ -63,7 +68,9 @@ test('recovery admission precedes publish/stop and descriptor commit/restore pre
  assert.ok(update.indexOf('bootstrap.prove(')<update.indexOf("write(directory+'/receipt.json'"));assert.match(update,/verified_candidate\(candidate\);\n if\(!switch_available/);
  assert.ok(switching.indexOf('bootstrap.before_quiesce(')<switching.indexOf('stop_services(journal,journal_path);guard'));
  assert.match(switching,/replace\(MARKER,journal.newMarker,4096\).*\n  bootstrap.commit\(journal.bootstrap\);/);assert.match(switching,/restore_marker\(journal\);bootstrap.restore\(journal.bootstrap\);start_services\(journal\)/);
- assert.doesNotMatch(source,/engine\.update_locked|write\(JOB|curl|no-check-certificate/);assert.match(helper,/--no-proxy -T 60 --ca-certificate/);assert.doesNotMatch(helper,/root-tmpfs=true|no-check-certificate|curl|ulimit -f/);
+ assert.doesNotMatch(source,/engine\.update_locked|write\(JOB|curl|no-check-certificate/);
+ assert.match(helper,/exec \/etc\/foxhole\/ram-update\/bootstrap\/foxhole-ram-fetch --ca-certificate/);
+ assert.doesNotMatch(helper,/\/bin\/uclient-fetch|root-tmpfs=true|no-check-certificate|curl|ulimit -f/);
 });
 function cacheFixture(hardlink=false){
  const path='/tmp/candidate/root/.foxhole-apk-cache',archive='/tmp/candidate/base.apk',dev={major:0,minor:1};let inode=40;

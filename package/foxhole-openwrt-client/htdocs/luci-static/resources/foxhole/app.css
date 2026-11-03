@@ -747,3 +747,5 @@ canvas[data-action] { cursor: pointer; }
 .pairing-table td:first-child { min-width: 7rem; max-width: 12rem; overflow-wrap: anywhere; }
 .pairing-table td:last-child { width: 36px; }
 .pairing-device-name { overflow-wrap: anywhere; }
+
+.log-output { margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 12px; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.6 monospace; max-height: 240px; overflow: auto; }

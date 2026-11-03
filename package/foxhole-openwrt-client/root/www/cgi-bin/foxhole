@@ -13,7 +13,7 @@ const ACTIONS = [
 	'updates.status', 'updates.check', 'updates.plan', 'updates.apply', 'updates.job', 'updates.settings',
 	'updates.deviceBegin', 'updates.deviceChunk', 'updates.deviceStatus', 'updates.deviceFinish',
 	'engines.status', 'engines.plan', 'engines.apply', 'engines.job',
-	'unlock', 'lock', 'state', 'telemetry', 'settings', 'package.status', 'setup.reset',
+	'unlock', 'lock', 'state', 'telemetry', 'settings', 'package.status', 'setup.reset', 'diagnostics.logs',
 	'server.test', 'server.save', 'server.get', 'server.start',
 	'server.stop', 'server.delete',
 	'client.save', 'client.update', 'client.access', 'client.get', 'client.delete', 'client.status',
@@ -85,7 +85,7 @@ if (type(request) != 'object' || type(request.action) != 'string' ||
 	(request.payload != null && type(request.payload) != 'object'))
 	reject('400 Bad Request', 'unavailable');
 if ((pairing.requires_tls(request.action, request.payload?.token) ||
-     index(['package.status', 'setup.reset', 'client.status', 'backup.export', 'backup.validate', 'backup.apply', 'backup.status',
+     index(['diagnostics.logs', 'package.status', 'setup.reset', 'client.status', 'backup.export', 'backup.validate', 'backup.apply', 'backup.status',
       'updates.deviceBegin', 'updates.deviceChunk', 'updates.deviceStatus', 'updates.deviceFinish'], request.action) >= 0) &&
     env.HTTPS != 'on')
 	reject('403 Forbidden', 'tls_required');

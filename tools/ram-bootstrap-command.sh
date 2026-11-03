@@ -23,9 +23,9 @@ if [ "${1-}" = --owned-child ]; then
    case "$operation" in
     fetch)
      if [ "$2" = pinned ]; then
-      exec /bin/uclient-fetch --no-proxy -T 60 --ca-certificate /etc/foxhole/ram-update/bootstrap/ca.pem -O - "$1"
+      exec /etc/foxhole/ram-update/bootstrap/foxhole-ram-fetch --ca-certificate /etc/foxhole/ram-update/bootstrap/ca.pem "$1"
      fi
-     exec /bin/uclient-fetch --no-proxy -T 60 -O - "$1" ;;
+     exec /etc/foxhole/ram-update/bootstrap/foxhole-ram-fetch "$1" ;;
     verify) exec /usr/bin/apk --no-network --no-cache --keys-dir /etc/foxhole/ram-update/bootstrap/keys verify /tmp/foxhole-ram-stage-boot-v1/bank.apk ;;
     dump) exec /usr/bin/apk --no-network --no-cache adbdump --format json /tmp/foxhole-ram-stage-boot-v1/bank.apk ;;
     verify-overlay) exec /usr/bin/apk --no-network --no-cache --keys-dir /etc/foxhole/ram-update/bootstrap/keys verify /tmp/foxhole-ram-stage-boot-v1/overlay.apk ;;

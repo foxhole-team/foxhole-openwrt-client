@@ -108,8 +108,8 @@ function snapshot() {
  let text=store.read(BOOT,maximum_descriptor);if(text==null)fail('RAM_STAGE_UNAVAILABLE');
  let value;try{value=descriptor(json(text));}catch(_){fail('RAM_STAGE_UNAVAILABLE');}
  for(let path in [TRUST,TRUST+'/keys'])if(!store.directory_metadata(fs.lstat(path)))fail();
- if(!store.file_metadata(fs.lstat(BOOT))||!store.file_metadata(fs.lstat(TRUST+'/keys/foxhole.pem'))||
-  digest.sha256(raw(TRUST+'/keys/foxhole.pem',16384,false))!=value.signerPemSha256)fail();
+ if(!store.file_metadata(fs.lstat(BOOT))||!store.file_metadata(fs.lstat(TRUST+'/keys/signer.pem'))||
+  digest.sha256(raw(TRUST+'/keys/signer.pem',16384,false))!=value.signerPemSha256)fail();
  if(value.caFileSha256!=null&&(!store.file_metadata(fs.lstat(TRUST+'/ca.pem'))||digest.sha256(raw(TRUST+'/ca.pem',262144,false))!=value.caFileSha256))fail();
  parents(fs.dirname(BANK));let bank=fs.lstat(BANK);
  if(bank?.type!='file'||bank.uid!=0||bank.nlink!=1||(bank.mode&0o022)||bank.size!=value.artifact.bytes)fail('RAM_STAGE_UNAVAILABLE');
@@ -131,7 +131,7 @@ export function prove(candidate,payload_sha) {
  if(!model.sha(payload_sha)||model.compare(candidate.version,(context.value.overlay||context.value).baseVersion)<=0)fail('DOWNGRADE_REJECTED');
  let overlay=recovery_overlay(context.value,candidate.version,candidate.sha256,candidate.bytes);
  let fetched=capture('fetch',[overlay.artifact.url,context.value.caFileSha256==null?'system':'pinned',candidate.version],candidate.bytes,65000,context.raw);
- // uclient may follow on wire; no redirected result is ever admitted.
+ // The pinned fetch helper rejects non-HTTPS hops before connection.
  if(!fetched.clean||fetched.code!=0||fetched.stdout==null||fetched.stderr==null||match(fetched.stderr,/[Rr][Ee][Dd][Ii][Rr][Ee][Cc][Tt]|[Cc]ertificate|SSL error|[Tt][Ll][Ss] error/)||
   length(fetched.stdout)!=candidate.bytes||digest.sha256(fetched.stdout)!=candidate.sha256)fail('DOWNLOAD_FAILED');
  if(store.read(BOOT,maximum_descriptor)!=context.raw||identity(fs.lstat(BANK))!=context.bankIdentity)fail('STALE_PLAN');

@@ -40,19 +40,13 @@ connections. Compact installations use a separate client module for each selecte
 
 <a id="whats-new"></a>
 
-> **🆕 What's new - 1.0.3 Beta**
+> **🆕 What's new - 1.0.4 Beta**
 >
-> - Fixed local-network API access and the web interface.
-> - Fixed charts and the display of settings.
-> - Added backup and restore for settings, VPN profiles and clients.
-> - Added a view of paired mobile devices.
-> - Increased the PIN to six digits and added lockouts after incorrect attempts. The PIN can be changed through LuCI.
-> - Supports pairing with up to 10 mobile devices.
-> - Fixed verification of GitHub release metadata.
-> - Refined notifications, confirmation dialogs, help and tooltips.
-> - Fixed validation of the standard certificate symlink when preparing RAM-package recovery.
-> - Added the VPN process exit code to disconnect diagnostics.
-> - Fixed VPN module URLs for OpenWrt client updates.
+> - Added a Settings viewer for package logs, kernel out-of-memory events and the last recorded FoxHole Core state.
+> - Reduced memory use while processing retained traffic history.
+> - Fixed RAM-module downloads and documented the prepared RAM-recovery components.
+>
+> Persistent bootstrap enrollment remains disabled. Cold-boot recovery is not qualified; the custom ELF library-path admission issue remains unresolved.
 
 <a id="features"></a>
 

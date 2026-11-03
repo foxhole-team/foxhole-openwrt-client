@@ -9,7 +9,7 @@ export const publicFiles = ['LICENSE', 'THIRD_PARTY_NOTICES.md',
   'README.md', 'ROADMAP.md', 'CHANGELOG.md', 'SECURITY.md', '.gitattributes', '.gitignore', '.gitleaks.toml',
   'install.sh', 'package.json', 'package-lock.json', 'TODO.md'];
 export const publicDirectories = ['package', 'LICENSES', 'media', 'docs', 'config',
-  'examples', '.github', 'tests', 'tools', 'native/transaction'];
+  'examples', '.github', 'tests', 'tools', 'native/transaction', 'native/ram-recovery-fetch'];
 const root = fileURLToPath(new URL('..', import.meta.url));
 const oldBrand = new RegExp(['dae', 'mon'].join(''), 'i');
 const privateName = ['priv', 'vpn', 'vps'].join('_');

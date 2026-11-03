@@ -1,5 +1,10 @@
 # Signed native RAM bootstrap
 
+## Release 1.0.4 qualification
+
+The installed client package, history memory fix and authenticated log viewer are qualified for their recorded update scope. The separate HTTPS helper and signed native bank have their own limited artifact checks. Persistent bootstrap enrollment has not been performed, and no router reboot or cold-boot recovery has been validated. A custom ELF library-path admission issue remains unresolved. Publishing these prepared source components does not enable them or change the selected VPN provider.
+
+
 This is source WIP. Pure checks do not qualify native Ucode/APK, bank extraction,
 HTTPS, physical mounts, service startup, VPN traffic or reboot recovery. Root must
 assemble and sign the actual bank, fill the actual descriptor, install and qualify

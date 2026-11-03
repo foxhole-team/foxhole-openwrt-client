@@ -1,9 +1,10 @@
-import { UpdatePanel } from './update-panel.js?v=1.0.2-r3-ui1';
-import { EnginePanel } from './engine-panel.js?v=1.0.2-r3-ui1';
-import { BackupPanel } from './backup-panel.js?v=1.0.2-r3-ui1';
-import { PairingPanel } from './pairing-panel.js?v=1.0.2-r3-ui1';
-import { hasHost, request, cancelPending, PanelError } from './bridge.js?v=1.0.2-r3-ui1';
-import { Charts, formatBytes, setCountryLabel } from './charts.js?v=1.0.2-r3-ui1';
+import { UpdatePanel } from './update-panel.js?v=1.0.4-dev-logs1';
+import { EnginePanel } from './engine-panel.js?v=1.0.4-dev-logs1';
+import { BackupPanel } from './backup-panel.js?v=1.0.4-dev-logs1';
+import { LogsPanel } from './logs-panel.js?v=1.0.4-dev-logs1';
+import { PairingPanel } from './pairing-panel.js?v=1.0.4-dev-logs1';
+import { hasHost, request, cancelPending, PanelError } from './bridge.js?v=1.0.4-dev-logs1';
+import { Charts, formatBytes, setCountryLabel } from './charts.js?v=1.0.4-dev-logs1';
 import {
   clientDeviceIcon, clientDeviceType, clone, countryCodes,
   countryFlagPath, finite, maskIpv4, maskMac, networkDeviceIcon,
@@ -11,10 +12,10 @@ import {
   randomId,
   serverCountryCode,
   validAddress
-} from './frontend-model.js?v=1.0.2-r3-ui1';
+} from './frontend-model.js?v=1.0.4-dev-logs1';
 import {
   ModalFlow, PopupController, waitForMotion
-} from './ui-controller.js?v=1.0.2-r3-ui1';
+} from './ui-controller.js?v=1.0.4-dev-logs1';
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -232,6 +233,7 @@ const modalDefinitions = {
   'engine-progress': { icon: 'download', actions: () => [closeAction] },
   'updates': { icon: 'download', actions: () => [backAction, closeAction] },
   'update-plan': { icon: 'download', actions: () => [backAction, { action: 'update-apply', icon: 'check', label: 'action.confirm', tone: 'accent' }] },
+  'logs': { icon: 'logs', actions: () => [backAction, { action: 'logs-refresh', icon: 'refresh', label: 'logs.refresh' }, closeAction] },
   'settings-home': {
     icon: 'settings', actions: () => [{
       action: 'open-help', icon: 'info', label: 'help.title'
@@ -339,6 +341,7 @@ function renderModalChrome(view) {
 function prepareModalView(view) {
   renderModalChrome(view);
   if (view.name === 'updates') void updatePanel.open();
+  if (view.name === 'logs') void logsPanel.open();
   if (view.name === 'pairings') void pairingPanel.open();
   if (view.name === 'pairing-revoke') $('[data-pairing-revoke-name]').textContent = view.data.name;
   if (view.name === 'update-plan') updatePanel.render();
@@ -387,6 +390,7 @@ function finishModal() {
   enginePanel.close();
   updatePanel.close();
   backupPanel.close();
+  logsPanel.close();
   pairingPanel.close();
   presentToast();
   popups.closeAll();
@@ -428,6 +432,9 @@ const backupPanel = new BackupPanel({
     beginSettingsDraft();
   }
 });
+
+const logsPanel = new LogsPanel({ call: api, text: t, scope: () => epoch, bytes: formatBytes,
+  error: error => { if (['locked', 'unauthorized', 'luci_required'].includes(error.code)) localLock(); } });
 
 const pairingPanel = new PairingPanel({
   call: api, text: t, element, icon, scope: () => epoch, language: () => language,
@@ -759,6 +766,7 @@ async function back() {
   if (busy || modal.transitioning || pinSetupRequired) return;
   popups.closeAll();
   if (modal.current?.name === 'engines') enginePanel.close();
+  if (modal.current?.name === 'logs') logsPanel.close();
   if (modal.current?.name === 'pairings') pairingPanel.close();
   await modal.back();
 }
@@ -1890,6 +1898,7 @@ function localLock() {
   enginePanel.close();
   updatePanel.close();
   backupPanel.close();
+  logsPanel.close();
   pairingPanel.close();
   clearTimeout(toastTimer);
   hideToast();
@@ -1988,6 +1997,8 @@ async function perform(action, target) {
       break;
     }
     case 'open-add': await openView('add-choice', {}, true); break;
+    case 'open-logs': await openView('logs'); break;
+    case 'logs-refresh': await logsPanel.refresh(); break;
     case 'open-settings':
       beginSettingsDraft();
       await openView('settings-home', {}, true); break;

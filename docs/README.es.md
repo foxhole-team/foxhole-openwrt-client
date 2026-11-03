@@ -40,19 +40,13 @@ Las instalaciones compactas usan un módulo cliente por protocolo seleccionado. 
 
 <a id="whats-new"></a>
 
-> **🆕 Novedades - 1.0.3 Beta**
+> **🆕 Novedades - 1.0.4 Beta**
 >
-> - Corregidos el acceso a la API desde la red local y la interfaz web.
-> - Corregidos los gráficos y la visualización de ajustes.
-> - Añadidas copias de seguridad y restauración de ajustes, perfiles VPN y clientes.
-> - Añadida la vista de dispositivos móviles vinculados.
-> - El PIN pasa a seis dígitos y se añade el bloqueo tras intentos incorrectos. El PIN se puede cambiar desde LuCI.
-> - Se admite la vinculación de hasta 10 dispositivos móviles.
-> - Corregida la verificación de los datos de versiones de GitHub.
-> - Mejoradas las notificaciones, las confirmaciones, la ayuda y las sugerencias.
-> - Corregida la validación del enlace simbólico estándar a los certificados al preparar la recuperación del paquete RAM.
-> - Añadido el código de salida del proceso VPN al diagnóstico de desconexiones.
-> - Corregidos los enlaces a los módulos VPN para las actualizaciones del cliente OpenWrt.
+> - Se añadió una vista de los registros del paquete, los eventos de falta de memoria del kernel y el último estado registrado de FoxHole Core.
+> - Se redujo el uso de memoria al procesar el historial de tráfico conservado.
+> - Se corrigieron las descargas de módulos en RAM y se documentaron los componentes preparados para la recuperación en RAM.
+>
+> La activación permanente del bootstrap sigue deshabilitada. La recuperación tras un arranque en frío no está validada; sigue pendiente el problema de comprobación de la ruta de las bibliotecas ELF.
 
 <a id="features"></a>
 

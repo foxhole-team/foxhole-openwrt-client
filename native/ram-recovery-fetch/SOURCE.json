@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "kind": "foxhole-ram-https-fetch-source-v1",
+  "upstreamRepository": "https://github.com/openwrt/uclient",
+  "upstreamRevision": "daad21fa2c17cae54d37149bf27bb3dd78e50a3f",
+  "upstreamOpenWrtTag": "v25.12.5",
+  "upstreamFiles": [
+    {
+      "path": "uclient-fetch.c",
+      "sha256": "e5d4a64173926c14504c70df61ca0073a947e2d6da502684ca3c35e9a7bb70e6",
+      "bytes": 21520,
+      "url": "https://github.com/openwrt/uclient/blob/daad21fa2c17cae54d37149bf27bb3dd78e50a3f/uclient-fetch.c"
+    },
+    {
+      "path": "progress.c",
+      "sha256": "01e91686bc1647f47c89ad28aee7ebac686b72b275966433b4f96fd13d8fad1d",
+      "bytes": 7070,
+      "url": "https://github.com/openwrt/uclient/blob/daad21fa2c17cae54d37149bf27bb3dd78e50a3f/progress.c"
+    },
+    {
+      "path": "progress.h",
+      "sha256": "3ea5ee96bdfa1a5d8c3c4fe114cfe7a6a9eb588abe058683b2b9eac53f4af450",
+      "bytes": 465,
+      "url": "https://github.com/openwrt/uclient/blob/daad21fa2c17cae54d37149bf27bb3dd78e50a3f/progress.h"
+    },
+    {
+      "path": "uclient.h",
+      "sha256": "419a4c8592abe31ce2b86aa40893984eb695dc974f67544203c92e25a0bead8b",
+      "bytes": 4324,
+      "url": "https://github.com/openwrt/uclient/blob/daad21fa2c17cae54d37149bf27bb3dd78e50a3f/uclient.h"
+    },
+    {
+      "path": "uclient-utils.h",
+      "sha256": "80c2abe6a185fc5fec98889886488063e51b7bac57fc78388a08057e732f0b18",
+      "bytes": 1648,
+      "url": "https://github.com/openwrt/uclient/blob/daad21fa2c17cae54d37149bf27bb3dd78e50a3f/uclient-utils.h"
+    },
+    {
+      "path": "CMakeLists.txt",
+      "sha256": "a9634bf8c892932cc660e9ad90b7e8e2b62c085da165618469cd1b104a1eead4",
+      "bytes": 2428,
+      "url": "https://github.com/openwrt/uclient/blob/daad21fa2c17cae54d37149bf27bb3dd78e50a3f/CMakeLists.txt"
+    }
+  ],
+  "libuboxRevision": "7dd127841e82eb1cfb61185da37dde7b9bd9ba6d",
+  "ustreamSslRevision": "99f1c0db5a729f615bc5114b3b52fd8ac8083f34",
+  "transportPolicy": "single credential-free HTTPS GET to stdout; only absolute HTTPS redirects; stock TLS and CA validation; no proxy, custom headers, POST or insecure mode",
+  "runtimeQualification": "not claimed by source or host URL-policy tests",
+  "licenses": [
+    "ISC (uclient and public headers)",
+    "BSD-3-Clause (progress.c)"
+  ]
+}

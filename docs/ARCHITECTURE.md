@@ -57,7 +57,7 @@ one LAN policy; separate listeners permit four users with individual ports.
 Country prefixes come from `ipverse/country-ip-blocks`; IP probes use
 Cloudflare trace. Profiles and authentication are stored under
 `/etc/foxhole`; runtime files and history use `/tmp/foxhole`. Thirty-day
-history is checkpointed hourly to flash.
+history is checkpointed hourly to flash. The sampler indexes bounded JSON byte ranges and reads retained rows individually, avoiding a complete parsed history in memory. It keeps the existing thirty-day, five-minute older buckets, fifteen-minute full-resolution window and 9000-point cap. Atomic replacement preserves the previous full history on malformed input or write failure; sampling yields when less than16MiB is available.
 
 Phone pairing uses the changed panel PIN to authorize `pair.create`. The
 phone generates and keeps an independent random 256-bit credential; the
@@ -287,3 +287,24 @@ The [recorded rebuild recipe](../native/transaction/README.md) uses the exact SD
 ## Compact transport file identity
 
 The TAR reader compares the device major/minor numbers returned by native Ucode, together with inode, size, mode, owner, link count and modification/change times, before accepting extraction. Device records are validated values, not object identities. Archive/member hashes, canonical headers, selected paths and private-stage checks remain mandatory.
+
+## Read-only diagnostic logs
+
+Settings uses authenticated `diagnostics.logs` through the existing web/LuCI bridge. The CGI requires TLS. There are no caller-selected paths or commands. The owned capture helper admits only `logread -l 128 -e foxhole` and argument-free `dmesg`; existing timeout, byte limits, process ownership and cleanup apply. The service returns at most32 typed lifecycle events and32 typed kernel OOM records, caches that sanitized result for three seconds, and reads each private runtime/Core state within8KiB. Raw log text, profiles, peer addresses, arguments and credentials are never returned.
+
+Core and Linux kernel are separate sources. The current Core CLI has no log/events command and does not persist its last error. The viewer therefore shows the last recorded Core state and available package lifecycle events; it does not invent historical Core messages. A missing or failed source remains unavailable. Refresh is manual and closing the modal discards pending results.
+
+
+## RAM reboot recovery
+
+An enrolled RAM installation keeps a small protected recovery loader on flash.
+The loader fetches only the pinned credential-free HTTPS bank through the
+[restricted helper](../native/ram-recovery-fetch/README.md), preserving stock
+certificate and hostname validation. It checks the exact size, digest and
+native APK signature before restoring verified public runtime files. Owner
+configuration and profiles stay outside the downloaded bank. Initial network
+failures use bounded retries; recovery does not claim success before the
+normal runtime and authenticated API become available. Enrollment binds the
+actual selected helper and bank rather than assuming a future release URL.
+Source and host policy checks do not replace target TLS, installation or
+physical reboot qualification.

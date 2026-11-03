@@ -8,9 +8,11 @@ unset LD_PRELOAD LD_LIBRARY_PATH APK_CONFIG
 
 bundle='' manifest_hash='' keys='' base='' stage=''
 universe=universe-filogic.json architecture='' release=25.12.5
+bootstrap_descriptor='' bootstrap_signer='' bootstrap_ca='' bootstrap_fetch='' bootstrap_fetch_sha256=''
 usage() {
  echo 'Usage: install-ram-stage.sh --bundle DIR --manifest-sha256 HASH --keys-dir DIR --base APK --stage /tmp/foxhole-ram.NAME [--universe FILE] [--architecture ARCH] [--release RELEASE]'
  echo 'Prepare only: signed local repositories, empty isolated APK database, no service or mount changes.'
+ echo 'For persistent recovery enrollment add --bootstrap-descriptor FILE --bootstrap-signer-pem FILE --bootstrap-fetch-helper VERIFIED_ELF --bootstrap-fetch-helper-sha256 HASH [--bootstrap-ca FILE].'
 }
 while [ "$#" -gt 0 ]; do
  case "$1" in
@@ -22,12 +24,22 @@ while [ "$#" -gt 0 ]; do
   --universe) universe=${2:?}; shift 2 ;;
   --architecture) architecture=${2:?}; shift 2 ;;
   --release) release=${2:?}; shift 2 ;;
+  --bootstrap-descriptor) bootstrap_descriptor=${2:?}; shift 2 ;;
+  --bootstrap-signer-pem) bootstrap_signer=${2:?}; shift 2 ;;
+  --bootstrap-ca) bootstrap_ca=${2:?}; shift 2 ;;
+  --bootstrap-fetch-helper) bootstrap_fetch=${2:?}; shift 2 ;;
+  --bootstrap-fetch-helper-sha256) bootstrap_fetch_sha256=${2:?}; shift 2 ;;
   --help|-h) usage; exit 0 ;;
   *) usage >&2; exit 2 ;;
  esac
 done
 [ "$(id -u)" = 0 ] || { echo 'Root is required' >&2; exit 1; }
 [ -n "$bundle" ] && [ -n "$keys" ] && [ -n "$base" ] && [ -n "$stage" ] || { usage >&2; exit 2; }
+if [ -n "$bootstrap_descriptor$bootstrap_signer$bootstrap_ca$bootstrap_fetch$bootstrap_fetch_sha256" ]; then
+ [ -n "$bootstrap_descriptor" ] && [ -n "$bootstrap_signer" ] && [ -n "$bootstrap_fetch" ] || { usage >&2; exit 2; }
+ case "$bootstrap_fetch_sha256" in ''|*[!a-f0-9]*) exit 2 ;; esac
+ [ "${#bootstrap_fetch_sha256}" = 64 ] || exit 2
+fi
 case "$manifest_hash" in ''|*[!a-f0-9]*) exit 2 ;; esac
 [ "${#manifest_hash}" = 64 ] || exit 2
 for tool in apk ucode env df flock mkfifo; do command -v "$tool" >/dev/null; done
@@ -348,4 +360,10 @@ offline apply add "$@"
 offline installed query --from installed --installed --all-matches --fields name,version,arch,installed-size,status --format json '*'
 ucode "$stage/validate.uc" installed "$stage" installed.stdout
 ucode "$stage/validate.uc" finish "$stage"
+if [ -n "$bootstrap_descriptor" ]; then
+ set -- /bin/sh "$source_directory/install-ram-bootstrap.sh" --descriptor "$bootstrap_descriptor" \
+  --signer-pem "$bootstrap_signer" --fetch-helper "$bootstrap_fetch" --fetch-helper-sha256 "$bootstrap_fetch_sha256" --prepared-stage "$stage"
+ [ -z "$bootstrap_ca" ] || set -- "$@" --ca "$bootstrap_ca"
+ "$@"
+fi
 echo 'RAM BASE stage prepared; inactive, host APK database unchanged'

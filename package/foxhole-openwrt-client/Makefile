@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=foxhole-openwrt-client
-PKG_VERSION:=1.0.3
+PKG_VERSION:=1.0.4
 PKG_RELEASE:=1
 PKG_LICENSE:=GPL-3.0-or-later GPL-2.0-only Zlib
 PKG_MAINTAINER:=FoxHole Team
@@ -133,6 +133,7 @@ define Package/foxhole-openwrt-client/install
 	$(INSTALL_BIN) ./root/usr/share/rpcd/ucode/foxhole.uc \
 		$(1)/usr/share/rpcd/ucode/foxhole.uc
 	$(INSTALL_DIR) $(1)/usr/share/foxhole
+	$(INSTALL_DATA) ./root/usr/share/foxhole/log-model.uc ./root/usr/share/foxhole/log-service.uc $(1)/usr/share/foxhole/
 	$(INSTALL_DATA) ./root/usr/share/foxhole/backup-model.uc ./root/usr/share/foxhole/backup-service.uc $(1)/usr/share/foxhole/
 	$(INSTALL_DATA) ./root/usr/share/foxhole/ram-update-model.uc ./root/usr/share/foxhole/ram-update-service.uc $(1)/usr/share/foxhole/
 	$(INSTALL_DATA) ./root/usr/share/foxhole/ram-switch-model.uc ./root/usr/share/foxhole/ram-switch-service.uc $(1)/usr/share/foxhole/

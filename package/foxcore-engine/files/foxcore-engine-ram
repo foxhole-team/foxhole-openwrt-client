@@ -7,15 +7,17 @@ case "$slot" in /usr/libexec/foxhole/engines/*) ;; *) exit 1 ;; esac
 metadata=$(ucode -e '
  import * as fs from "fs";
  import * as registry from "/usr/share/foxhole/engine-registry.uc";
- let path=ARGV[0],info=fs.lstat(path+"/slot.json");
- if(info?.type!="file"||info.uid!=0||info.nlink!=1||(info.mode&022))exit(1);
- let value=json(fs.readfile(path+"/slot.json",32768));
- if(value.storage!="RAM"||!match(value.id,/^[a-z0-9]+$/)||!match(value.binarySha256,/^[a-f0-9]{64}$/))exit(1);
- print(value.id," ",value.binarySha256," ",value.binaryBytes," ",value.reserveBytes," ",value.version," ",value.architecture);
+ let path=ARGV[0]+"/foxcore-cli";
+ let matches=filter(registry.catalog().value.entries,value=>value.storage=="RAM"&&registry.executable(value)==path);
+ if(!length(matches))matches=filter(registry.read().slots,value=>value.storage=="RAM"&&registry.executable(value)==path);
+ if(length(matches)!=1||registry.verify_slot(matches[0])!=path)exit(1);
+ let value=matches[0],base=substr(value.indexUrl,0,length(value.indexUrl)-length("engines.adb"));
+ let url=base+"engine-"+value.id+"-"+value.architecture+"-"+value.binarySha256+".bin";
+ print(value.id," ",value.binarySha256," ",value.binaryBytes," ",value.reserveBytes," ",url);
 ' -- "$slot") || exit 1
 set -- $metadata "$@"
-id=$1 digest=$2 bytes=$3 reserve=$4 version=$5 architecture=$6
-shift 6
+id=$1 digest=$2 bytes=$3 reserve=$4 url=$5
+shift 5
 cache="/tmp/foxhole/engine-binaries/$id/$digest"
 ucode -e 'import * as store from "/usr/share/foxhole/private-store.uc";store.directory(ARGV[0]);' -- "$cache"
 valid() {
@@ -45,7 +47,6 @@ ucode -e '
  partial=$(mktemp "$cache/download.XXXXXX")
  trap 'rm -f "$partial"' EXIT HUP INT TERM
  ulimit -f "$(( (bytes + 511) / 512 ))"
- url="https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v$version/engine-$id-$architecture-$digest.bin"
  uclient-fetch -T 120 -O "$partial" "$url" >/dev/null 2>&1
  [ "$(wc -c < "$partial")" -eq "$bytes" ]
  printf '%s  %s\n' "$digest" "$partial" | sha256sum -c - >/dev/null 2>&1

@@ -4,6 +4,7 @@
 
 const parameters = {
   'package.status': [],
+  'diagnostics.logs': ['token'],
   'backup.export': ['token'],
   'backup.validate': ['token', 'document', 'expectedRevision'],
   'backup.apply': ['token', 'document', 'expectedRevision', 'confirmed', 'requestId'],

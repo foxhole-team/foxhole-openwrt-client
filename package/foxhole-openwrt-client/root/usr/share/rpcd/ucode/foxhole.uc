@@ -11,6 +11,7 @@ import * as model from '/usr/share/foxhole/model.uc';
 import * as runtime_model from '/usr/share/foxhole/runtime-model.uc';
 import * as probe from '/usr/share/foxhole/probe.uc';
 import * as history_store from '/usr/share/foxhole/history.uc';
+import * as logs from '/usr/share/foxhole/log-service.uc';
 import * as inbound from '/usr/share/foxhole/inbound.uc';
 import * as pairing from '/usr/share/foxhole/pairing.uc';
 import * as mobile from '/usr/share/foxhole/mobile.uc';
@@ -1612,13 +1613,14 @@ function call(name, request, fn) {
  return safe(() => {
   if(ram_deployment() && (name=='engines.plan' || name=='engines.apply'))fail('engine_unsupported_target');
   let revocation=name=='client.delete'||name=='client.access'&&type(request.args.allowLan)=='bool'&&request.args.allowLan==false;
-  if(!revocation&&index(['unlock','pair.unlock','lock','package.status','backup.status','server.stop','pin.change','pair.revoke','pair.list'],name)<0)
+  if(!revocation&&index(['unlock','pair.unlock','lock','package.status','backup.status','diagnostics.logs','server.stop','pin.change','pair.revoke','pair.list'],name)<0)
    backup_service.guard();
   return fn(request);
  });
 };
 
 const methods = {
+	'diagnostics.logs': { args: { token: '' }, call: request => call('diagnostics.logs', request, request => { session(request); return logs.status(); }) },
 	'backup.export': { args: { token: '' }, call: request => call('backup.export', request, request => backup_request(request, 'export')) },
 	'backup.validate': { args: { token: '', document: {}, expectedRevision: 0 }, call: request => call('backup.validate', request, request => backup_request(request, 'validate')) },
 	'backup.apply': { args: { token: '', document: {}, expectedRevision: 0, confirmed: false, requestId: '' }, call: request => call('backup.apply', request, request => backup_request(request, 'apply')) },

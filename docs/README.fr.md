@@ -40,19 +40,13 @@ Chaque protocole choisi utilise un module client distinct dans une installation 
 
 <a id="whats-new"></a>
 
-> **🆕 Nouveautés - 1.0.3 Beta**
+> **🆕 Nouveautés - 1.0.4 Beta**
 >
-> - Correction de l’accès à l’API depuis le réseau local et de l’interface web.
-> - Correction des graphiques et de l’affichage des paramètres.
-> - Ajout de la sauvegarde et de la restauration des paramètres, profils VPN et clients.
-> - Ajout de la liste des appareils mobiles appairés.
-> - Le PIN passe à six chiffres, avec blocage après des tentatives incorrectes. Le PIN peut être modifié via LuCI.
-> - Prise en charge de l’appairage de jusqu’à 10 appareils mobiles.
-> - Correction de la vérification des données de version GitHub.
-> - Amélioration des notifications, confirmations, de l’aide et des infobulles.
-> - Correction de la validation du lien symbolique standard vers les certificats lors de la préparation de la récupération du paquet RAM.
-> - Ajout du code de sortie du processus VPN au diagnostic des déconnexions.
-> - Correction des liens vers les modules VPN pour les mises à jour du client OpenWrt.
+> - Ajout d’une vue des journaux du paquet, des événements de manque de mémoire du noyau et du dernier état enregistré de FoxHole Core.
+> - Réduction de l’utilisation mémoire lors du traitement de l’historique du trafic conservé.
+> - Correction du téléchargement des modules en RAM et mise à jour de la documentation des composants préparés pour la récupération en RAM.
+>
+> L’activation permanente du bootstrap reste désactivée. La récupération après un démarrage à froid n’est pas validée ; le problème de vérification du chemin des bibliothèques ELF reste à résoudre.
 
 <a id="features"></a>
 

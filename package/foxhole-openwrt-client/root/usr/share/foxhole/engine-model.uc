@@ -45,8 +45,12 @@ function entry(value) {
 	    value.indexBytes > 8388608 || value.installedBytes > 536870912 || value.reserveBytes < 16777216)
 		reject('package_verification_failed');
 	let package = 'foxcore-engine-' + value.id + '-' + lc(value.storage) + '-' + value.manifestSha256;
-	let base = BASE + 'v' + value.version + '/';
-	if (value.packageName != package || value.packageUrl != base + package + '-' + value.packageVersion + '.apk' ||
+	// Core version and router delivery tags can differ.
+	let release = type(value.indexUrl) == 'string' && length(value.indexUrl) <= 1024 &&
+		substr(value.indexUrl, 0, length(BASE)) == BASE ?
+		match(substr(value.indexUrl, length(BASE)), /^(v[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6})\/engines\.adb$/) : null;
+	let base = release ? BASE + release[1] + '/' : null;
+	if (!base || value.packageName != package || value.packageUrl != base + package + '-' + value.packageVersion + '.apk' ||
 	    value.indexUrl != base + 'engines.adb' ||
 	    (value.storage == 'FLASH' && value.executableSha256 != value.binarySha256))
 		reject('package_verification_failed');

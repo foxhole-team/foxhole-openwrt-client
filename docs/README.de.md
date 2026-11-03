@@ -40,19 +40,13 @@ Kompakte Installationen verwenden ein eigenes Clientmodul je ausgewähltem Proto
 
 <a id="whats-new"></a>
 
-> **🆕 Was ist neu - 1.0.3 Beta**
+> **🆕 Neuigkeiten - 1.0.4 Beta**
 >
-> - Den API-Zugriff aus dem lokalen Netzwerk und die Weboberfläche korrigiert.
-> - Diagramme und die Anzeige der Einstellungen korrigiert.
-> - Sichern und Wiederherstellen von Einstellungen, VPN-Profilen und Clients hinzugefügt.
-> - Eine Übersicht gekoppelter Mobilgeräte hinzugefügt.
-> - Die PIN auf sechs Ziffern erweitert und Sperren nach falschen Eingaben hinzugefügt. Die PIN kann über LuCI geändert werden.
-> - Kopplung mit bis zu 10 Mobilgeräten wird unterstützt.
-> - Die Prüfung von GitHub-Release-Daten korrigiert.
-> - Benachrichtigungen, Bestätigungsdialoge, Hilfe und Hinweise überarbeitet.
-> - Prüfung des standardmäßigen Zertifikats-Symlinks bei der Vorbereitung der RAM-Paketwiederherstellung korrigiert.
-> - Den Exit-Code des VPN-Prozesses zur Diagnose von Verbindungsabbrüchen hinzugefügt.
-> - Links zu VPN-Modulen für Updates des OpenWrt-Clients korrigiert.
+> - Eine Ansicht für Paketprotokolle, Speicherengpässe des Kernels und den zuletzt erfassten FoxHole-Core-Zustand wurde hinzugefügt.
+> - Der Speicherbedarf bei der Verarbeitung des gespeicherten Datenverkehrsverlaufs wurde reduziert.
+> - Downloads von RAM-Modulen wurden korrigiert und die vorbereiteten Komponenten zur RAM-Wiederherstellung dokumentiert.
+>
+> Die dauerhafte Bootstrap-Aktivierung bleibt deaktiviert. Die Wiederherstellung nach einem Kaltstart ist nicht bestätigt; das Problem bei der Prüfung des ELF-Bibliothekspfads besteht weiterhin.
 
 <a id="features"></a>
 

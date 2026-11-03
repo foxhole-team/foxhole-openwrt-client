@@ -46,6 +46,23 @@ export function descriptor(value) {
  }
  platform(value.arch,value.target,value.osRelease);return value;
 };
+export function enrollment(expected,active,prepared) {
+ descriptor(expected);let effective=expected.overlay||expected;
+ if(active!=null&&(active.schema!=1||active.phase!='active'||active.storage!='RAM'||
+  active.version!=effective.baseVersion||active.baseSha256!=effective.baseSha256))fail();
+ if(prepared!=null) {
+  if(prepared.schema!=1||prepared.kind!='ram-base-preparation-plan-v1'||prepared.architecture!=expected.arch||
+   prepared.release!=expected.osRelease||prepared.baseConstraint!='foxhole-openwrt-client='+effective.baseVersion||
+   type(prepared.packages)!='array')fail();
+  let base=filter(prepared.packages,row=>row.name=='foxhole-openwrt-client');
+  if(length(base)!=1||base[0].version!=effective.baseVersion||base[0].sha256!=effective.baseSha256)fail();
+ }
+ return true;
+};
+export function retryable_download(stderr,code,attempt) {
+ return type(stderr)=='string'&&index([4,124],code)>=0&&integer(attempt)&&attempt>=1&&attempt<6&&
+  !match(stderr,/[Rr]edirect|[Cc]ertificate|SSL|[Tt][Ll][Ss]|HTTP error|[Rr]efused a redirect/);
+};
 export function public_target(path) {
  if(path=='/etc/init.d/foxhole-ram-bootstrap')return false;
  if(index(['/usr/share/foxhole','/usr/share/licenses/foxhole-openwrt-client','/www/luci-static/resources/foxhole',

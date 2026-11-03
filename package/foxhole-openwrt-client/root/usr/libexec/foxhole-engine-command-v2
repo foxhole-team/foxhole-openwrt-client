@@ -31,6 +31,9 @@ case "$timeout" in ''|*[!0-9]*) exit 1 ;; esac
 [ "$timeout" -ge 1000 ] && [ "$timeout" -le 130000 ] || exit 1
 case "${1-}" in
  /usr/bin/apk|/usr/bin/sha256sum|/bin/df) ;;
+ /sbin/logread)
+  [ "$#" -eq 5 ] && [ "$2" = -l ] && [ "$3" = 128 ] && [ "$4" = -e ] && [ "$5" = foxhole ] || exit 1 ;;
+ /bin/dmesg) [ "$#" -eq 1 ] || exit 1 ;;
  /usr/libexec/foxhole/engines/*/foxcore-cli)
   printf '%s\n' "$1" | grep -Eq '^/usr/libexec/foxhole/engines/(vless|vmess|hysteria2|tuic|trojan|shadowsocks|wireguard|naive|anytls|shadowtls|socks|http)/[a-f0-9]{64}/foxcore-cli$' || exit 1 ;;
  *) exit 1 ;;

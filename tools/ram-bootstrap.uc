@@ -5,7 +5,8 @@ import * as model from './ram-bootstrap-model.uc';
 
 const PRIVATE='/etc/foxhole/ram-update';
 const MARKER='/tmp/foxhole-ram-active.json';
-const TOOLS=['ram-bootstrap.uc','ram-bootstrap-model.uc','ram-bootstrap-admit.uc','ram-bootstrap-capture.uc','ram-bootstrap-command.sh'];
+const FETCH='foxhole-ram-fetch';
+const TOOLS=['ram-bootstrap.uc','ram-bootstrap-model.uc','ram-bootstrap-admit.uc','ram-bootstrap-capture.uc','ram-bootstrap-command.sh',FETCH];
 let generation=null;
 function fail() {die('RAM_BOOTSTRAP_VALIDATION_FAILED');};
 function same(a,b) {return sprintf('%J',a)==sprintf('%J',b);};
@@ -75,7 +76,10 @@ function trust_check(expected) {
  if(recorded.schema!=1||type(recorded.files)!='array'||length(recorded.files)!=length(TOOLS))fail();
  let seen={};for(let row in recorded.files) {
   if(index(TOOLS,row.name)<0||seen[row.name]||!model.sha(row.sha256))fail();seen[row.name]=true;
-  private_file(model.trust+'/'+row.name,65536);let bytes=raw(model.trust+'/'+row.name,65536,false);total+=length(bytes);
+  if(row.name==FETCH) {
+   if((regular(model.trust+'/'+row.name,65536,false).mode&0o7777)!=0o700)fail();
+  }else private_file(model.trust+'/'+row.name,65536);
+  let bytes=raw(model.trust+'/'+row.name,65536,false);total+=length(bytes);
   if(digest.sha256(bytes)!=row.sha256)fail();
  }
  total+=fs.lstat(model.trust+'/keys/signer.pem').size+(expected.caFileSha256!=null?fs.lstat(model.trust+'/ca.pem').size:0)+
@@ -199,10 +203,21 @@ function initialize_destination(path,document) {
  let after=fs.lstat(path);
  if(after?.type!='directory'||after.uid!=0||after.gid!=0||!same(after.dev,before.dev)||after.inode!=before.inode||(after.mode&0o7777)!=mode)fail();
 };
+function fetch_artifact(artifact,expected,role) {
+ for(let attempt=1;attempt<=6;attempt++) {
+  memory(artifact.bytes+8388608);
+  let result=capture('fetch',[artifact.url,expected.caFileSha256==null?'system':'pinned'],artifact.bytes,65000);
+  if(model.accepted_download(result.stderr,result.code)&&result.bytes==artifact.bytes)return result;
+  if(!model.retryable_download(result.stderr,result.code,attempt))fail();
+  replace(model.stage+'/download-last.json',{schema:1,role,attempt,exitCode:result.code,partialBytes:result.bytes,
+   stderrPath:result.path+'.err',stderrSha256:digest.sha256(result.stderr)},4096);
+  // Failed partial payloads are regenerable; keep the bounded error log and retry receipt.
+  if(!fs.unlink(result.path)||sleep(15000)!=true)fail();
+ }
+ fail();
+};
 function bank_load(expected,journal) {
- memory(expected.artifact.bytes+8388608);
- let download=capture('fetch',[expected.artifact.url,expected.caFileSha256==null?'system':'pinned'],expected.artifact.bytes,65000);
- if(!model.accepted_download(download.stderr,download.code)||download.bytes!=expected.artifact.bytes)fail();
+ let download=fetch_artifact(expected.artifact,expected,'bank');
  if(!fs.rename(download.path,model.stage+'/bank.apk'))fail();
  if(hash_files([model.stage+'/bank.apk'])[model.stage+'/bank.apk']!=expected.artifact.sha256)fail();
  native('verify',[],4096,30000);let document=json(native('dump',[],model.maximum_metadata,30000));
@@ -384,24 +399,38 @@ function boot() {
   die('RAM bootstrap failed; private stage retained\n');
  }
 };
-function install(source,descriptor_path,pem_path,ca_path) {
+function install(source,descriptor_path,pem_path,ca_path,fetch_path,prepared_stage,fetch_sha256) {
  parents(source);let descriptor_text=raw(descriptor_path,8192,false),expected=model.descriptor(json(descriptor_text));actual_platform(expected);
  let pem=raw(pem_path,32768,false),ca=ca_path!=''?raw(ca_path,32768,false):null;
  if(digest.sha256(pem)!=expected.signerPemSha256||
   (expected.caFileSha256==null?ca!=null:ca==null||digest.sha256(ca)!=expected.caFileSha256))fail();
+ let active=fs.lstat(MARKER)?decode(MARKER,8192):null,prepared=null;
+ if(prepared_stage!='') {
+  if(!match(prepared_stage||'',/^\/tmp\/foxhole-ram[.-][A-Za-z0-9_.-]{6,80}$/))fail();directory(prepared_stage);
+  let receipt=decode(prepared_stage+'/receipt.json',8192),plan_text=raw(prepared_stage+'/plan.json',524288,false);
+  if(receipt.schema!=1||receipt.kind!='foxhole-ram-base-stage-v1'||receipt.state!='prepared'||receipt.active!=false||
+   receipt.hostApkUpdated!=false||receipt.planSha256!=digest.sha256(plan_text))fail();prepared=json(plan_text);
+ }
+ model.enrollment(expected,active,prepared);
  let bodies={},manifest={schema:1,files:[]},total=length(descriptor_text)+length(pem)+length(ca||'');
  for(let name in TOOLS) {
-  let text=raw(source+'/'+name,65536,false);bodies[name]=text;total+=length(text);push(manifest.files,{name,sha256:digest.sha256(text)});
+  let text=raw(name==FETCH?fetch_path:source+'/'+name,65536,false);
+  if(name==FETCH&&(!model.sha(fetch_sha256)||digest.sha256(text)!=fetch_sha256||
+   substr(text,0,4)!='\x7fELF'||length(text)<64||ord(text,4)!=2||ord(text,5)!=1||
+   ord(text,18)!=(expected.arch=='aarch64_cortex-a53'?183:62)||ord(text,19)!=0))fail();
+  bodies[name]=text;total+=length(text);push(manifest.files,{name,sha256:digest.sha256(text)});
  }
  let init=raw(source+'/ram-bootstrap.init',8192,false);total+=length(init)+length(sprintf('%J',manifest))+4096;
  if(total>131072)fail();
  let output=fs.popen('/bin/df -Pk /etc/foxhole','r');if(!output)fail();let report=output.read('all'),code=output.close();
  if(code!=0||type(report)!='string'||length(report)>16384)fail();let lines=split(trim(report),'\n'),fields=split(trim(lines[length(lines)-1]),/[ \t]+/);
  if(length(fields)<6||!match(fields[3],/^[0-9]+$/)||+fields[3]*1024<total+524288)fail();
+ // Enrollment verifies persistent backing; the checker is never copied into the boot seed.
+ command(['/usr/bin/ucode',source+'/ram-bootstrap-prerequisites.uc',fetch_path,fetch_sha256],120000);
  owner_namespace(true);
  if(fs.lstat(model.trust)||fs.lstat(PRIVATE+'/boot.json')||fs.lstat('/etc/init.d/foxhole-ram-bootstrap')||fs.lstat('/etc/rc.d/S99foxhole-ram-bootstrap'))fail();
  mkdir(model.trust,0o700);mkdir(model.trust+'/keys',0o700);
- for(let name in TOOLS)write(model.trust+'/'+name,bodies[name]);
+ for(let name in TOOLS)write(model.trust+'/'+name,bodies[name],name==FETCH?0o700:0o600);
  write(model.trust+'/keys/signer.pem',pem);if(ca!=null)write(model.trust+'/ca.pem',ca);
  write(model.trust+'/tools.json',sprintf('%J',manifest));write('/etc/init.d/foxhole-ram-bootstrap',init,0o755);
  write(PRIVATE+'/boot.json',descriptor_text);
@@ -410,5 +439,5 @@ function install(source,descriptor_path,pem_path,ca_path) {
 };
 if(fs.stat('/proc/self')?.uid!=0)fail();
 if(ARGV[0]=='boot'&&length(ARGV)==1)boot();
-else if(ARGV[0]=='install'&&length(ARGV)==5)install(ARGV[1],ARGV[2],ARGV[3],ARGV[4]);
+else if(ARGV[0]=='install'&&length(ARGV)==8)install(ARGV[1],ARGV[2],ARGV[3],ARGV[4],ARGV[5],ARGV[6],ARGV[7]);
 else fail();

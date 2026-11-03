@@ -10,11 +10,11 @@
   <title>FoxHole OpenWRT Client</title>
   <base href="/luci-static/resources/foxhole/">
   <link rel="icon" href="./assets/foxhole.png" type="image/png">
-  <link rel="preload" href="./assets/foxhole.png?v=1.0.2-r3-ui1" as="image" type="image/png">
+  <link rel="preload" href="./assets/foxhole.png?v=1.0.4-dev-logs1" as="image" type="image/png">
   <link rel="preload" href="./assets/JetBrainsMono-Regular.ttf" as="font" type="font/ttf" crossorigin>
   <link rel="preload" href="./assets/JetBrainsMono-Medium.ttf" as="font" type="font/ttf" crossorigin>
   <link rel="preload" href="./assets/Tiny5-Regular.ttf" as="font" type="font/ttf" crossorigin>
-  <link rel="stylesheet" href="./app.css?v=1.0.2-r3-ui1">
+  <link rel="stylesheet" href="./app.css?v=1.0.4-dev-logs1">
 </head>
 <body>
   <svg class="svg-sprite" aria-hidden="true">
@@ -45,6 +45,9 @@
     </symbol>
     <symbol id="icon-devices" viewBox="0 0 24 24">
       <path d="M13 9a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-6a1 1 0 0 1-1-1V9M18 8V5a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h9M16 9h2"/>
+    </symbol>
+    <symbol id="icon-logs" viewBox="0 0 24 24">
+      <rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>
     </symbol>
     <symbol id="icon-info" viewBox="0 0 24 24">
       <circle cx="12" cy="12" r="9"/>
@@ -151,7 +154,7 @@
 
   <section id="pin-gate" class="pin-gate" data-view="pin" aria-labelledby="pin-prompt">
     <div class="pin-card">
-      <img class="pin-logo" src="./assets/foxhole.png?v=1.0.2-r3-ui1" width="512" height="512" alt="FoxHole OpenWRT Client">
+      <img class="pin-logo" src="./assets/foxhole.png?v=1.0.4-dev-logs1" width="512" height="512" alt="FoxHole OpenWRT Client">
       <strong class="pin-brand">FoxHole OpenWRT Client</strong>
       <p id="pin-prompt" class="muted pin-prompt" data-i18n="auth.pin_prompt"></p>
       <form id="pin-form" data-pin-form autocomplete="off">
@@ -177,7 +180,7 @@
   <div id="app-shell" class="app-shell" data-view="dashboard" hidden>
     <header id="topbar" class="topbar" data-topbar>
       <a class="brand" href="#dashboard" data-action="scroll-top" aria-label="FoxHole OpenWRT Client">
-        <img src="./assets/foxhole.png?v=1.0.2-r3-ui1" width="512" height="512" alt="">
+        <img src="./assets/foxhole.png?v=1.0.4-dev-logs1" width="512" height="512" alt="">
         <span>FoxHole OpenWRT Client</span>
       </a>
       <nav class="topbar-actions" data-i18n-aria-label="nav.primary">
@@ -592,6 +595,12 @@
           <svg class="row-chevron" aria-hidden="true"><use href="#icon-chevron"/></svg>
         </button>
 
+        <button class="setting-row is-link" type="button" data-action="open-logs">
+          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-logs"/></svg></span>
+          <span class="setting-copy"><strong data-i18n="logs.title"></strong></span>
+          <svg class="row-chevron" aria-hidden="true"><use href="#icon-chevron"/></svg>
+        </button>
+
         <button class="setting-row is-link" type="button" data-action="open-interface-settings">
           <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-moon"/></svg></span>
           <span class="setting-copy"><strong data-i18n="settings.interface"></strong></span>
@@ -611,6 +620,17 @@
         </select>
       </label>
       <div class="settings-list" data-engine-list></div>
+    </div>
+  </template>
+
+  <template id="tpl-logs" data-template="logs">
+    <div class="modal-panel" data-modal-view="logs" data-title-key="logs.title">
+      <p class="muted" data-log-status role="status" aria-live="polite"></p>
+      <p class="muted" data-log-summary></p>
+      <p class="muted" data-log-runtime></p>
+      <section class="settings-group"><h3 data-i18n="logs.package"></h3><pre class="log-output" data-log-source="package"></pre></section>
+      <section class="settings-group"><h3>FoxHole Core</h3><p class="muted" data-core-log-state></p><pre class="log-output" data-log-source="core"></pre></section>
+      <section class="settings-group"><h3 data-i18n="logs.kernel"></h3><pre class="log-output" data-log-source="kernel"></pre></section>
     </div>
   </template>
 
@@ -1027,6 +1047,6 @@
     </div>
   </template>
 
-  <script src="./app.js?v=1.0.2-r3-ui1" type="module"></script>
+  <script src="./app.js?v=1.0.4-dev-logs1" type="module"></script>
 </body>
 </html>

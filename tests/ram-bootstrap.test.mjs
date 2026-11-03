@@ -185,13 +185,56 @@ function actualFunction(name,bindings){
 test('installer rejects wrong signer/CA before writing any persistent file',()=>{
  const expected=descriptor();
  const make=(pem,ca,policy)=>actualFunction('install',{parents:()=>{},raw:path=>path=='descriptor'?JSON.stringify(policy):path=='pem'?pem:path=='ca'?ca:(()=>{throw Error('trust-admitted');})(),
-  model:{descriptor:value=>value},actual_platform:()=>{},digest:{sha256:sha},TOOLS:[],fail:()=>{throw Error('rejected');}});
+  model:{descriptor:value=>value,enrollment:()=>{}},fs:{lstat:()=>null},MARKER:'/tmp/foxhole-ram-active.json',
+  actual_platform:()=>{},digest:{sha256:sha},TOOLS:[],fail:()=>{throw Error('rejected');}});
  assert.throws(()=>make('wrong',null,expected)('/source','descriptor','pem',''),/rejected/);
  assert.throws(()=>make('public signer','unexpected',expected)('/source','descriptor','pem','ca'),/rejected/);
  const pinned={...expected,caFileSha256:sha('trusted CA')};
  assert.throws(()=>make('public signer',null,pinned)('/source','descriptor','pem',''),/rejected/);
  assert.throws(()=>make('public signer','wrong CA',pinned)('/source','descriptor','pem','ca'),/rejected/);
- assert.throws(()=>make('public signer',null,expected)('/source','descriptor','pem',''),/trust-admitted/);
+ assert.throws(()=>make('public signer',null,expected)('/source','descriptor','pem','','fetch',''),/trust-admitted/);
+});
+test('recovery enrollment pins the actual active or prepared BASE and does not select a new version',()=>{
+ const expected=descriptor(),active={schema:1,phase:'active',storage:'RAM',version:expected.baseVersion,baseSha256:expected.baseSha256};
+ const prepared={schema:1,kind:'ram-base-preparation-plan-v1',architecture:expected.arch,release:expected.osRelease,
+  baseConstraint:'foxhole-openwrt-client='+expected.baseVersion,packages:[{name:'foxhole-openwrt-client',version:expected.baseVersion,sha256:expected.baseSha256}]};
+ assert.equal(model.enrollment(expected,active,prepared),true);
+ assert.equal(model.enrollment(expected,null,null),true);
+ for(const patch of [{version:'1.0.4-r1'},{baseSha256:sha('other')},{storage:'FLASH'},{phase:'prepared'}])
+  assert.throws(()=>model.enrollment(expected,{...active,...patch},null));
+ for(const patch of [{architecture:'x86_64'},{baseConstraint:'foxhole-openwrt-client=1.0.4-r1'},
+  {packages:[{...prepared.packages[0],sha256:sha('other')}]},{packages:[]}])
+  assert.throws(()=>model.enrollment(expected,null,{...prepared,...patch}));
+ const overlay=overlayFor(expected);
+ assert.equal(model.enrollment({...expected,overlay},{...active,version:overlay.baseVersion,baseSha256:overlay.baseSha256},null),true);
+});
+test('persistent native fetch input requires its selected release digest and actual ELF architecture',()=>{
+ const expected=descriptor(),elf=Buffer.alloc(64);elf.write('\x7fELF');elf[4]=2;elf[5]=1;elf[18]=183;
+ const bytes=elf.toString('latin1'),digest={sha256:value=>sha(value)};
+ const installer=body=>actualFunction('install',{parents:()=>{},raw:path=>path=='descriptor'?JSON.stringify(expected):
+  path=='pem'?'public signer':path=='fetch'?body:(()=>{throw Error('native-admitted');})(),
+  model,fs:{lstat:()=>null},MARKER:'/tmp/foxhole-ram-active.json',actual_platform:()=>{},digest,TOOLS:['foxhole-ram-fetch'],FETCH:'foxhole-ram-fetch',
+  ord:(value,at)=>value.charCodeAt(at),fail:()=>{throw Error('rejected');}});
+ assert.throws(()=>installer(bytes)('/source','descriptor','pem','','fetch','',sha('other')),/rejected/);
+ const wrongArch=Buffer.from(elf);wrongArch[18]=62;const wrongBytes=wrongArch.toString('latin1');
+ assert.throws(()=>installer(wrongBytes)('/source','descriptor','pem','','fetch','',sha(wrongBytes)),/rejected/);
+ assert.throws(()=>installer(bytes)('/source','descriptor','pem','','fetch','',sha(bytes)),/native-admitted/);
+});
+test('boot network recovery retries transient failures within a fixed budget and never retries failed security checks',()=>{
+ assert.equal(model.retryable_download('Connection timed out',4,1),true);
+ assert.equal(model.retryable_download('Capture deadline elapsed',124,5),true);
+ for(const [log,code,attempt] of [['',4,6],['',0,1],['',5,1],['SSL error',4,1],['certificate rejected',4,1],
+  ['Redirected to /a on host',4,1],['HTTP error 404',4,1],['RAM fetch refused a redirect before connection',4,1]])
+  assert.equal(model.retryable_download(log,code,attempt),false);
+ const removed=[],receipts=[],waits=[];let calls=0;
+ const fetch=actualFunction('fetch_artifact',{model,memory:()=>{},capture:()=>++calls==1?
+  {code:4,path:'/owned/first',bytes:5,stderr:'Connection timed out'}:
+  {code:0,path:'/owned/final',bytes:1000,stderr:'FoxHole HTTPS-only fetch v1'},
+  replace:(path,value)=>receipts.push(value),fs:{unlink:path=>{removed.push(path);return true;}},
+  digest:{sha256:sha},sleep:ms=>{waits.push(ms);return true;},fail:()=>{throw Error('rejected');}});
+ assert.equal(fetch(descriptor().artifact,descriptor(),'bank').path,'/owned/final');
+ assert.deepEqual(removed,['/owned/first']);assert.deepEqual(waits,[15000]);assert.equal(receipts[0].attempt,1);
+ const init=read('tools/ram-bootstrap.init');assert.match(init,/USE_PROCD=1/);assert.doesNotMatch(init,/respawn|umount/);
 });
 test('rollback removes only actual own binds and restarts no VPN profile snapshot',()=>{
  const events=[],journal={mounted:[{target:'/one'},{target:'/two'}],created:[],starting:false,markerWritten:false};
