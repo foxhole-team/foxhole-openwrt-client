@@ -1,5 +1,15 @@
 <h1 align="center">FoxHole OpenWrt</h1>
 
+<a id="whats-new"></a>
+
+> **🆕 What's new - 1.0.4 Beta**
+>
+> - Added a Settings viewer for package logs, kernel out-of-memory events and the last recorded FoxHole Core state.
+> - Reduced memory use while processing retained traffic history.
+> - Fixed RAM-module downloads and documented the prepared RAM-recovery components.
+>
+> Persistent bootstrap enrollment remains disabled. Cold-boot recovery is not qualified; the custom ELF library-path admission issue remains unresolved.
+
 <div align="center">
 
 VPN profiles, routing rules and a simple panel for OpenWrt routers.
@@ -38,15 +48,6 @@ connections. Compact installations use a separate client module for each selecte
 
 <p align="center"><a href="#quickstart">Get started</a> · <a href="#features">Features</a> · <a href="#details">Details</a> · <a href="#whats-new">What's new</a></p>
 
-<a id="whats-new"></a>
-
-> **🆕 What's new - 1.0.4 Beta**
->
-> - Added a Settings viewer for package logs, kernel out-of-memory events and the last recorded FoxHole Core state.
-> - Reduced memory use while processing retained traffic history.
-> - Fixed RAM-module downloads and documented the prepared RAM-recovery components.
->
-> Persistent bootstrap enrollment remains disabled. Cold-boot recovery is not qualified; the custom ELF library-path admission issue remains unresolved.
 
 <a id="features"></a>
 

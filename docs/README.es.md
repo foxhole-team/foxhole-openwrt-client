@@ -1,5 +1,15 @@
 <h1 align="center">FoxHole OpenWrt</h1>
 
+<a id="whats-new"></a>
+
+> **🆕 Novedades - 1.0.4 Beta**
+>
+> - Se añadió una vista de los registros del paquete, los eventos de falta de memoria del kernel y el último estado registrado de FoxHole Core.
+> - Se redujo el uso de memoria al procesar el historial de tráfico conservado.
+> - Se corrigieron las descargas de módulos en RAM y se documentaron los componentes preparados para la recuperación en RAM.
+>
+> La activación permanente del bootstrap sigue deshabilitada. La recuperación tras un arranque en frío no está validada; sigue pendiente el problema de comprobación de la ruta de las bibliotecas ELF.
+
 <div align="center">
 
 Perfiles VPN, reglas de enrutamiento y un panel sencillo para routers OpenWrt.
@@ -38,15 +48,6 @@ Las instalaciones compactas usan un módulo cliente por protocolo seleccionado. 
 
 <p align="center"><a href="#quickstart">Empezar</a> · <a href="#features">Funciones</a> · <a href="#details">Detalles</a> · <a href="#whats-new">Novedades</a></p>
 
-<a id="whats-new"></a>
-
-> **🆕 Novedades - 1.0.4 Beta**
->
-> - Se añadió una vista de los registros del paquete, los eventos de falta de memoria del kernel y el último estado registrado de FoxHole Core.
-> - Se redujo el uso de memoria al procesar el historial de tráfico conservado.
-> - Se corrigieron las descargas de módulos en RAM y se documentaron los componentes preparados para la recuperación en RAM.
->
-> La activación permanente del bootstrap sigue deshabilitada. La recuperación tras un arranque en frío no está validada; sigue pendiente el problema de comprobación de la ruta de las bibliotecas ELF.
 
 <a id="features"></a>
 

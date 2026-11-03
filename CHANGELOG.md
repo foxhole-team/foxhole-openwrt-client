@@ -2,29 +2,29 @@
 
 ## 1.0.4 Beta
 
-- Добавлен просмотр журналов пакета, событий нехватки памяти и последнего сохранённого состояния FoxHole Core.
-- Снижено потребление оперативной памяти при обработке истории трафика.
-- Исправлена загрузка RAM-модулей и обновлена документация по подготовленным компонентам восстановления RAM-установки.
+- Added a view of package logs, kernel out-of-memory events, and the last recorded FoxHole Core state.
+- Reduced memory use when processing traffic history.
+- Fixed RAM-module downloads and updated documentation for the prepared RAM-installation recovery components.
 
-Постоянная активация bootstrap не выполняется. Восстановление после холодной загрузки пока не подтверждено; остаётся проблема проверки пути к ELF-библиотекам.
+Persistent bootstrap activation is not performed. Recovery after a cold boot is not yet verified; the ELF library-path check remains unresolved.
 
 ## 1.0.3 Beta
 
-- Исправлена проверка компактного установочного архива на OpenWrt.
-- Исправлена проверка штатной ссылки на сертификаты при подготовке восстановления RAM-пакета.
-- Добавлен код завершения VPN-процесса в диагностику разрывов соединения.
-- Исправлены ссылки на VPN-модули для обновлений клиента OpenWrt.
+- Fixed verification of the compact installation archive on OpenWrt.
+- Fixed verification of the standard certificate symlink when preparing RAM-package recovery.
+- Added the VPN process exit code to connection-drop diagnostics.
+- Fixed VPN module links for OpenWrt client updates.
 
 ## 1.0.2 Beta
 
-- Исправлены доступ к API из локальной сети и работа веб-интерфейса.
-- Исправлены графики и отображение настроек.
-- Добавлены резервное копирование и восстановление настроек, VPN-профилей и клиентов.
-- Добавлен просмотр сопряжённых мобильных устройств.
-- PIN увеличен до 6 цифр, добавлена блокировка после неверных попыток ввода. Смена PIN доступна через LuCI.
-- Поддерживается сопряжение до 10 мобильных устройств.
-- Исправлена проверка данных релиза с GitHub.
-- Доработаны уведомления, окна подтверждения, справка и подсказки.
+- Fixed LAN access to the API and operation of the web interface.
+- Fixed charts and settings display.
+- Added backup and restore for settings, VPN profiles and clients.
+- Added a view of paired mobile devices.
+- Extended the PIN to six digits and added lockout after incorrect attempts. PIN changes are available through LuCI.
+- Added support for pairing up to 10 mobile devices.
+- Fixed verification of release data from GitHub.
+- Improved notifications, confirmation dialogs, the help section and tips.
 
 ## 1.0.1 Public Beta - 2026-10-30
 
