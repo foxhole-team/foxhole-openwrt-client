@@ -73,6 +73,9 @@ exit 0
 `);
   const hysteria = await executable('hysteria', `
 printf '%s\n' "$$" > "$FH_TEST_STARTED"
+if [ "$FH_TEST_CAPTURE_MEMORY" = 1 ]; then
+  printf 'child_env GOMEMLIMIT=%s GOGC=%s\n' "\${GOMEMLIMIT:-unset}" "\${GOGC:-unset}" >> "$FH_TEST_LOG"
+fi
 if [ -n "$FH_TEST_CHILD_STATUS" ]; then
   while [ ! -f "$FH_TEST_DISCONNECT" ]; do /bin/sleep 0.01; done
   exit "$FH_TEST_CHILD_STATUS"
@@ -102,11 +105,14 @@ exec /bin/sleep "$@"
   await writeFile(script, adapted, { mode: 0o700 });
   supervisor = spawn('/bin/sh', [script], {
     detached: true, stdio: 'ignore',
-    env: { ...process.env, PATH: directory + ':' + process.env.PATH,
+    env: { ...process.env,
+      ...(options.captureMemory ? { GOMEMLIMIT: '128MiB', GOGC: '400' } : {}),
+      PATH: directory + ':' + process.env.PATH,
       FH_TEST_LOG: log, FH_TEST_MODE: mode, FH_TEST_PREPARE: prepare,
       FH_TEST_RELEASE: release, FH_TEST_SLEEPER: sleeper,
       FH_TEST_STARTED: started, FH_TEST_ENGINE: options.engine ?? 'hysteria',
       FH_TEST_CHILD_STATUS: options.childStatus ?? '',
+      FH_TEST_CAPTURE_MEMORY: options.captureMemory ? '1' : '',
       FH_TEST_DISCONNECT: disconnect,
       FH_TEST_LOGGER_STATUS: options.loggerStatus ?? '0' }
   });
@@ -123,6 +129,19 @@ exec /bin/sleep "$@"
     sleeper: async () => Number(await readOptional(sleeper))
   };
 }
+
+test('Hysteria client inherits the server-aligned memory budget and still stops cleanly',
+  { timeout: 5000 }, async (t) => {
+    const fixture = await harness(t, 'tunnel', 'success', { tun: true, captureMemory: true });
+    await until(async () => (await fixture.events()).includes('apply connected'));
+    await until(async () => (await fixture.events()).some((line) => line.startsWith('child_env ')));
+    assert.deepEqual((await fixture.events()).filter((line) => line.startsWith('child_env ')), [
+      'child_env GOMEMLIMIT=32MiB GOGC=75'
+    ]);
+    fixture.supervisor.kill('SIGTERM');
+    assert.deepEqual(await fixture.exited, { code: 0, signal: null });
+    assert.equal((await fixture.events()).at(-1), 'down runtime_stopped');
+  });
 
 for (const childStatus of ['0', '7']) {
   test(`unexpected running exit ${childStatus} records one bounded diagnostic`,

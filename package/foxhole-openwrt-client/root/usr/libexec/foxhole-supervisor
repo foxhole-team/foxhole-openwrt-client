@@ -65,7 +65,7 @@ if [ "$engine" = core ]; then
 		--state /tmp/foxhole/core-state.json --interface foxhole0 \
 		>/dev/null 2>&1 &
 else
-	/usr/bin/hysteria client -c "$config" >/dev/null 2>&1 &
+	GOMEMLIMIT=32MiB GOGC=75 /usr/bin/hysteria client -c "$config" >/dev/null 2>&1 &
 fi
 child=$!
 

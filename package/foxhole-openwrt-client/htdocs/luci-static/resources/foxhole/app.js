@@ -23,8 +23,8 @@ const storage = {
   get(key) { try { return localStorage.getItem(`foxhole.${key}`); } catch { return null; } },
   set(key, value) { try { localStorage.setItem(`foxhole.${key}`, value); } catch {} }
 };
-const supportedLanguages = ['en', 'ru', 'de', 'fr', 'es', 'ja', 'zh'];
-const languageFlags = { ru: 'RU', en: 'GB', ja: 'JP', de: 'DE', fr: 'FR', es: 'ES', zh: 'CN' };
+const supportedLanguages = ['en', 'ru', 'de', 'fr', 'es', 'ja', 'zh', 'ar'];
+const languageFlags = { ru: 'RU', en: 'GB', ja: 'JP', de: 'DE', fr: 'FR', es: 'ES', zh: 'CN', ar: 'SA' };
 const dictionary = {};
 let language = supportedLanguages.includes(storage.get('language')) ? storage.get('language') : 'ru';
 let preferredTheme = storage.get('theme') === 'light' ? 'light' : 'dark';
@@ -506,6 +506,7 @@ function appearance(settings, renderEntities = true) {
   language = next.language;
   preferredTheme = next.theme;
   document.documentElement.lang = language === 'zh' ? 'zh-CN' : language;
+  document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr';
   document.documentElement.classList.toggle('theme-light',
     preferredTheme === 'light');
   document.documentElement.classList.toggle('theme-dark',
@@ -2315,8 +2316,10 @@ document.addEventListener('keydown', (event) => {
     event.preventDefault();
     const tabs = $$('[data-network-tab]');
     const index = tabs.indexOf(event.target);
+    const step = (event.key === 'ArrowRight' ? 1 : -1) *
+      (document.documentElement.dir === 'rtl' ? -1 : 1);
     const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1
-      : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+      : (index + step + tabs.length) % tabs.length;
     tabs[next].click();
     tabs[next].focus();
   }

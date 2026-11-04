@@ -190,8 +190,10 @@ export class PopupController {
     menu.classList.toggle('is-above', isAbove);
     const top = isAbove ? triggerRect.top - gap - height
       : triggerRect.bottom + gap;
+    const inlineEdge = this.root.ownerDocument?.documentElement?.dir === 'rtl'
+      ? anchor.left : anchor.right - width;
     const left = Math.max(viewportLeft + edge,
-      Math.min(anchor.right - width, viewportRight - width - edge));
+      Math.min(inlineEdge, viewportRight - width - edge));
     menu.style.top = `${top - origin.top}px`;
     menu.style.left = `${left - origin.left}px`;
   }

@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=foxhole-openwrt-client
-PKG_VERSION:=1.0.4
+PKG_VERSION:=1.0.5
 PKG_RELEASE:=1
 PKG_LICENSE:=GPL-3.0-or-later GPL-2.0-only Zlib
 PKG_MAINTAINER:=FoxHole Team

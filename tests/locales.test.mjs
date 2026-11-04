@@ -5,7 +5,7 @@ import test from 'node:test';
 import { panelRoot, read, root } from './helpers.mjs';
 
 const en = JSON.parse(await read(`${panelRoot}/locales/en.json`));
-const languages = ['ru', 'en', 'ja', 'de', 'fr', 'es', 'zh'];
+const languages = ['ru', 'en', 'ja', 'de', 'fr', 'es', 'zh', 'ar'];
 const locales = Object.fromEntries(await Promise.all(languages.map(async language =>
   [language, JSON.parse(await read(`${panelRoot}/locales/${language}.json`))])));
 const ru = locales.ru;
@@ -82,4 +82,19 @@ test('language picker, normalization and backend accept every shipped locale', a
     assert.ok(frontend.includes(`'${language}'`), language);
     assert.ok(backend.includes(`'${language}'`), language);
   }
+});
+
+
+test('Arabic has an endonym, RTL root and preserved technical-value direction', async () => {
+  assert.equal(locales.ar['language.ar'], 'العربية');
+  const app = await read(`${panelRoot}/app.js`);
+  const css = await read(`${panelRoot}/app.css`);
+  const shell = await read(`${panelRoot}/shell.html`);
+  assert.match(app, /document\.documentElement\.dir = language === 'ar' \? 'rtl' : 'ltr'/);
+  assert.match(shell, /<option value="ar" data-i18n="language.ar"/);
+  assert.match(css, /margin-inline-start:/);
+  assert.match(css, /\.config-input[\s\S]*direction: ltr;/);
+  assert.match(css, /html\[lang="ar"\][\s\S]*font-family: system-ui, sans-serif/);
+  const model = await read('package/foxhole-openwrt-client/root/usr/share/foxhole/model.uc');
+  assert.match(model, /\['ru', 'en', 'ja', 'de', 'fr', 'es', 'zh', 'ar'\]/);
 });

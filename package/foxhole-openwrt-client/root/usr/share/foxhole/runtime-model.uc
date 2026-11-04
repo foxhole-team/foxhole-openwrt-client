@@ -6,6 +6,13 @@ const RULE_PRIORITY = 10000;
 const MARK = '0x40000000';
 const MARK_MASK = '0x40000000';
 const PROXY_LISTEN = '127.0.0.1:17890';
+const CLIENT_QUIC_RECEIVE_DEFAULTS = {
+ initStreamReceiveWindow: 1048576,
+ maxStreamReceiveWindow: 2097152,
+ initConnReceiveWindow: 2097152,
+ maxConnReceiveWindow: 8388608
+};
+
 
 const BYPASS4 = [
 	'0.0.0.0/8', '10.0.0.0/8', '100.64.0.0/10',
@@ -88,11 +95,21 @@ export function active_server(state) {
 	return null;
 };
 
+function client_quic_defaults(config) {
+ let quic = config.quic;
+ if (quic != null && type(quic) != 'object') return;
+ quic ??= {};
+ for (let key in keys(CLIENT_QUIC_RECEIVE_DEFAULTS))
+  if (exists(quic, key) && !(type(quic[key]) == 'int' && quic[key] == 0)) return;
+ config.quic = { ...quic, ...CLIENT_QUIC_RECEIVE_DEFAULTS };
+};
+
 export function hysteria_config(state, resolved, options) {
 	let server = active_server(state);
 	if (!server) fail('server_not_found');
 	let parsed = model.parse_config(server.config);
 	let config = json(sprintf('%J', parsed.config));
+	client_quic_defaults(config);
 	if (!options?.preserveSocks || !config.socks5)
 		config.socks5 = { listen: '127.0.0.1:17891' };
 	delete config.http;

@@ -428,5 +428,6 @@
   "logs.phase_connected": "Подключено",
   "logs.phase_blocked": "Заблокировано",
   "logs.phase_disconnected": "Отключено",
-  "logs.phase_error": "Ошибка"
+  "logs.phase_error": "Ошибка",
+  "language.ar": "العربية"
 }

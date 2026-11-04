@@ -258,3 +258,18 @@ test('popup measures content once while viewport positioning stays live', (t) =>
   controller.invalidate(popup);
   assert.deepEqual(measurements, { width: 2, height: 2 });
 });
+
+
+test('Arabic popup aligns to the logical end and stays inside the viewport', (t) => {
+  const { root, menu, popup, trigger, controller } = setup(t,
+    { left: 100, right: 200, top: 300, bottom: 332 });
+  root.ownerDocument = { documentElement: { dir: 'rtl' } };
+  menu.matches = (selector) => selector === '.setting-picker-menu';
+  controller.floating = { popup, trigger, menu, naturalWidth: 220, naturalHeight: 78 };
+  controller.place(popup, trigger, menu);
+  assert.equal(menu.style.left, '100px');
+  assert.equal(menu.style.width, '220px');
+  root.ownerDocument.documentElement.dir = 'ltr';
+  controller.place(popup, trigger, menu);
+  assert.equal(menu.style.left, '8px');
+});

@@ -428,5 +428,6 @@
   "logs.phase_connected": "Connected",
   "logs.phase_blocked": "Blocked",
   "logs.phase_disconnected": "Disconnected",
-  "logs.phase_error": "Error"
+  "logs.phase_error": "Error",
+  "language.ar": "العربية"
 }

@@ -419,7 +419,7 @@ export function validate_settings(payload, resolve_mac) {
 	payload.countries ??= [];
 	payload.devices ??= [];
 	payload.sites ??= [];
-	if (index(['ru', 'en', 'ja', 'de', 'fr', 'es', 'zh'], settings.language) < 0 ||
+	if (index(['ru', 'en', 'ja', 'de', 'fr', 'es', 'zh', 'ar'], settings.language) < 0 ||
 	    index(['all', 'selected'], settings.localScope) < 0 ||
 	    index(['dark', 'light'], settings.theme) < 0)
 		fail('invalid_settings');

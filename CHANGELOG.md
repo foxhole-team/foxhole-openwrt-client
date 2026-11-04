@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.5 Beta
+
+- Added Arabic language and RTL support and completed log-panel translations.
+
+- Bound the outbound Hysteria Go memory budget to 32 MiB with GOGC 75.
+- Defer live log collectors when available RAM is below 32 MiB, while reporting current runtime metadata.
+- Bound generated Hysteria client receive windows to 1–2 MiB per stream and 2–8 MiB per connection.
+
 ## 1.0.4 Beta
 
 - Added a view of package logs, kernel out-of-memory events, and the last recorded FoxHole Core state.
