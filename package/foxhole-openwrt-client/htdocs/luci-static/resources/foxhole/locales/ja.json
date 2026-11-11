@@ -361,6 +361,7 @@
   "error.update_router_unavailable": "ルーターを利用できません。再接続して状態を取得してください。",
   "error.update_recovery_required": "復旧が必要です。更新を繰り返さないでください。",
   "error.update_invalid_request": "更新リクエストは拒否されました。",
+  "updates.core_up_to_date": "Core モジュールは最新です。パッケージは未確認です",
   "updates.up_to_date": "最新です",
   "error.update_legacy_connection_active": "まずルーターVPNを切断してください",
   "language.ja": "日本語",

@@ -134,6 +134,35 @@ function verify_mount(row,readonly) {
   (source.mode&0o022)||(readonly&&index(split(mounted.options,','),'ro')<0))fail();
  if(row.type=='file'&&(source.nlink!=1||digest.sha256(raw(row.source,8388608,true))!=row.sha256))fail();
 };
+export function core_context() {
+ let marker_raw=raw(MARKER,4096,false),marker=json(marker_raw);
+ if(marker.schema!=1 || marker.storage!='RAM' || marker.phase!='active' ||
+  !model.stage(marker.stage) || !model.sha(marker.baseSha256) ||
+  !model.sha(marker.stageDbSha256) || !model.ledger_path(marker.mountLedger))
+  fail();
+ let root=marker.stage+'/root';
+ let database=raw(root+'/lib/apk/db/installed',4194304,false);
+ if(digest.sha256(database)!=marker.stageDbSha256)fail();
+ let ledger_raw=raw(marker.mountLedger,131072,false);
+ let ledger=model.ledger(json(ledger_raw),marker),rows=mount_rows();
+ for(let row in ledger.mounts) {
+  verify_mount(row,true);
+  for(let mounted in rows)
+   if(index(mounted.target,row.target+'/')==0)fail();
+ }
+ ram_backing(rows,root,0);
+ for(let row in rows)if(index(row.target,root+'/')==0)fail();
+ let architecture=trim(raw('/etc/apk/arch',128,false));
+ let packages=json(native('query',[root,architecture],1048576));
+ let bases=filter(packages,row=>row.name==BASE);
+ if(length(bases)!=1 || bases[0].arch!='noarch' ||
+  !update_model.version(bases[0].version) ||
+  bases[0].version!=marker.version)fail();
+ model.retained_packages(packages,bases[0].version);
+ return {storage:'RAM',version:bases[0].version,stage:marker.stage,
+  baseSha256:marker.baseSha256,markerSha256:digest.sha256(marker_raw),
+  stageDbSha256:marker.stageDbSha256,ledgerSha256:digest.sha256(ledger_raw)};
+};
 function verify_payload(root,document) {
  for(let folder in document.paths) {
   let path=root+(length(folder.name)?'/'+folder.name:'');parents(path);let s=fs.lstat(path);

@@ -33,6 +33,10 @@ let registry={read:()=>copy(fixture_registry),write:value=>{fixture_registry=cop
  activeConfigSha256:null,activeProfileId:fixture_state.activeServerId,activeEngineId:null,stopIntent:ctx_stop,
  flashAvailableBytes:1073741824,ramAvailableBytes:1073741824})};
 let native={decode:raw=>json(raw),policy:(path,version)=>({}),target:()=>({}),selected_modules:value=>[]};
+let core_upload={busy:()=>false};
+let core_updates={recent_current:value=>null};
+let core_catalog={current:()=>null,highest:()=>null};
+let backup_service={guard:()=>{}};
 let engines={worker_current:(worker,process,boot)=>false};
 let adapter={};
 function system(argv,timeout){push(calls,argv);return 0;};

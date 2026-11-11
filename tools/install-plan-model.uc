@@ -27,6 +27,13 @@ function upstreamUrl(value, url) {
   (length(parts) == 11 && parts[8] == 'kmods' && name(parts[9]) && parts[10] == 'packages.adb');
 };
 
+function coreIndexBinding(repo, item) {
+ if (index(repo.sourceUrl, '/foxhole-core/') < 0) return true;
+ let release = match(repo.sourceUrl, /\/releases\/download\/v([^/]+)\/engines\.adb$/);
+ let package_version = match(item.version, /^(.*)-r[0-9]+$/);
+ return release && package_version && release[1] == package_version[1] &&
+  match(item.name, /^foxcore-engine-(hysteria2|vless|wireguard)-(flash|ram)-[a-f0-9]{64}$/);
+};
 let compact_authentication;
 export function authentication(value) {
  if (value.schema == 2 && value.kind == 'compact-selected-budget-v1') return compact_authentication(value);
@@ -45,7 +52,8 @@ export function authentication(value) {
       index(split(item.sourceUrl, '/'), '.') >= 0 ||
       index(split(item.sourceUrl, '/'), '..') >= 0 ||
       (item.role == 'foxhole' && !match(item.sourceUrl,
-       /^https:\/\/github\.com\/foxhole-team\/foxhole-openwrt-client\/releases\/download\/v[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9.-]+)?\/[A-Za-z0-9][A-Za-z0-9._-]{0,159}\.adb$/)) ||
+       /^https:\/\/github\.com\/foxhole-team\/(foxhole-openwrt-client|foxhole-core)\/releases\/download\/v[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9.-]+)?\/[A-Za-z0-9][A-Za-z0-9._-]{0,159}\.adb$/)) ||
+      (index(item.sourceUrl, '/foxhole-core/') >= 0 && !match(item.sourceUrl, /\/engines\.adb$/)) ||
       (item.role == 'upstream' && !upstreamUrl(value, item.sourceUrl)) ||
       type(item.trustKeyFiles) != 'array' || !length(item.trustKeyFiles) ||
       length(item.trustKeyFiles) > 16 || value.filesSha256?.[item.file] != item.sha256) reject();
@@ -87,6 +95,7 @@ export function authentication(value) {
   if (!record || !repo || bound[item.file] || !hash(item.packageIdentity) ||
       item.name != record.name || item.version != record.version || item.architecture != record.arch ||
       ((repo.role == 'foxhole') != (index(ownPackages, record.name) >= 0))) reject();
+  if (!coreIndexBinding(repo, record)) reject();
   bound[item.file] = true;
  }
  if (length(keys(bound)) != length(value.packages) ||
@@ -129,9 +138,10 @@ function compact_ids(requested) {
 function compact_release(item) {
  if (type(item) != 'object' || type(item.indexUrl) != 'string') compact_reject();
  let reference = match(item.indexUrl,
-  /^(https:\/\/github\.com\/foxhole-team\/foxhole-openwrt-client\/releases\/download\/v((0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*))\/)engines\.adb$/);
+  /^(https:\/\/github\.com\/foxhole-team\/(foxhole-openwrt-client|foxhole-core)\/releases\/download\/v((0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*))\/)engines\.adb$/);
  if (!reference) compact_reject();
- return { base: reference[1], version: reference[2] };
+ if (reference[2] == 'foxhole-core' && item.version != reference[3]) compact_reject();
+ return { base: reference[1], version: reference[3] };
 };
 function compact_client(value, architecture) {
  compact_exact(value, ['id', 'storage', 'entry', 'producer', 'capabilities', 'slotManifest']);
@@ -172,7 +182,7 @@ export function compact_selection(catalog, architecture, release, requested, dev
    'engineCatalog', 'packageUniverse', 'clients', 'server']);
   if (type(value.clients) != 'array' || !length(value.clients) || length(value.clients) > 24) compact_reject();
   for (let client in value.clients) {
-   let current_release = compact_release(client?.entry).version;
+   let current_release = compact_release(client?.entry).base;
    if (router_release != null && router_release != current_release) compact_reject();
    router_release = current_release;
   }
@@ -465,7 +475,8 @@ compact_authentication = function(value) {
       index(split(item.sourceUrl, '/'), '.') >= 0 ||
       index(split(item.sourceUrl, '/'), '..') >= 0 ||
       (item.role == 'foxhole' && !match(item.sourceUrl,
-       /^https:\/\/github\.com\/foxhole-team\/foxhole-openwrt-client\/releases\/download\/v[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9.-]+)?\/[A-Za-z0-9][A-Za-z0-9._-]{0,159}\.adb$/)) ||
+       /^https:\/\/github\.com\/foxhole-team\/(foxhole-openwrt-client|foxhole-core)\/releases\/download\/v[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9.-]+)?\/[A-Za-z0-9][A-Za-z0-9._-]{0,159}\.adb$/)) ||
+      (index(item.sourceUrl, '/foxhole-core/') >= 0 && !match(item.sourceUrl, /\/engines\.adb$/)) ||
       (item.role == 'upstream' && !upstreamUrl(value, item.sourceUrl)) ||
       type(item.trustKeyFiles) != 'array' || !length(item.trustKeyFiles) ||
       length(item.trustKeyFiles) > 16 || value.filesSha256?.[item.file] != item.sha256) reject();
@@ -507,6 +518,7 @@ compact_authentication = function(value) {
   if (!record || !repo || bound[item.file] || !hash(item.packageIdentity) ||
       item.name != record.name || item.version != record.version || item.architecture != record.arch ||
       ((repo.role == 'foxhole') != (index(allowed_own, record.name) >= 0))) reject();
+  if (!coreIndexBinding(repo, record)) reject();
   bound[item.file] = true;
  }
  if (length(keys(bound)) != length(value.packages) ||

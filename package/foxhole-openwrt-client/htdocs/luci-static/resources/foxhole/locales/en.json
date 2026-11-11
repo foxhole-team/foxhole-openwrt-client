@@ -361,6 +361,7 @@
   "error.update_router_unavailable": "The router is unavailable. Reconnect and read status.",
   "error.update_recovery_required": "Recovery is required. Do not repeat the update.",
   "error.update_invalid_request": "The update request was refused.",
+  "updates.core_up_to_date": "Core modules are up to date; package check pending",
   "updates.up_to_date": "Up to date",
   "error.update_legacy_connection_active": "Disconnect the router VPN before updating",
   "language.ja": "日本語",

@@ -1,10 +1,10 @@
-import { UpdatePanel } from './update-panel.js?v=1.0.4-dev-logs1';
-import { EnginePanel } from './engine-panel.js?v=1.0.4-dev-logs1';
-import { BackupPanel } from './backup-panel.js?v=1.0.4-dev-logs1';
-import { LogsPanel } from './logs-panel.js?v=1.0.4-dev-logs1';
-import { PairingPanel } from './pairing-panel.js?v=1.0.4-dev-logs1';
-import { hasHost, request, cancelPending, PanelError } from './bridge.js?v=1.0.4-dev-logs1';
-import { Charts, formatBytes, setCountryLabel } from './charts.js?v=1.0.4-dev-logs1';
+import { UpdatePanel, initializeUpdatePolicy } from './update-panel.js?v=1.0.6';
+import { EnginePanel } from './engine-panel.js?v=1.0.6';
+import { BackupPanel } from './backup-panel.js?v=1.0.6';
+import { LogsPanel } from './logs-panel.js?v=1.0.6';
+import { PairingPanel } from './pairing-panel.js?v=1.0.6';
+import { hasHost, request, cancelPending, PanelError } from './bridge.js?v=1.0.6';
+import { Charts, formatBytes, setCountryLabel } from './charts.js?v=1.0.6';
 import {
   clientDeviceIcon, clientDeviceType, clone, countryCodes,
   countryFlagPath, finite, maskIpv4, maskMac, networkDeviceIcon,
@@ -12,10 +12,10 @@ import {
   randomId,
   serverCountryCode,
   validAddress
-} from './frontend-model.js?v=1.0.4-dev-logs1';
+} from './frontend-model.js?v=1.0.6';
 import {
   ModalFlow, PopupController, waitForMotion
-} from './ui-controller.js?v=1.0.4-dev-logs1';
+} from './ui-controller.js?v=1.0.6';
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -31,6 +31,7 @@ let preferredTheme = storage.get('theme') === 'light' ? 'light' : 'dark';
 let preferredPlainHeadings = storage.get('plainHeadings') === '1';
 let token = null;
 let pinSetupRequired = false;
+let autoUpdateSetupEligible = false;
 const LICENSE_VERSION = 1;
 let licenseRequired = false;
 let licenseRequiredVersion = LICENSE_VERSION;
@@ -1646,18 +1647,31 @@ async function savePin() {
     return;
   }
   const setup = pinSetupRequired;
+  const setupUpdates = autoUpdateSetupEligible;
+  const autoUpdates = $('[data-initial-auto-update]')?.checked === true;
   let saved = false;
+  let policyError = null;
   await operation(async () => {
     const result = await api('pin.change', { newPin: first,
       licenseAccepted: licenseRequired && accepted, licenseVersion: licenseRequired && accepted ? LICENSE_VERSION : 0 });
     if (typeof result.token !== 'string' || !/^[a-f0-9]{64}$/.test(result.token)) throw new PanelError('unavailable');
     token = result.token;
     pinSetupRequired = false;
+    autoUpdateSetupEligible = false;
     licenseRequired = false;
     $('[data-pin-change-form]').reset();
     saved = true;
+    if (setupUpdates && result.autoUpdateSetupEligible === true) {
+      try { await initializeUpdatePolicy(true, autoUpdates, api); }
+      catch (error) { policyError = error; }
+    }
   });
   if (!saved) return;
+  if (policyError) {
+    toast(errorText(policyError), 'error');
+    await openView('updates', {}, true);
+    return;
+  }
   toast(t('pin_change.success'));
   if (setup) {
     await openView('help', {}, true);
@@ -1666,6 +1680,9 @@ async function savePin() {
 }
 
 function renderLicenseGate() {
+  $$('[data-auto-update-setup]').forEach(node => { node.hidden = !autoUpdateSetupEligible; });
+  const updates = $('[data-initial-auto-update]');
+  if (updates) updates.disabled = !autoUpdateSetupEligible;
   $$('[data-license-setup]').forEach(node => { node.hidden = !licenseRequired; });
   const accept = $('[data-license-accept]');
   if (accept) {
@@ -1907,6 +1924,7 @@ function localLock() {
   epoch += 1;
   token = null;
   pinSetupRequired = false;
+  autoUpdateSetupEligible = false;
   licenseRequired = false;
   licenseRequiredVersion = LICENSE_VERSION;
   state = null;
@@ -1947,6 +1965,7 @@ async function unlock(event) {
     clearTimeout(pinCooldownTimer);
     token = result.token;
     pinSetupRequired = result.pinChangeRequired === true;
+    autoUpdateSetupEligible = result.autoUpdateSetupEligible === true && pinSetupRequired;
     licenseRequired = result.licenseRequired === true || (result.licenseRequired == null && pinSetupRequired);
     licenseRequiredVersion = result.licenseVersion == null ? LICENSE_VERSION : result.licenseVersion;
     if (licenseRequired && licenseRequiredVersion !== LICENSE_VERSION) throw new PanelError('unavailable');

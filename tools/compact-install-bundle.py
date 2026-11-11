@@ -156,12 +156,12 @@ def assets(root: Path, catalog: dict) -> set[str]:
     return names
 
 
-def catalog_release_version(entries: dict) -> str:
+def catalog_release_version(entries: dict, with_repository: bool = False):
     if not isinstance(entries, dict) or not entries:
         raise ValueError('Nonempty engine catalog required')
     versions = set()
     number = r'(?:0|[1-9][0-9]*)'
-    pattern = (r'(https://github\.com/foxhole-team/foxhole-openwrt-client/releases/download/v('
+    pattern = (r'(https://github\.com/foxhole-team/(foxhole-openwrt-client|foxhole-core)/releases/download/v('
                + number + r'\.' + number + r'\.' + number + r')/)engines\.adb')
     for entry in entries.values():
         if not isinstance(entry, dict):
@@ -174,10 +174,14 @@ def catalog_release_version(entries: dict) -> str:
         filename = name + '-' + version + '.apk'
         if reference is None or NAME.fullmatch(filename) is None or package_url != reference[1] + filename:
             raise ValueError('Canonical engine release references required')
-        versions.add(reference[2])
+        repository = 'core' if reference[2] == 'foxhole-core' else 'openwrt'
+        if repository == 'core' and entry.get('version') != reference[3]:
+            raise ValueError('Core delivery tag differs from its native producer version')
+        versions.add((repository, reference[3]))
     if len(versions) != 1:
-        raise ValueError('One exact router release required for engine catalog')
-    return versions.pop()
+        raise ValueError('One exact delivery repository and release required for engine catalog')
+    repository, version = versions.pop()
+    return (repository, version) if with_repository else version
 
 
 def verify_payloads(root: Path, catalog: dict, apk: str, temporary: Path,
@@ -224,10 +228,12 @@ def verify_payloads(root: Path, catalog: dict, apk: str, temporary: Path,
         raise ValueError('One exact canonical engine-only index required')
     index = temporary / 'engines.adb'; shutil.copyfile(asset(root, next(iter(indexes)), 8388608), index)
     regenerated = temporary / 'actual-engines.json'
+    repository, version = catalog_release_version(entries, with_repository=True)
     native(['python3', str(ROOT / 'tools/build-engine-catalog.py'), '--apk', apk,
             '--public-key', str(root / 'foxhole-openwrt-apk.pem'), '--index', str(index),
             '--packages', *map(str, archives.values()), '--core-commit', core_commit,
-            '--source-sha256', core_source, '--release-version', catalog_release_version(entries),
+            '--source-sha256', core_source, '--release-version', version,
+            '--delivery-repository', repository,
             '--output', str(regenerated)], timeout=600)
     actual = json.loads(regenerated.read_bytes())
     by_key = {(row['id'], row['storage'], row['architecture']): row for row in actual['entries']}

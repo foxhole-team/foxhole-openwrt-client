@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=foxhole-openwrt-client
-PKG_VERSION:=1.0.5
+PKG_VERSION:=1.0.6
 PKG_RELEASE:=1
 PKG_LICENSE:=GPL-3.0-or-later GPL-2.0-only Zlib
 PKG_MAINTAINER:=FoxHole Team
@@ -102,6 +102,7 @@ define Package/foxhole-openwrt-client/install
 	$(INSTALL_BIN) ./root/usr/libexec/foxhole-ram-switch ./root/usr/libexec/foxhole-ram-switch-command $(1)/usr/libexec/
 	$(INSTALL_BIN) ./root/usr/libexec/foxhole-ram-recovery-command $(1)/usr/libexec/
 	$(INSTALL_BIN) ./root/usr/libexec/foxhole-update-job ./root/usr/libexec/foxhole-update-hint $(1)/usr/libexec/
+	$(INSTALL_BIN) ./root/usr/libexec/foxhole-core-update-hint $(1)/usr/libexec/
 	$(INSTALL_BIN) ./root/usr/libexec/foxhole-transaction-stage-v1 ./root/usr/libexec/foxhole-transaction-command-v1 $(1)/usr/libexec/
 	$(INSTALL_BIN) ./root/usr/libexec/foxhole-engine-command ./root/usr/libexec/foxhole-engine-command-v2 ./root/usr/libexec/foxhole-engine-fetch ./root/usr/libexec/foxhole-engine-job $(1)/usr/libexec/
 	$(INSTALL_BIN) ./root/usr/libexec/foxhole-mobile-listen $(1)/usr/libexec/
@@ -150,6 +151,9 @@ define Package/foxhole-openwrt-client/install
 		--arm64-gzip "$(FOXHOLE_TRANSACTION_ARM64_GZIP_INPUT)" \
 		--install-dir "$(1)/usr/share/foxhole"
 	$(INSTALL_DATA) ./root/usr/share/foxhole/update-model.uc ./root/usr/share/foxhole/update-native.uc ./root/usr/share/foxhole/update-service.uc ./root/usr/share/foxhole/update-policy.json $(1)/usr/share/foxhole/
+	$(INSTALL_DATA) ./root/usr/share/foxhole/core-update-model.uc ./root/usr/share/foxhole/core-update-native.uc ./root/usr/share/foxhole/core-update-service.uc ./root/usr/share/foxhole/core-update-transaction.uc $(1)/usr/share/foxhole/
+	$(INSTALL_DATA) ./root/usr/share/foxhole/update-capture.uc $(1)/usr/share/foxhole/
+	$(INSTALL_DATA) ./root/usr/share/foxhole/core-update-upload.uc $(1)/usr/share/foxhole/
 	$(INSTALL_DATA) ./root/usr/share/foxhole/package-operations.uc ./root/usr/share/foxhole/engine-capture.uc ./root/usr/share/foxhole/engine-package-layout.uc ./root/usr/share/foxhole/engine-model.uc ./root/usr/share/foxhole/engine-registry.uc ./root/usr/share/foxhole/engine-service.uc ./root/usr/share/foxhole/engine-catalog.json $(1)/usr/share/foxhole/
 	$(INSTALL_DATA) $(CURDIR)/../../config/foxhole-openwrt-apk.pem $(1)/usr/share/foxhole/
 	if [ -n "$(FOXHOLE_ENGINE_CATALOG_INPUT)" ]; then \

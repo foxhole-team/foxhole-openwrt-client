@@ -361,6 +361,7 @@
   "error.update_router_unavailable": "Роутер недоступен. Подключитесь снова и прочитайте статус.",
   "error.update_recovery_required": "Требуется восстановление. Не запускайте обновление повторно.",
   "error.update_invalid_request": "Запрос обновления отклонён.",
+  "updates.core_up_to_date": "Модули Core актуальны; пакет ещё не проверен",
   "updates.up_to_date": "Установлена актуальная версия",
   "error.update_legacy_connection_active": "Отключите VPN на роутере перед обновлением",
   "language.ja": "日本語",

@@ -34,12 +34,15 @@ Las instalaciones compactas usan un módulo cliente por protocolo seleccionado. 
 
 <a id="whats-new"></a>
 
-> **🆕 Novedades - 1.0.5 Beta**
+> **🆕 Novedades - 1.0.6 Beta**
 >
-> - Se añadió compatibilidad con árabe y RTL y se completaron las traducciones del panel de registros.
-> - Se añadió una vista de los registros del paquete, los eventos de falta de memoria del kernel y el último estado registrado de FoxHole Core.
-> - Se redujo el uso de memoria al procesar el historial de tráfico conservado.
-> - Se corrigieron las descargas de módulos en RAM y se documentaron los componentes preparados para la recuperación en RAM.
+> - Actualización independiente de módulos Core firmados sin reinstalar el paquete OpenWrt.
+> - Transferencia de actualizaciones Core verificadas mediante las apps Android vinculadas cuando el router no puede acceder a GitHub.
+> - Actualizaciones automáticas activadas en la configuración inicial web/Android, con opción de desactivarlas y conservación de los ajustes existentes.
+> - Mejoras en la reversión y en Stop, conservando perfiles y vinculaciones.
+>
+> Apps Android: FoxHole VPN 1.0.5 y Guard 1.0.6 añaden compatibilidad con Android 7 y mejoran el estilo de las notificaciones.
+> FoxHole VPN añade enrutamiento de sitios web; Guard mejora los filtros de enrutamiento de direcciones web.
 >
 > La activación permanente del bootstrap sigue deshabilitada. La recuperación tras un arranque en frío no está validada; sigue pendiente el problema de comprobación de la ruta de las bibliotecas ELF.
 

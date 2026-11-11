@@ -34,12 +34,15 @@ connections. Compact installations use a separate client module for each selecte
 
 <a id="whats-new"></a>
 
-> **🆕 What's new - 1.0.5 Beta**
+> **🆕 What's new - 1.0.6 Beta**
 >
-> - Added Arabic language and RTL support and completed log-panel translations.
-> - Added a Settings viewer for package logs, kernel out-of-memory events and the last recorded FoxHole Core state.
-> - Reduced memory use while processing retained traffic history.
-> - Fixed RAM-module downloads and documented the prepared RAM-recovery components.
+> - Independent signed Core module updates without replacing the OpenWrt package.
+> - Verified Core updates relayed through paired Android apps when the router cannot reach GitHub.
+> - Automatic updates enabled for fresh web/Android setup, with an opt-out and existing settings preserved.
+> - Safer rollback and Stop handling, with profiles and pairings preserved.
+>
+> Android apps: FoxHole VPN 1.0.5 and Guard 1.0.6 add Android 7 support and improve notification styling.
+> FoxHole VPN adds website routing; Guard improves web-address routing filters.
 >
 > Persistent bootstrap enrollment remains disabled. Cold-boot recovery is not qualified; the custom ELF library-path admission issue remains unresolved.
 

@@ -4,7 +4,10 @@ umask 077
 url=${1:?fixed release URL}
 output=${2:?owned private target}
 bytes=${3:?bounded bytes}
-case "$url" in https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v*) ;; *) exit 1 ;; esac
+case "$url" in
+  https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v*|https://github.com/foxhole-team/foxhole-core/releases/download/v*) ;;
+  *) exit 1 ;;
+esac
 case "$url" in *[!a-zA-Z0-9:/_.+-]*|*/../*|*/./*) exit 1 ;; esac
 case "$output" in /tmp/foxhole/engine-assets/*) ;; *) exit 1 ;; esac
 case "$output" in *[!a-zA-Z0-9/_.-]*|*/../*|*/./*) exit 1 ;; esac

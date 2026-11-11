@@ -361,6 +361,7 @@
   "error.update_router_unavailable": "الموجّه غير متاح. أعد الاتصال واقرأ الحالة.",
   "error.update_recovery_required": "تلزم الاستعادة. لا تكرر التحديث.",
   "error.update_invalid_request": "رُفض طلب التحديث.",
+  "updates.core_up_to_date": "وحدات Core محدّثة؛ التحقق من الحزمة قيد الانتظار",
   "updates.up_to_date": "محدَّث",
   "error.update_legacy_connection_active": "افصل VPN الموجّه قبل التحديث",
   "language.ja": "日本語",

@@ -36,6 +36,12 @@ export function updateStatus(v) {
       !(v.currentVersion === null || version(v.currentVersion)) || !(v.availableVersion === null || version(v.availableVersion)) ||
       !(v.lastCheckedAtUnixMs === null || integer(v.lastCheckedAtUnixMs)) || !failure(v.failureReason) ||
       !Array.isArray(v.installedModules) || v.installedModules.length > 3) invalid();
+  if ('coreAvailability' in v && !['UNKNOWN', 'CURRENT', 'AVAILABLE'].includes(v.coreAvailability) ||
+      'coreCohortRelay' in v && ![0, 1].includes(v.coreCohortRelay) ||
+      'coreCohortSha256' in v && v.coreCohortSha256 !== null && !sha(v.coreCohortSha256) ||
+      ['CURRENT', 'AVAILABLE'].includes(v.coreAvailability) && !sha(v.coreCohortSha256) ||
+      'deviceDownloadKind' in v && !['BASE', 'CORE'].includes(v.deviceDownloadKind) ||
+      v.deviceDownloadRequired === true && v.deviceDownloadKind === 'CORE' && v.coreCohortRelay !== 1) invalid();
   if (v.availability === 'CURRENT' && (!v.currentVersion || v.currentVersion !== v.availableVersion || v.failureReason !== null) ||
       v.availability === 'AVAILABLE' && (!v.currentVersion || !v.availableVersion ||
         ![null, 'LEGACY_CONNECTION_ACTIVE'].includes(v.failureReason))) invalid();
@@ -84,8 +90,19 @@ export function updatePlan(v, status) {
 }
 
 export function availabilityLabel(value, text) {
+  if (value.availability === 'NOT_CHECKED' && value.coreAvailability === 'CURRENT') return text('updates.core_up_to_date');
   if (value.availability === 'NOT_CHECKED') return '';
   return text(`updates.${value.availability === 'CURRENT' ? 'up_to_date' : value.availability.toLowerCase()}`);
+}
+export async function initializeUpdatePolicy(eligible, enabled, call) {
+  if (eligible !== true) return { initialized: false };
+  if (typeof enabled !== 'boolean') throw new Error('invalid-update-policy-choice');
+  const current = updateStatus(await call('updates.status'));
+  if (current.autoUpdate.configured !== false) return { initialized: false, status: current };
+  const saved = updateStatus(await call('updates.settings', {
+    expectedRevision: current.revision, autoUpdateEnabled: enabled
+  }));
+  return { initialized: true, status: saved };
 }
 
 export class UpdatePanel {

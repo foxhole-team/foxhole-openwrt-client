@@ -19,6 +19,7 @@ function fixture(auth, license) {
     random_hex: bytes => 'a'.repeat(bytes * 2),
     pin_hash: () => 'b'.repeat(64),
     revoke_handoff: () => writes.push('handoff'),
+    pin_policy: { reset() {} },
     pairing: { defaults: () => ({ schema: 1, devices: [] }) }
   });
   const names = [['auth_record', 'allow_missing'], ['license_record', ''], ['license_required', 'auth'],
@@ -26,7 +27,7 @@ function fixture(auth, license) {
   const source = names.filter(([name]) => rpc.includes(`function ${name}(`))
     .map(([name, args]) => `function ${name}(${args}) ${functionBody(rpc, name)};`).join('\n');
   vm.runInContext(source, context);
-  return { records, writes, store: acceptance => context.store_pin('6789', acceptance) };
+  return { records, writes, store: acceptance => context.store_pin('678901', acceptance) };
 }
 
 const fresh = extra => ({ schema: 1, changed: false, salt: 'a'.repeat(32), hash: 'b'.repeat(64), ...extra });
@@ -87,9 +88,9 @@ async function webPin(required, accepted, version = 1, options = {}) {
   const form = { classList: { remove() {}, add() {} }, reset() {}, offsetWidth: 0 };
   const context = vm.createContext({
     pinSetupRequired: options.pinSetupRequired ?? required, licenseRequired: required, licenseRequiredVersion: version,
-    LICENSE_VERSION: 1, token: 'old',
+    LICENSE_VERSION: 1, token: 'old', autoUpdateSetupEligible: false,
     $: selector => selector === '[data-pin-change-form]' ? form :
-      selector === '[data-license-accept]' ? { checked: accepted } : { value: '6789' },
+      selector === '[data-license-accept]' ? { checked: accepted } : { value: '678901' },
     t: key => key, toast: key => notices.push(key),
     operation: async fn => { try { await fn(); } catch (error) { errors.push(error.code || error.message); } },
     api: async (method, args) => {
@@ -114,14 +115,14 @@ test('web first PIN refuses an unchecked agreement before its request', async ()
 test('web first PIN sends only explicit Boolean acceptance and the supported integer version', async () => {
   const result = await webPin(true, true);
   assert.deepEqual(result.calls, [{ method: 'pin.change', args: {
-    newPin: '6789', licenseAccepted: true, licenseVersion: 1
+    newPin: '678901', licenseAccepted: true, licenseVersion: 1
   } }]);
 });
 
 test('web existing configured router keeps ordinary PIN change available', async () => {
   const result = await webPin(false, false);
   assert.equal(result.calls.length, 1);
-  assert.equal(result.calls[0].args.newPin, '6789');
+  assert.equal(result.calls[0].args.newPin, '678901');
   assert.notEqual(result.calls[0].args.licenseAccepted, true);
 });
 
@@ -157,8 +158,9 @@ test('failed or malformed PIN response cannot create UI acceptance', async () =>
 
 test('license gate follows server requirement without prechecking acceptance', () => {
   const nodes = [{ hidden: true }, { hidden: true }], checkbox = { checked: false, required: false, disabled: false };
-  const context = vm.createContext({ licenseRequired: true,
-    $$: () => nodes, $: () => checkbox
+  const context = vm.createContext({ licenseRequired: true, autoUpdateSetupEligible: false,
+    $$: selector => selector === '[data-license-setup]' ? nodes : [],
+    $: selector => selector === '[data-license-accept]' ? checkbox : null
   });
   vm.runInContext(`function renderLicenseGate() ${functionBody(app, 'renderLicenseGate')}`, context);
   context.renderLicenseGate();

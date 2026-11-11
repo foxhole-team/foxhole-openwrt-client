@@ -12,6 +12,10 @@ import * as adapter from './core-adapter.uc';
 import * as store from './private-store.uc';
 import * as backup_service from './backup-service.uc';
 import * as ram from './ram-update-service.uc';
+import * as core_updates from './core-update-service.uc';
+import * as core_catalog from './core-update-native.uc';
+import * as core_transaction from './core-update-transaction.uc';
+import * as core_upload from './core-update-upload.uc';
 
 const JOB = '/etc/foxhole/update-job.json';
 const STATE = '/etc/foxhole/update-state.json';
@@ -125,9 +129,18 @@ export function status(principal) {
  if(ram_selected())return ram.status(principal);
 	let value=current_state(), flag=policy(), job=reconcile(read(JOB)), ctx=context();
 	let version=null, installed=[];
+	if(value.coreAvailability=='CURRENT'&&!core_updates.current_identity(value)) {
+		value.coreAvailability='UNKNOWN';value.coreCohortSha256=null;
+		if(value.availability=='CURRENT')value.availability='NOT_CHECKED';
+	}
 	try { version=current_version(); installed=native.selected_modules(registry.read()); }
 	catch (e) { value.availability='UNSUPPORTED'; value.failureReason=reason(e); }
 	let last=read('/etc/foxhole/update-last-'+owner(principal)+'.json');
+	let relay=value.deviceDownloadRequired==true&&
+		value.relayEvidence?.owner==owner(principal)&&
+		value.relayEvidence.bootId==engine.update_boot()&&
+		value.relayEvidence.observedAtUptimeMs<=engine.update_now()&&
+		engine.update_now()-value.relayEvidence.observedAtUptimeMs<=600000;
 	let suspended=job?.state=='RECOVERY_REQUIRED'?'RECOVERY_REQUIRED':
 		index(['UNSUPPORTED_TARGET','ROLLBACK_UNAVAILABLE','RAM_STAGE_UNAVAILABLE','LEGACY_CONNECTION_ACTIVE'],value.failureReason)>=0?value.failureReason:null;
 	if(version!=null&&ctx.activeProfileId!=null&&ctx.activeEngineId==null){
@@ -136,10 +149,14 @@ export function status(principal) {
 	}
 	return {schema:1,supported:value.availability!='UNSUPPORTED',routerId:ctx.routerId,revision:value.revision,currentVersion:version,
 		availableVersion:value.availableVersion,availability:value.availability,lastCheckedAtUnixMs:value.lastCheckedAtUnixMs,
-		failureReason:value.failureReason,busy:blocked(job)||engine_busy(),
-		autoUpdate:{enabled:flag.enabled,intervalSeconds:86400,lastAttemptAtUnixMs:flag.lastAttemptAtUnixMs,
+		failureReason:value.failureReason,busy:blocked(job)||engine_busy()||core_upload.busy(),
+		deviceDownloadRequired:relay,deviceDownloadKind:relay?'CORE':'BASE',coreCohortRelay:1,
+		coreAvailability:value.coreAvailability||'UNKNOWN',
+		coreCohortSha256:value.candidate?.component=='CORE'?
+			value.candidate.reference.bodySha256:value.coreCohortSha256||null,
+		autoUpdate:{enabled:flag.enabled,configured:fs.lstat(POLICY)!=null,intervalSeconds:86400,lastAttemptAtUnixMs:flag.lastAttemptAtUnixMs,
 			nextCheckAtUnixMs:flag.enabled?(flag.lastAttemptAtUnixMs==null?wall():flag.lastAttemptAtUnixMs+86400000):null,suspendedReason:suspended},
-		installedModules:map(installed,row=>({id:row.id,storage:row.storage,version:row.version})),
+		installedModules:map(installed,row=>({id:row.id,storage:row.storage,version:row.packageVersion})),
 		activeOwnJob:active(job)?job_ref(job,owner(principal)):null,lastOwnJob:job_ref(job,owner(principal))||job_ref(last,owner(principal)),
 		activeAutomaticJob:active(job)&&job.automatic?{operation:job.operation,automatic:true,state:job.state,step:job.step,
 			progressPercent:job.progressPercent,failureReason:job.failureReason}:null};
@@ -180,6 +197,7 @@ export function check(request,principal) {
 	backup_service.guard();
 	let value=transaction(()=>{
 		if (!engine.update_principal_current(principal)) model.fail('AUTHENTICATION_FAILED');
+		if(core_upload.busy())model.fail('BUSY');
 		check_revision(request.expectedRevision,current_state());
 		if (blocked(read(JOB))||engine_busy()) model.fail('BUSY');
 		let job=new_job('CHECK',principal,false,null); save_job(job); return job;
@@ -193,6 +211,8 @@ function legacy_guard(ctx) {
 };
 function make_plan(principal,automatic) {
 	let value=current_state(),candidate=value.candidate,ctx=context(),current=registry.read();
+	if(candidate?.component=='CORE')
+		return core_updates.plan(candidate,automatic?null:owner(principal),value.revision);
 	legacy_guard(ctx);
 	if (value.availability!='AVAILABLE'||!candidate) model.fail('NOT_CHECKED');
 	if (wall()-value.lastCheckedAtUnixMs>300000 || wall()<value.lastCheckedAtUnixMs || !same(candidate.selected,current)) model.fail('STALE_PLAN');
@@ -224,6 +244,8 @@ export function plan(request,principal) {
 	});
 };
 function admit(plan,request,principal) {
+	if(plan?.candidate?.component=='CORE')
+		return core_updates.admit(plan,request,owner(principal),current_state().revision);
 	if (request.confirmed!=true || type(request.confirmed)!='bool') model.fail('INVALID_REQUEST');
 	if (!plan || plan.owner!=owner(principal)) model.fail('AUTHENTICATION_FAILED');
 	if (plan.planId!=request.planId || plan.planSha256!=request.planSha256 || digest_plan(plan)!=plan.planSha256 ||
@@ -250,16 +272,35 @@ export function job(id,principal) {
 	if(!current||current.jobId!=id||current.automatic||current.owner!=owner(principal))model.fail('AUTHENTICATION_FAILED');
 	return public_job(current);
 };
+function cohort_kind(request) {
+ let kind=request.cohortKind==null?'BASE':request.cohortKind;
+ if(index(['BASE','CORE'],kind)<0)model.fail('INVALID_REQUEST');return kind;
+};
+function base_request(request) {
+ let value={...request};delete value.cohortKind;delete value.assetId;
+ return value;
+};
+function core_reply(reply,principal) {
+ if(reply.phase=='STAGED')reply.status=status(principal);return reply;
+};
 export function device_begin(request,principal) {
+ if(cohort_kind(request)=='CORE')return core_reply(core_upload.begin(request,principal),principal);
+ request=base_request(request);delete request.uploadId;
  if(!ram_selected())model.fail('UNSUPPORTED_TARGET');return ram.device_begin(request,principal);
 };
 export function device_chunk(request,principal) {
+ if(cohort_kind(request)=='CORE')return core_reply(core_upload.chunk(request,principal),principal);
+ request=base_request(request);
  if(!ram_selected())model.fail('UNSUPPORTED_TARGET');return ram.device_chunk(request,principal);
 };
 export function device_status(request,principal) {
+ if(cohort_kind(request)=='CORE')return core_reply(core_upload.status(request,principal),principal);
+ request=base_request(request);
  if(!ram_selected())model.fail('UNSUPPORTED_TARGET');return ram.device_status(request,principal);
 };
 export function device_finish(request,principal) {
+ if(cohort_kind(request)=='CORE')return core_reply(core_upload.finish(request,principal),principal);
+ request=base_request(request);
  if(!ram_selected())model.fail('UNSUPPORTED_TARGET');return ram.device_finish(request,principal);
 };
 function minimal_base(base) {
@@ -290,6 +331,8 @@ function clear_previous_staging(id) {
 };
 function prune_recovery_cache(value,job) {
 	let keep=[value.base.sha256,value.base.indexSha256,value.rollback.sha256,value.rollback.indexSha256];
+	for(let ref in [core_catalog.current(),core_catalog.highest()])
+		if(ref)push(keep,ref.bodySha256,ref.archiveSha256,ref.indexSha256);
 	let tx=job?.nativeTransaction;if(tx){push(keep,tx.tool.gzipSha256);for(let name in keys(tx.tool.helpers))push(keep,tx.tool.helpers[name].sha256);for(let item in tx.modules)push(keep,item.archiveSha256,item.indexSha256);}
 	let paths=fs.glob('/etc/foxhole/update-cache/*')||[];
 	if(length(paths)>64)return;
@@ -307,6 +350,37 @@ function perform_check(job) {
 	let version=current_version(),target=native.target(),local=native.policy('/usr/share/foxhole/update-policy.json',version);
 	let ctx=context(),selected=registry.read();
 	if(job.automatic)legacy_guard(ctx);
+	let core=null,core_failure=null;
+	try {core=core_updates.recent_current(current_state())||core_updates.check(directory+'/core');}
+	catch(error) {core_failure=reason(error);}
+	if(index(['DOWNLOAD_FAILED','RELEASE_UNAVAILABLE'],core_failure)>=0 &&
+		core_catalog.network_unreachable()) {
+		transaction(()=>{let value=current_state();
+			value.deviceDownloadRequired=true;
+			value.relayEvidence={owner:job.owner,jobId:job.jobId,
+				bootId:engine.update_boot(),observedAtUptimeMs:engine.update_now(),cohortKind:'CORE'};
+			write(STATE,value);});
+		model.fail('DOWNLOAD_FAILED');
+	}
+	if(core && length(core.changes)) {
+		if(!authorized(job)||!same(binding(ctx),binding(context()))||
+			!same(selected,registry.read()))model.fail('STALE_PLAN');
+		transaction(()=>{
+			let value=current_state();require_authorized(job);
+			value.availability='AVAILABLE';value.availableVersion=version;
+			value.lastCheckedAtUnixMs=wall();value.failureReason=null;
+			value.coreCheckFailure=null;value.candidate=core;value.revision++;
+			value.coreAvailability='AVAILABLE';value.coreCohortSha256=core.reference.bodySha256;
+			value.coreCheckedCandidate=null;
+			value.deviceDownloadRequired=false;value.relayEvidence=null;
+			write(STATE,value);job.revision=value.revision;
+			progress(job,'SUCCEEDED','COMPLETED',100);
+		});
+		return;
+	}
+	transaction(()=>{let value=current_state();value.coreCheckedCandidate=core;
+		value.coreAvailability=core?'CURRENT':'UNKNOWN';
+		value.coreCohortSha256=core?core.reference.bodySha256:null;write(STATE,value);});
 	resources({flashRequiredBytes:33554432,ramRequiredBytes:33554432},ctx);
 	let tag=native.latest(directory); progress(job,'DOWNLOADING','DOWNLOADING_INDEX',15);
 	let next=native.base(tag,directory+'/candidate',keys);
@@ -315,7 +389,8 @@ function perform_check(job) {
 	if(previous.version!=version)model.fail('ROLLBACK_UNAVAILABLE');
 	native.installed_base(previous);
 	let base_changed=model.version_admit(native.compare(version,next.version),previous.sha256,next.sha256);
-	let old_modules=native.selected_modules(selected),modules=native.module_changes(old_modules,next.catalog,target.architecture);
+	let effective=registry.effective_catalog(next.catalog,next.catalogSha256).value;
+	let old_modules=native.selected_modules(selected),modules=native.module_changes(old_modules,effective,target.architecture);
 	engines.commit(selected,modules.artifacts,[],selected.revision);
 	let changes=modules.changes;
 	if(base_changed)unshift(changes,{id:'foxhole',fromVersion:version,toVersion:next.version,storage:null});
@@ -330,6 +405,7 @@ function perform_check(job) {
 		flashAvailableBytes:ctx.flashAvailableBytes,ramRequiredBytes:download+staging+ram+16777216+tool_budget.ramBytes,
 		ramAvailableBytes:ctx.ramAvailableBytes,reservedBytes:33554432};
 	resources(budget,context());
+	if(core_failure!=null && !length(changes))model.fail(core_failure);
 	if(!authorized(job)||!same(binding(ctx),binding(context()))||!same(selected,registry.read()))model.fail('STALE_PLAN');
 	transaction(()=>{
 		let value=current_state();require_authorized(job);
@@ -338,6 +414,15 @@ function perform_check(job) {
 		value.candidate={base:minimal_base(next),rollback:minimal_base(previous),baseChanged:base_changed,
 			fromVersion:version,artifacts:modules.artifacts,changes,binding:binding(ctx),selected,budget,
 			stateRevisionBefore:engine.update_state().revision,stateWithoutStopSha256:state_without_stop(engine.update_state())};
+		value.coreCheckFailure=core_failure;
+		value.coreAvailability=core_failure?'UNKNOWN':core?'CURRENT':'UNKNOWN';
+		value.coreCohortSha256=core?core.reference.bodySha256:null;
+		value.deviceDownloadRequired=false;value.relayEvidence=null;
+		if(core && length(core.changes)) {
+			value.packageCandidate=value.candidate;
+			value.candidate=core;value.availability='AVAILABLE';
+			value.availableVersion=version;
+		}
 		write(STATE,value);job.revision=value.revision;progress(job,'SUCCEEDED','COMPLETED',100);
 	});
 };
@@ -406,7 +491,11 @@ function begin_mutation(job) {
 	let path='/etc/foxhole/state.lock';store.target(path);let lock=fs.open(path,'a+',0o600);
 	if(!lock||!lock.lock('xn')||!store.file_metadata(fs.lstat(path))){try{if(lock)lock.close();}catch(_){}model.fail('BUSY');}
 	try{
-		if(!authorized(job)||!same(job.plan.binding,binding(context())))model.fail('STALE_PLAN');
+		let bound=job.plan.candidate?.component=='CORE'?
+			core_updates.current_binding():binding(context());
+		if(job.plan.candidate?.component=='CORE'&&engine.update_now()>job.plan.expiresAtUptimeMs)
+			model.fail('STALE_PLAN');
+		if(!authorized(job)||!same(job.plan.binding,bound))model.fail('STALE_PLAN');
 		job.mutationStarted=true;job.atomicPackagePhase=true;progress(job,'INSTALLING','INSTALLING_PACKAGE',40);
 		lock.lock('u');lock.close();
 	}catch(e){try{lock.lock('u');lock.close();}catch(_){}die(e);}
@@ -437,13 +526,45 @@ function terminal(job,state) {
 			job.stoppedByRequest=true;job.previousConnectionRestored=false;
 		}
 		let value=current_state();value.revision++;
-		if(state=='SUCCEEDED'){value.availability='CURRENT';value.failureReason=null;value.candidate=null;}
+		if(state=='SUCCEEDED'){value.availability='NOT_CHECKED';value.failureReason=null;value.candidate=null;}
 		write(STATE,value);job.revision=value.revision;
 		progress(job,state,state=='SUCCEEDED'?'COMPLETED':'FAILED',state=='SUCCEEDED'?100:job.progressPercent);
 		lock.lock('u');lock.close();
 	}catch(e){try{lock.lock('u');lock.close();}catch(_){}die(e);}
 };
+function core_journal(job) {
+	if(job?.plan?.candidate?.component!='CORE' ||
+		core_updates.plan_digest(job.plan)!=job.plan.planSha256)
+		model.fail('RECOVERY_REQUIRED');
+};
+function core_callbacks() {
+	return {
+		journal:core_journal,
+		admit:job=>{
+			core_journal(job);
+			if(!authorized(job)||!same(job.plan.binding,
+				core_updates.current_binding()))model.fail('STALE_PLAN');
+		},
+		authorized:job=>job.automatic?
+			job.mutationStarted||model.auto_authorized(job,policy()):
+			engine.update_principal_current(job.principal),
+		save:save_job,progress,
+		protect:job=>{
+			let state=engine.update_state();
+			job.stateRevisionBefore=state.revision;
+			job.stateWithoutStopSha256=state_without_stop(state);
+			return preserve();
+		},
+		preserved,
+		beginAtomic:job=>{core_journal(job);begin_mutation(job);},
+		endAtomic:end_package_phase,restart
+	};
+};
 function perform_apply(job) {
+	if(job.plan?.candidate?.component=='CORE') {
+		core_transaction.apply(job,core_callbacks());
+		terminal(job,'SUCCEEDED');return public_job(read(JOB));
+	}
 	return transaction(()=>{
 		let plan=job.plan,value=plan.candidate,old=registry.read(),ctx=context();
 		legacy_guard(ctx);
@@ -498,7 +619,7 @@ function perform_apply(job) {
         let after_world=native.world_state();
         if(after_world.sha256!=job.nativeTransaction.afterSha256||!same(after_world.metadata,job.worldMetadataBefore))model.fail('PACKAGE_VERIFICATION_FAILED');
         native.installed_base({...job.nativeTransaction.newBase,payload:native.decode(packages.apk(['adbdump','--format','json',job.nativeTransaction.newBase.archive]))});
-		if(value.baseChanged&&registry.catalog().sha256!=value.base.catalogSha256)model.fail('PACKAGE_VERIFICATION_FAILED');
+		if(value.baseChanged&&registry.embedded_catalog().sha256!=value.base.catalogSha256)model.fail('PACKAGE_VERIFICATION_FAILED');
 		preserved(job.protectedBefore,job);
 		for(let artifact in value.artifacts){
 			let path=registry.verify_slot(artifact),caps=native.decode(registry.capture([path,'capabilities'],131072,130000));
@@ -532,6 +653,11 @@ function restore_registry(old) {
 	return restored;
 };
 function attempt_recovery(job) {
+	if(job.plan?.candidate?.component=='CORE') {
+		if(!job.coreRecoverySucceeded)
+			core_transaction.recover(job,core_callbacks());
+		job.recoverySucceeded=true;terminal(job,'FAILED');return true;
+	}
 	return transaction(()=>{
 		if(!job.mutationStarted||job.recoveryAttempted)return false;
 		job.recoveryAttempted=true;save_job(job);
@@ -603,7 +729,7 @@ export function run(id) {
 	try{fs.unlink('/tmp/foxhole/'+job.jobId+'/check-config');}catch(_){}
 	// Ordinary package hooks were deferred by the exact live journal.
 	// Publish terminal state first.
-	if(job.mutationStarted&&(job.state=='SUCCEEDED'||job.recoverySucceeded))system(['/bin/sh','-c',
+	if(job.plan?.candidate?.component!='CORE'&&job.mutationStarted&&(job.state=='SUCCEEDED'||job.recoverySucceeded))system(['/bin/sh','-c',
 		'/etc/init.d/foxhole-history restart; /etc/init.d/foxhole-mobile restart; /etc/init.d/foxhole-inbound restart; /etc/init.d/firewall reload; /etc/init.d/rpcd restart; /etc/init.d/uhttpd reload'],30000);
 	return public_job(read(JOB));
 };
@@ -618,7 +744,7 @@ export function tick() {
 	let value=null;
 	try{reconcile(read(JOB));value=transaction(()=>{
 		let flag=policy(),job=read(JOB);
-		if(!model.due(flag,wall(),blocked(job)||engine_busy()))return null;
+		if(!model.due(flag,wall(),blocked(job)||engine_busy()||core_upload.busy()))return null;
 		flag.lastAttemptAtUnixMs=wall();write(POLICY,flag);
 		current_version();let result=new_job('CHECK',null,true,null);save_job(result);return result;
 	});}catch(_){}

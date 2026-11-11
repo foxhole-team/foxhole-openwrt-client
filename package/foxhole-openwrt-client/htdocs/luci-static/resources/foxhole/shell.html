@@ -10,11 +10,11 @@
   <title>FoxHole OpenWRT Client</title>
   <base href="/luci-static/resources/foxhole/">
   <link rel="icon" href="./assets/foxhole.png" type="image/png">
-  <link rel="preload" href="./assets/foxhole.png?v=1.0.4-dev-logs1" as="image" type="image/png">
+  <link rel="preload" href="./assets/foxhole.png?v=1.0.6" as="image" type="image/png">
   <link rel="preload" href="./assets/JetBrainsMono-Regular.ttf" as="font" type="font/ttf" crossorigin>
   <link rel="preload" href="./assets/JetBrainsMono-Medium.ttf" as="font" type="font/ttf" crossorigin>
   <link rel="preload" href="./assets/Tiny5-Regular.ttf" as="font" type="font/ttf" crossorigin>
-  <link rel="stylesheet" href="./app.css?v=1.0.4-dev-logs1">
+  <link rel="stylesheet" href="./app.css?v=1.0.6">
 </head>
 <body>
   <svg class="svg-sprite" aria-hidden="true">
@@ -154,7 +154,7 @@
 
   <section id="pin-gate" class="pin-gate" data-view="pin" aria-labelledby="pin-prompt">
     <div class="pin-card">
-      <img class="pin-logo" src="./assets/foxhole.png?v=1.0.4-dev-logs1" width="512" height="512" alt="FoxHole OpenWRT Client">
+      <img class="pin-logo" src="./assets/foxhole.png?v=1.0.6" width="512" height="512" alt="FoxHole OpenWRT Client">
       <strong class="pin-brand">FoxHole OpenWRT Client</strong>
       <p id="pin-prompt" class="muted pin-prompt" data-i18n="auth.pin_prompt"></p>
       <form id="pin-form" data-pin-form autocomplete="off">
@@ -180,7 +180,7 @@
   <div id="app-shell" class="app-shell" data-view="dashboard" hidden>
     <header id="topbar" class="topbar" data-topbar>
       <a class="brand" href="#dashboard" data-action="scroll-top" aria-label="FoxHole OpenWRT Client">
-        <img src="./assets/foxhole.png?v=1.0.4-dev-logs1" width="512" height="512" alt="">
+        <img src="./assets/foxhole.png?v=1.0.6" width="512" height="512" alt="">
         <span>FoxHole OpenWRT Client</span>
       </a>
       <nav class="topbar-actions" data-i18n-aria-label="nav.primary">
@@ -968,6 +968,11 @@
         <input id="new-pin" class="text-input" name="newPin" type="password" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="new-password" data-new-pin required>
         <label for="repeat-pin" data-i18n="pin_change.repeat_pin"></label>
         <input id="repeat-pin" class="text-input" name="repeatPin" type="password" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="new-password" data-repeat-pin required>
+        <label class="license-acceptance" data-auto-update-setup hidden>
+          <input type="checkbox" data-initial-auto-update checked>
+          <span data-i18n="updates.auto"></span>
+        </label>
+        <small class="muted" data-auto-update-setup data-i18n="updates.auto_detail" hidden></small>
         <label class="license-acceptance" data-license-setup hidden>
           <input type="checkbox" data-license-accept>
           <span data-i18n="license.accept"></span>
@@ -1049,6 +1054,6 @@
     </div>
   </template>
 
-  <script src="./app.js?v=1.0.4-dev-logs1" type="module"></script>
+  <script src="./app.js?v=1.0.6" type="module"></script>
 </body>
 </html>

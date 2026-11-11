@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.6 Beta
+
+- Prepare independent signed Core module updates without replacing the OpenWrt package, profiles, pairings or firmware.
+- Keep module package versions and Core producer identity separate, with authenticated plans, resource admission and bounded rollback.
+- Relay a verified Core asset cohort through paired Android apps when the router has a confirmed connection failure.
+- Enable automatic updates for fresh Android and web setup with an explicit opt-out; preserve existing and legacy policies.
+- Preserve the legacy BASE policy shape for RAM migration and verify the actual RAM executable during reconnect.
+- Stage RAM module updates from their verified catalog delivery release when it differs from the Core version.
+
+This BASE introduces the independent signed Core feed. Managed RAM updates require an existing verified recovery generation; cold-boot recovery remains unqualified.
+
+Companion Android apps: FoxHole VPN 1.0.5 and Guard 1.0.6 add Android 7 support and improve notification styling. FoxHole VPN adds website routing; Guard improves web-address routing filters.
+
 ## 1.0.5 Beta
 
 - Added Arabic language and RTL support and completed log-panel translations.

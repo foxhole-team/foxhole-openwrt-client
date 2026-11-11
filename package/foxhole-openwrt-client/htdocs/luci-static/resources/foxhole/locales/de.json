@@ -361,6 +361,7 @@
   "error.update_router_unavailable": "Router nicht verfügbar. Erneut verbinden und Status abrufen.",
   "error.update_recovery_required": "Wiederherstellung erforderlich. Update nicht wiederholen.",
   "error.update_invalid_request": "Updateanfrage abgelehnt.",
+  "updates.core_up_to_date": "Core-Module sind aktuell; Paketprüfung steht aus",
   "updates.up_to_date": "Aktuell",
   "error.update_legacy_connection_active": "Router-VPN zuerst trennen",
   "language.ja": "日本語",

@@ -66,6 +66,25 @@ class EngineCatalogReleaseTests(unittest.TestCase):
     def test_new_router_release_reuses_exact_older_core_package(self):
         self.assertEqual(NS['catalog_release_version']({'current':self.entry()}),'1.0.3')
 
+    def core_entry(self):
+        value=self.entry('1.0.2');value['version']='1.0.2'
+        for key in ['indexUrl','packageUrl']:
+            value[key]=value[key].replace('/foxhole-openwrt-client/','/foxhole-core/')
+        return value
+
+    def test_independent_core_release_keeps_its_closed_origin(self):
+        value=self.core_entry()
+        self.assertEqual(NS['catalog_release_version']({'core':value}),'1.0.2')
+        self.assertEqual(NS['catalog_release_version']({'core':value},with_repository=True),('core','1.0.2'))
+        self.assertEqual(NS['catalog_release_version']({'router':self.entry()},with_repository=True),('openwrt','1.0.3'))
+
+    def test_mixed_repositories_and_mislabelled_core_versions_are_rejected(self):
+        value=self.core_entry()
+        with self.assertRaises(ValueError):
+            NS['catalog_release_version']({'core':value,'router':self.entry('1.0.2')})
+        value['version']='1.0.3'
+        with self.assertRaises(ValueError):NS['catalog_release_version']({'core':value})
+
     def test_mixed_router_release_references_are_rejected(self):
         with self.assertRaises(ValueError):NS['catalog_release_version']({'old':self.entry('1.0.2'),'current':self.entry()})
 

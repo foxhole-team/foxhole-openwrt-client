@@ -66,7 +66,7 @@ try {
   const authMarker =
     '// Authentication uses isolated sessions and storage.';
   const authImplementations = [
-    ['license_record', ''], ['license_required', 'auth'],
+    ['license_record', ''], ['license_required', 'auth'], ['fresh_setup_policy', ''],
     ['new_token', 'user, paired'], ['session', 'request, allow_setup'],
     ['change_pin', 'request'], ['admin_pin', 'request'],
     ['pair_create', 'request'], ['pair_unlock', 'request'],
@@ -75,7 +75,7 @@ try {
     `function ${name}(${args}) ${functionBody(rpc, name)};`).join('\n');
   const setupMarker = '// Setup RPC implementations use isolated storage and services.';
   const setupImplementations = [
-    ['license_record', ''], ['license_required', 'auth'], ['license_choice', 'auth, acceptance'],
+    ['license_record', ''], ['license_required', 'auth'], ['license_choice', 'auth, acceptance'], ['fresh_setup_policy', ''],
     ['auth_record', 'allow_missing'], ['pin_hash', 'salt, pin'],
     ['equal_secret', 'left, right'], ['check_pin', 'pin'],
     ['new_token', 'user, paired'], ['session', 'request, allow_setup'],

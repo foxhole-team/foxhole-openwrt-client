@@ -4,12 +4,14 @@ import * as fs from 'fs';
 import * as digest from 'digest';
 import * as store from './private-store.uc';
 import * as engines from './engine-model.uc';
+import * as core_updates from './core-update-model.uc';
 
 const REGISTRY = '/etc/foxhole/engines.json';
 const CATALOG = '/usr/share/foxhole/engine-catalog.json';
 const ROOT = '/usr/libexec/foxhole/engines/';
 let hashes = {};
 let command_generation = null;
+let verified_core_catalog = null;
 function fail() { die('engine_package_verification_failed'); };
 function public_file(path, limit) {
 	let info = fs.lstat(path);
@@ -108,9 +110,89 @@ export function hash_file(path) {
 	hashes[path] = { key, value: found[1] };
 	return found[1];
 };
-export function catalog() {
+export function embedded_catalog() {
 	let raw = public_file(CATALOG, 262144);
-	return { value: engines.catalog(json(raw)), sha256: digest.sha256(raw) };
+	return {value:engines.catalog(json(raw)),sha256:digest.sha256(raw)};
+};
+export function architecture() {
+	let raw = trim(public_file('/etc/apk/arch', 128));
+	if (index(['x86_64', 'aarch64_generic', 'aarch64_cortex-a53'], raw) < 0)
+		die('engine_unsupported_target');
+	return raw;
+};
+function core_catalog(embedded, reference_raw) {
+ let ref=core_updates.reference(json(reference_raw));
+ let cache='/etc/foxhole/update-cache/',key=cache+'core-verifier/keys/foxhole.pem';
+ let signer_fingerprint='fa220a28fd8662fc5f617f46594bafe2415b4f605136570dc3c446caeb7d1ef1';
+ let archive=cache+ref.archiveSha256,index_path=cache+ref.indexSha256;
+ let body=public_file(cache+ref.bodySha256,262144);
+ if(length(body)!=ref.bodyBytes || digest.sha256(body)!=ref.bodySha256 ||
+  fs.lstat(archive)?.size!=ref.archiveBytes ||
+  fs.lstat(index_path)?.size!=ref.indexBytes ||
+  hash_file(archive)!=ref.archiveSha256 ||
+  hash_file(index_path)!=ref.indexSha256 || hash_file(key)!=signer_fingerprint ||
+  hash_file('/usr/share/foxhole/foxhole-openwrt-apk.pem')!=signer_fingerprint)fail();
+ let policy_raw=public_file('/usr/share/foxhole/update-policy.json',8192);
+ let policy=json(policy_raw),release=public_file('/etc/openwrt_release',8192);
+ let current_architecture=architecture();
+ if(core_updates.FEED_ABI!=1)fail();
+ let identity=digest.sha256(sprintf('%J',[embedded.sha256,reference_raw,
+  digest.sha256(policy_raw),release,current_architecture,core_updates.FEED_ABI,
+  ref.archiveSha256,ref.indexSha256,signer_fingerprint]));
+ if(verified_core_catalog?.identity==identity)
+  return verified_core_catalog.catalog;
+ let key_files=fs.glob(cache+'core-verifier/keys/*')||[];
+ if(length(key_files)!=1 || key_files[0]!=key)fail();
+ capture(['/usr/bin/apk','--keys-dir',cache+'core-verifier/keys',
+  'verify',archive,index_path],65536,30000);
+ let document=json(capture(['/usr/bin/apk','adbdump','--format','json',
+  archive],1048576,30000));
+ let payload=core_updates.metadata_layout(document,ref.packageVersion);
+ if(payload.sha256!=ref.bodySha256 || payload.bytes!=ref.bodyBytes)fail();
+ let os=match(release,/(^|\n)DISTRIB_RELEASE='([^']+)'/);
+ let target=match(release,/(^|\n)DISTRIB_TARGET='([^']+)'/);
+ let value=json(body);
+ let input=core_updates.comparison_inputs(value);
+ let compared=trim(capture(['/usr/bin/apk','--no-network',
+  '--repositories-file','/dev/null','version','-t',policy.packageVersion,
+  input.minimumBaseVersion],4096,3000));
+ core_updates.cached_feed(value,{osRelease:os?os[2]:null,
+  target:target?target[2]:null,architecture:current_architecture,
+  baseComparison:compared,coreComparison:'='},ref);
+ let newer=engines.catalog(value.catalog),merged=[],retained={};
+ for(let old in embedded.value.entries) {
+  let replaced=filter(newer.entries,row=>row.id==old.id &&
+   row.storage==old.storage && row.architecture==old.architecture);
+  if(!length(replaced))push(merged,old);
+  else {
+   let next=replaced[0];
+   let compared=trim(capture(['/usr/bin/apk','--no-network',
+    '--repositories-file','/dev/null','version','-t',
+    old.packageVersion,next.packageVersion],4096,3000));
+   if(compared=='>' || compared=='=') {
+    if(compared=='=' && old.manifestSha256!=next.manifestSha256)fail();
+    push(merged,old);
+    retained[old.id+':'+old.storage+':'+old.architecture]=true;
+   }else if(compared!='<')fail();
+  }
+ }
+ for(let row in newer.entries)
+  if(!retained[row.id+':'+row.storage+':'+row.architecture])push(merged,row);
+ let result=engines.catalog({schema:1,entries:merged});
+ let catalog={value:result,sha256:digest.sha256(sprintf('%J',result)),
+  feedCoreVersion:ref.coreVersion,cohortSha256:ref.bodySha256,
+  sequence:ref.sequence};
+ verified_core_catalog={identity,catalog};return catalog;
+};
+export function effective_catalog(value, source_sha256) {
+	let embedded={value:engines.catalog(value),
+		sha256:source_sha256||digest.sha256(sprintf('%J',value))};
+	let reference_raw=store.read('/etc/foxhole/update-cache/core-current.json',8192);
+	return reference_raw?core_catalog(embedded,reference_raw):embedded;
+};
+export function catalog() {
+ let embedded=embedded_catalog();
+ return effective_catalog(embedded.value,embedded.sha256);
 };
 export function read() {
 	let raw = store.read(REGISTRY, 262144);
@@ -132,6 +214,15 @@ export function manifest(value) {
 };
 export function executable(value) {
 	return ROOT + value.id + '/' + value.manifestSha256 + '/foxcore-cli';
+};
+export function running_executable(value) {
+	if(value.storage!='RAM')return executable(value);
+	let path='/tmp/foxhole/engine-binaries/'+value.id+'/'+value.binarySha256+'/foxcore-cli';
+	let info=fs.lstat(path);
+	if(!store.file_metadata(info)||(info.mode&0o7777)!=0o700 ||
+		info.size!=value.binaryBytes || hash_file(path)!=value.binarySha256)
+		die('engine_ram_stage_unavailable');
+	return path;
 };
 export function verify_slot(value) {
 	let path = executable(value), folder = fs.dirname(path);
@@ -256,12 +347,6 @@ export function current_binary() {
 	if (!raw) return '/usr/bin/foxcore-cli';
 	let selected = select(raw);
 	return selected?.path || '/usr/bin/foxcore-cli';
-};
-export function architecture() {
-	let raw = trim(public_file('/etc/apk/arch', 128));
-	if (index(['x86_64', 'aarch64_generic', 'aarch64_cortex-a53'], raw) < 0)
-		die('engine_unsupported_target');
-	return raw;
 };
 export function snapshot_context(state) {
 	let current = catalog(), active = filter(state.servers, row => row.id == state.activeServerId)[0];

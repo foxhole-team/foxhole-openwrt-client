@@ -80,11 +80,17 @@ def validate_unique_index_entry(info: dict, index_entries: list[dict], archive_b
         raise ValueError('Engine APK is not uniquely indexed by immutable name')
 
 
-def release_base_url(core_version: str, release_version: str | None = None) -> str:
+def release_base_url(core_version: str, release_version: str | None = None,
+                     delivery_repository: str = 'openwrt') -> str:
     version = core_version if release_version is None else release_version
     if not isinstance(version, str) or re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version) is None:
         raise ValueError('Exact release version required')
-    return 'https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v' + version + '/'
+    if delivery_repository not in {'openwrt', 'core'}:
+        raise ValueError('Closed delivery repository required')
+    if delivery_repository == 'core' and version != core_version:
+        raise ValueError('Core delivery must retain its exact producer version')
+    repository = 'foxhole-core' if delivery_repository == 'core' else 'foxhole-openwrt-client'
+    return 'https://github.com/foxhole-team/' + repository + '/releases/download/v' + version + '/'
 
 
 def main() -> int:
@@ -96,6 +102,7 @@ def main() -> int:
     parser.add_argument('--core-commit', required=True)
     parser.add_argument('--source-sha256', required=True)
     parser.add_argument('--release-version', help='Router release containing these unchanged Core packages')
+    parser.add_argument('--delivery-repository', choices=('openwrt', 'core'), default='openwrt')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     if args.release_version is not None:
@@ -190,7 +197,7 @@ def main() -> int:
             if scope in seen:
                 raise ValueError('Only one current artifact per protocol/storage/architecture')
             seen.add(scope)
-            base = release_base_url(manifest['version'], args.release_version)
+            base = release_base_url(manifest['version'], args.release_version, args.delivery_repository)
             value = {key: item for key, item in manifest.items() if key != 'schema'}
             value.update(manifestSha256=manifest_sha, archiveBytes=archive.stat().st_size,
                          indexBytes=args.index.stat().st_size, installedBytes=info['installed-size'],

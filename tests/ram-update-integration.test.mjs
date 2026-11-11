@@ -1,15 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import { functionBody, packageRoot, read, rpcMethods } from './helpers.mjs';
+import { functionBody, packageRoot, read, rpcMethods, plain } from './helpers.mjs';
 
 const source = await read(`${packageRoot}/root/usr/share/foxhole/update-service.uc`);
 const names = ['ram_selected', 'ram_deployment', 'deployment', 'status', 'settings', 'check', 'plan', 'apply', 'job',
-  'device_begin', 'device_chunk', 'device_status', 'device_finish', 'tick', 'run'];
+  'device_begin', 'device_chunk', 'device_status', 'device_finish', 'tick', 'run', 'cohort_kind', 'base_request'];
 const argumentsFor = { ram_selected: '', ram_deployment: '', deployment: '', status: 'principal',
   settings: 'request,principal', check: 'request,principal', plan: 'request,principal', apply: 'request,principal',
   job: 'id,principal', device_begin: 'request,principal', device_chunk: 'request,principal',
-  device_status: 'request,principal', device_finish: 'request,principal', tick: '', run: 'id' };
+  device_status: 'request,principal', device_finish: 'request,principal', tick: '', run: 'id',
+  cohort_kind: 'request', base_request: 'request' };
 
 function harness() {
   const calls = [], environment = { marker: true, pending: null };
@@ -19,6 +20,7 @@ function harness() {
     fs: { lstat: () => environment.marker ? { type: 'file' } : null },
     read: () => environment.pending,
     blocked: value => value != null && !['SUCCEEDED', 'FAILED'].includes(value.state),
+    index: (rows,value)=>rows.indexOf(value),
     model: { fail: reason => { throw new Error(reason); } }
   });
   for (const name of names)
@@ -33,7 +35,7 @@ test('every existing update entry delegates RAM without entering host/native FLA
       : name === 'run' ? ['job-id'] : name === 'tick' ? [] : [request, principal];
     assert.equal(context[name](...args).delegated, name);
     assert.equal(calls.at(-1).name, name);
-    assert.deepEqual(calls.at(-1).args, args);
+    assert.deepEqual(plain(calls.at(-1).args), args);
   }
   assert.doesNotMatch(source, /fail\('UNSUPPORTED'\)/);
 });
@@ -64,9 +66,9 @@ test('device transport is unsupported on FLASH and cannot silently select anothe
 test('device RPC wire fields, HTTPS and access scopes match the shared controller', async () => {
   const methods = await rpcMethods(), gateway = await read(`${packageRoot}/root/www/cgi-bin/foxhole`);
   const expected = {
-    'updates.deviceBegin': ['token', 'expectedRevision', 'requestId', 'releaseTag', 'version', 'fileSha256', 'fileBytes'],
-    'updates.deviceChunk': ['token', 'uploadId', 'offset', 'dataBase64', 'chunkSha256'],
-    'updates.deviceStatus': ['token', 'uploadId'], 'updates.deviceFinish': ['token', 'uploadId']
+    'updates.deviceBegin': ['token', 'cohortKind', 'assetId', 'uploadId', 'expectedRevision', 'requestId', 'releaseTag', 'version', 'fileSha256', 'fileBytes'],
+    'updates.deviceChunk': ['token', 'cohortKind', 'assetId', 'uploadId', 'offset', 'dataBase64', 'chunkSha256'],
+    'updates.deviceStatus': ['token', 'cohortKind', 'assetId', 'uploadId'], 'updates.deviceFinish': ['token', 'cohortKind', 'assetId', 'uploadId']
   };
   const tls = gateway.slice(gateway.indexOf('pairing.requires_tls'));
   const acl = JSON.parse(await read(`${packageRoot}/root/usr/share/rpcd/acl.d/luci-app-foxhole.json`))['luci-app-foxhole'];

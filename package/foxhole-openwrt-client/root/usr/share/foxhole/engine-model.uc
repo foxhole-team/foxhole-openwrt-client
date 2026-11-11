@@ -7,6 +7,7 @@ const IDS = ['vless', 'vmess', 'hysteria2', 'tuic', 'trojan', 'shadowsocks',
 	'wireguard', 'naive', 'anytls', 'shadowtls', 'socks', 'http'];
 const ARCHES = ['x86_64', 'aarch64_generic', 'aarch64_cortex-a53'];
 const BASE = 'https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/';
+const CORE_BASE = 'https://github.com/foxhole-team/foxhole-core/releases/download/';
 const ENTRY_FIELDS = ['id', 'storage', 'version', 'architecture', 'binarySha256',
 	'executableSha256', 'producerSha256', 'capabilitiesSha256', 'legalProvenanceSha256', 'manifestSha256', 'sourceCommit',
 	'binaryBytes', 'archiveBytes', 'indexBytes', 'installedBytes', 'runtimeMemoryBytes', 'reserveBytes',
@@ -46,10 +47,12 @@ function entry(value) {
 		reject('package_verification_failed');
 	let package = 'foxcore-engine-' + value.id + '-' + lc(value.storage) + '-' + value.manifestSha256;
 	// Core version and router delivery tags can differ.
+	let origin = type(value.indexUrl) == 'string' &&
+		substr(value.indexUrl,0,length(CORE_BASE)) == CORE_BASE ? CORE_BASE : BASE;
 	let release = type(value.indexUrl) == 'string' && length(value.indexUrl) <= 1024 &&
-		substr(value.indexUrl, 0, length(BASE)) == BASE ?
-		match(substr(value.indexUrl, length(BASE)), /^(v[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6})\/engines\.adb$/) : null;
-	let base = release ? BASE + release[1] + '/' : null;
+		substr(value.indexUrl, 0, length(origin)) == origin ?
+		match(substr(value.indexUrl, length(origin)), /^(v[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6})\/engines\.adb$/) : null;
+	let base = release ? origin + release[1] + '/' : null;
 	if (!base || value.packageName != package || value.packageUrl != base + package + '-' + value.packageVersion + '.apk' ||
 	    value.indexUrl != base + 'engines.adb' ||
 	    (value.storage == 'FLASH' && value.executableSha256 != value.binarySha256))

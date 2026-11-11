@@ -21,6 +21,13 @@ value={'architecture':'x86_64','supportedTargets':['x86/64'],'supportedOpenWrt':
  'trustKeys':[{'file':'foxhole-openwrt-apk.pem','sha256':m.CANONICAL_PUBLIC_SHA,'bytes':400}]}
 scenario=sys.argv[2]
 owned=frozenset([name])
+if scenario.startswith('core-'):
+ value['repositoryIndexes'][0]['sourceUrl']='https://github.com/foxhole-team/foxhole-core/releases/download/v1.0.0/engines.adb'
+if scenario=='core-foreign': value['repositoryIndexes'][0]['sourceUrl']=value['repositoryIndexes'][0]['sourceUrl'].replace('foxhole-core','foreign-core')
+if scenario=='core-wrong-version': value['repositoryIndexes'][0]['sourceUrl']=value['repositoryIndexes'][0]['sourceUrl'].replace('v1.0.0/','v1.0.1/')
+if scenario=='core-wrong-index': value['repositoryIndexes'][0]['sourceUrl']=value['repositoryIndexes'][0]['sourceUrl'].replace('engines.adb','base.adb')
+if scenario=='core-base':
+ name='foxhole-openwrt-client';packages[0]['name']=name;value['packageAuthentications'][0]['name']=name;owned=frozenset([name])
 if scenario=='legacy-default': m.schema(value,packages);sys.exit(0)
 if scenario=='foreign-slot': owned=frozenset([name[:-1]+'c'])
 if scenario=='upstream-as-owned': owned=frozenset(['kernel'])
@@ -31,11 +38,12 @@ if scenario=='unbounded-own': owned=frozenset('engine-'+str(i) for i in range(27
 m.schema(value,packages,own_names=owned)
 `;
 for (const scenario of ['valid-selected-slot', 'legacy-default', 'foreign-slot', 'upstream-as-owned',
-  'duplicate-binding', 'extra-archive', 'bad-identity', 'unbounded-own']) {
+  'duplicate-binding', 'extra-archive', 'bad-identity', 'unbounded-own',
+  'core-valid', 'core-foreign', 'core-wrong-version', 'core-wrong-index', 'core-base']) {
   test('compact exact index trust boundary: ' + scenario, () => {
     const result = spawnSync('python3', ['-B', '-c', check, root, scenario], { encoding: 'utf8', timeout: 10000 });
     assert.ifError(result.error);
-    if (scenario === 'valid-selected-slot') assert.equal(result.status, 0, result.stderr);
+    if (['valid-selected-slot', 'core-valid'].includes(scenario)) assert.equal(result.status, 0, result.stderr);
     else { assert.notEqual(result.status, 0); assert.match(result.stderr, /ValueError/); }
   });
 }

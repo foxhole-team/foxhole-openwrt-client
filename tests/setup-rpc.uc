@@ -1,6 +1,7 @@
 import * as model from '/workspace/package/foxhole-openwrt-client/root/usr/share/foxhole/model.uc';
 import * as pairing from '/workspace/package/foxhole-openwrt-client/root/usr/share/foxhole/pairing.uc';
 import * as digest from 'digest';
+import * as update_model from '/workspace/package/foxhole-openwrt-client/root/usr/share/foxhole/update-model.uc';
 
 const STATE_PATH = '/etc/foxhole/state.json';
 const AUTH_PATH = '/etc/foxhole/auth.json';

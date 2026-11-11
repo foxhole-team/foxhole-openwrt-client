@@ -116,9 +116,11 @@ def schema(value: dict, packages: list[dict], *, own_names: frozenset[str] | Non
                 "%" in item["sourceUrl"] or any(part in (".", "..") for part in url.path.split("/"))):
             raise ValueError("Public HTTPS index provenance required")
         if item["role"] == "foxhole" and (url.hostname != "github.com" or not re.fullmatch(
-                r"/foxhole-team/foxhole-openwrt-client/releases/download/v[0-9]+\.[0-9]+\.[0-9]+"
+                r"/foxhole-team/(?:foxhole-openwrt-client|foxhole-core)/releases/download/v[0-9]+\.[0-9]+\.[0-9]+"
                 r"(?:[-+][A-Za-z0-9.-]+)?/[A-Za-z0-9][A-Za-z0-9._-]{0,159}\.adb", url.path)):
             raise ValueError("Exact FoxHole release index provenance required")
+        if "/foxhole-core/" in url.path and url.path.rsplit("/", 1)[1] != "engines.adb":
+            raise ValueError("Core release engine index required")
         if item["role"] == "upstream" and not upstream_url(value, item["sourceUrl"]):
             raise ValueError("Official upstream index provenance required")
         trust = item.get("trustKeyFiles")
@@ -167,6 +169,11 @@ def schema(value: dict, packages: list[dict], *, own_names: frozenset[str] | Non
                 not SHA.fullmatch(item.get("packageIdentity", "")) or
                 (index["role"] == "foxhole") != (record["name"] in owned)):
             raise ValueError("Package is not bound to its role-specific signed index")
+        if index["role"] == "foxhole" and "/foxhole-core/" in index["sourceUrl"]:
+            tag = index["sourceUrl"].rsplit("/", 2)[1][1:]
+            if (re.fullmatch(r"foxcore-engine-(?:hysteria2|vless|wireguard)-(?:flash|ram)-[a-f0-9]{64}", record["name"]) is None or
+                    re.fullmatch(re.escape(tag) + r"-r[0-9]+", record["version"]) is None):
+                raise ValueError("Core index must bind a matching engine module version")
         seen.add(item["file"])
     if seen != set(records):
         raise ValueError("Incomplete indexed package bindings")

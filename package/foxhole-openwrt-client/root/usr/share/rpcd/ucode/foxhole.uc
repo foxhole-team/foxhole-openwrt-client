@@ -1011,6 +1011,14 @@ function admin_pin(request) {
 	});
 };
 
+function fresh_setup_policy() {
+	let auth=auth_record();
+	if(auth.changed!=false || auth.resetPending==true ||
+		type(auth.bootstrapBootId)!='string')return false;
+	if(!update_model.fresh_setup(auth,state_record(),pairing_record(),false))
+		return false;
+	return read_json('/etc/foxhole/update-policy.json',8192)==null;
+};
 function change_pin(request) {
 	let sid = session(request, true);
 	if (sessions[sid].pairing) fail('unauthorized');
@@ -1020,9 +1028,10 @@ function change_pin(request) {
 	return locked(() => {
 		let current = session(request, true);
 		if (!sessions[current].setup || sessions[current].reset || auth_record().changed == true || auth_record().resetPending == true) fail('luci_required');
+		let auto_update_setup=fresh_setup_policy();
 		store_pin(pin, request.args);
 		let token = new_token(user_of(request));
-		return { token };
+		return { token, autoUpdateSetupEligible:auto_update_setup };
 	});
 };
 
@@ -1085,7 +1094,7 @@ function unlock(request) {
 		}
 		return { token, state: public_state(state_record()),
 			pinChangeRequired: sessions[token].setup, licenseRequired: license_required(auth),
-			licenseVersion: LICENSE_VERSION };
+			licenseVersion: LICENSE_VERSION,autoUpdateSetupEligible:fresh_setup_policy() };
 	});
 };
 
@@ -1182,7 +1191,7 @@ function phone_capabilities(request) {
 		legacyProtocols: legacy ? ['hysteria2'] : [],
 		inboundProtocols: incoming ? ['hysteria2'] : [],
 		subscriptionSelection: true, phoneRegistration: true,
-		independentPhoneChoices: true, packageUpdates: true,
+		independentPhoneChoices: true, packageUpdates: true, coreCohortRelay: 1,
 		phoneRemoteProvisioning: incoming, homeProof: false, phoneHandoff: false,
 		providerResolve: false };
 };
@@ -1631,13 +1640,13 @@ const methods = {
 	'updates.apply': { args: { token: '', planId: '', planSha256: '', expectedRevision: 0, confirmed: false }, call: request => call('updates.apply', request, request => update_request(request, 'apply')) },
 	'updates.job': { args: { token: '', jobId: '' }, call: request => call('updates.job', request, request => update_request(request, 'job')) },
 	'updates.settings': { args: { token: '', expectedRevision: 0, autoUpdateEnabled: false }, call: request => call('updates.settings', request, request => update_request(request, 'settings')) },
-	'updates.deviceBegin': { args: { token: '', expectedRevision: 0, requestId: '', releaseTag: '', version: '', fileSha256: '', fileBytes: 0 },
+	'updates.deviceBegin': { args: { token: '', cohortKind: 'BASE', assetId: '', uploadId: '', expectedRevision: 0, requestId: '', releaseTag: '', version: '', fileSha256: '', fileBytes: 0 },
 		call: request => call('updates.deviceBegin', request, request => update_request(request, 'deviceBegin')) },
-	'updates.deviceChunk': { args: { token: '', uploadId: '', offset: 0, dataBase64: '', chunkSha256: '' },
+	'updates.deviceChunk': { args: { token: '', cohortKind: 'BASE', assetId: '', uploadId: '', offset: 0, dataBase64: '', chunkSha256: '' },
 		call: request => call('updates.deviceChunk', request, request => update_request(request, 'deviceChunk')) },
-	'updates.deviceStatus': { args: { token: '', uploadId: '' },
+	'updates.deviceStatus': { args: { token: '', cohortKind: 'BASE', assetId: '', uploadId: '' },
 		call: request => call('updates.deviceStatus', request, request => update_request(request, 'deviceStatus')) },
-	'updates.deviceFinish': { args: { token: '', uploadId: '' },
+	'updates.deviceFinish': { args: { token: '', cohortKind: 'BASE', assetId: '', uploadId: '' },
 		call: request => call('updates.deviceFinish', request, request => update_request(request, 'deviceFinish')) },
 	'engines.status': { args: { token: '' }, call: request => call('engines.status', request, engines_status) },
 	'engines.plan': { args: { token: '', operation: '', engineIds: [], storage: 'AUTO', expectedRevision: 0, catalogSha256: '' },

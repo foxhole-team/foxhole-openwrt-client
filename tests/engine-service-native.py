@@ -85,14 +85,18 @@ export function hash_file(a,b,c,d){die('fixture_refused_unexpected_registry_oper
 export function capture(a,b,c,d){die('fixture_refused_unexpected_registry_operation');};
 export function verify_slot(a,b,c,d){die('fixture_refused_unexpected_registry_operation');};
 export function executable(a,b,c,d){die('fixture_refused_unexpected_registry_operation');};
+export function running_executable(a,b,c,d){die('fixture_refused_unexpected_registry_operation');};
 export function write(a,b,c,d){die('fixture_refused_unexpected_registry_operation');};
 ''',
 'pairing.uc':'''export function defaults(){return {schema:1};};
 export function session_current(pairs,current){return false;};
 ''',
+'backup-service.uc':'''export function guard(){};
+''',
 'private-store.uc':'''import { memory } from './fixture-state.uc';
 function allowed(path){return index(['/etc/foxhole/state.json','/etc/foxhole/engine-job.json',
- '/etc/foxhole/engine-intent.json','/etc/foxhole/update-job.json','/etc/foxhole/auth.json','/etc/foxhole/pairing.json'],path)>=0||
+ '/etc/foxhole/engine-intent.json','/etc/foxhole/update-job.json','/etc/foxhole/auth.json','/etc/foxhole/pairing.json',
+ '/tmp/foxhole/core-uploads/current.json'],path)>=0||
  substr(path,0,25)=='/tmp/foxhole/engine-plan-';};
 export function read(path,limit){
  if(!allowed(path))die('fixture_refused_real_store_read');

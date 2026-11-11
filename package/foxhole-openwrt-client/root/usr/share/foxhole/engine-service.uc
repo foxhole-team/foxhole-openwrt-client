@@ -65,8 +65,13 @@ function locked(fn) {
 };
 function active(job) { return job != null && index(TERMINAL, job.state) < 0; };
 function busy(job) { return active(job) || job?.state == 'RECOVERY_REQUIRED'; };
+function boot() { return trim(fs.readfile('/proc/sys/kernel/random/boot_id', 128) || ''); };
 export function guard_mutation() {
 	backup_service.guard();
+	let cohort=read('/tmp/foxhole/core-uploads/current.json',524288);
+	if(cohort?.schema==1&&index(['RECEIVING','VERIFYING','WAITING'],cohort.phase)>=0&&
+		cohort.bootId==boot()&&now()<=cohort.expiresAtUptimeMs&&
+		principal_current(cohort.principal))fail('BUSY');
 	let update = read('/etc/foxhole/update-job.json', 524288);
 	if (active(update) || update?.state == 'RECOVERY_REQUIRED') fail('BUSY');
 	let value = read(JOB, 524288);
@@ -95,7 +100,6 @@ function world_after(before, additions, removals) {
 	if (!engines.world_pins(before, packages.world(), additions, removals)) fail('PACKAGE_VERIFICATION_FAILED');
 };
 
-function boot() { return trim(fs.readfile('/proc/sys/kernel/random/boot_id', 128) || ''); };
 function process_snapshot(pid) {
 	if (type(pid) != 'int' || pid < 2 || pid > 4194304) return null;
 	let raw = fs.readfile('/proc/' + pid + '/stat', 8192), match_stat = match(raw || '', /^([0-9]+) \(.*\) (.*)$/);
@@ -170,7 +174,7 @@ function reconnect_proven(job, selected, minimum, previous_key) {
 	if (selected) registry.verify_slot(selected);
 	let native = read('/tmp/foxhole/core-state.json', 8192), process = process_snapshot(native?.pid);
 	let executable = fs.stat('/proc/' + native?.pid + '/exe');
-	let expected = fs.stat(selected ? registry.executable(selected) : '/usr/bin/foxcore-cli');
+	let expected = fs.stat(selected ? registry.running_executable(selected) : '/usr/bin/foxcore-cli');
 	if (!process?.root || process.zombie || process.start != '' + native.process_start || native.phase != 'running' ||
 	    !executable || executable.inode != expected?.inode ||
 	    executable.dev?.major != expected.dev?.major || executable.dev?.minor != expected.dev?.minor) return false;

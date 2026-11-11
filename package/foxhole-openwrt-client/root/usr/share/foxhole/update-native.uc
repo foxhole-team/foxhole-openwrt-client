@@ -8,6 +8,7 @@ import * as packages from './package-operations.uc';
 import * as registry from './engine-registry.uc';
 import * as store from './private-store.uc';
 import * as network from './mobile-network.uc';
+import * as core_updates from './core-update-model.uc';
 
 const ORIGIN = 'https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/';
 const KEY = '/usr/share/foxhole/foxhole-openwrt-apk.pem';
@@ -153,17 +154,15 @@ export function selected_modules(current) {
 	return result;
 };
 export function module_changes(old,catalog,architecture) {
-	let artifacts = [], changes = [];
+	let comparisons = {};
 	for (let previous in old) {
 		let matches = filter(catalog.entries,item => item.id == previous.id && item.storage == previous.storage && item.architecture == architecture);
 		if (length(matches) != 1) guard.fail('UNSUPPORTED_TARGET');
 		let next = matches[0];
-		let changed = guard.version_admit(compare(previous.version,next.version),previous.manifestSha256,next.manifestSha256);
-		if (!changed) continue;
-		push(artifacts,next);
-		push(changes,{id:next.id,fromVersion:previous.version,toVersion:next.version,storage:previous.storage});
+		comparisons[previous.id]={core:compare(previous.version,next.version),
+			package:compare(previous.packageVersion,next.packageVersion)};
 	}
-	return { artifacts,changes };
+	return core_updates.module_changes(old,catalog,architecture,comparisons);
 };
 export function stage_ram(value) {
 	if (value.storage != 'RAM') return;
@@ -171,7 +170,8 @@ export function stage_ram(value) {
 	store.directory(directory);
 	let path = directory + '/foxcore-cli', info = fs.lstat(path);
 	if (!info) {
-		let url = ORIGIN + 'v' + value.version + '/engine-' + value.id + '-' + value.architecture + '-' + value.binarySha256 + '.bin';
+		let base = substr(value.indexUrl, 0, length(value.indexUrl) - length('engines.adb'));
+		let url = base + 'engine-' + value.id + '-' + value.architecture + '-' + value.binarySha256 + '.bin';
 		let raw = packages.asset(url,value.binarySha256,value.binaryBytes);
 		if (fs.lstat(raw).size != value.binaryBytes || system(['/bin/cp',raw,path],10000) != 0 || !fs.chmod(path,0o700))
 			guard.fail('RAM_STAGE_UNAVAILABLE');

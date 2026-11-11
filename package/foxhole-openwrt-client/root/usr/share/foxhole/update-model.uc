@@ -15,6 +15,19 @@ export function policy(value) {
 		fail('RECOVERY_REQUIRED');
 	return value;
 };
+export function fresh_setup(auth, state, pairs, configured) {
+ if(type(configured)!='bool' || configured || auth?.changed!=false ||
+  auth.resetPending==true || type(auth.bootstrapBootId)!='string' ||
+  !length(auth.bootstrapBootId) || length(auth.bootstrapBootId)>128 ||
+  type(auth.bootstrapExpiresUptimeMs)!='int' ||
+  auth.bootstrapExpiresUptimeMs<=0 || state?.schema!=1 ||
+  state.revision!=0 || state.activeServerId!=null || pairs?.schema!=1 ||
+  type(pairs.devices)!='array' || length(pairs.devices))return false;
+ let roles=['countries','devices','sites','servers','clients'];
+ for(let i=0;i<length(roles);i++)
+  if(type(state[roles[i]])!='array' || length(state[roles[i]]))return false;
+ return true;
+};
 export function due(value, now, busy) {
 	return value.enabled && !busy && safe_int(now) && now >= 1577836800000 &&
 		(value.lastAttemptAtUnixMs == null || now >= value.lastAttemptAtUnixMs + 86400000);

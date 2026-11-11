@@ -47,6 +47,7 @@ case "$timeout" in ''|*[!0-9]*) exit 1 ;; esac
 ucode -e 'import * as fs from "fs";
 function fail(){exit(1);};
 const release_api='"'"'https://api.github.com/repos/foxhole-team/foxhole-openwrt-client/releases?per_page=10'"'"';
+const core_release_api='"'"'https://api.github.com/repos/foxhole-team/foxhole-core/releases/latest'"'"';
 function job_id(value) { return type(value)=='"'"'string'"'"'&&match(value,/^update-job-[a-f0-9]{32}$/)!=null; };
 function stage(value) {
  return type(value)=='"'"'string'"'"'&&(
@@ -71,6 +72,7 @@ function capture_arguments(output,operation,args) {
   if(operation=='"'"'dependencies'"'"')for(let constraint in slice(args,2))
    if(type(constraint)!='"'"'string'"'"'||length(constraint)>255||!match(constraint,/^[A-Za-z0-9][A-Za-z0-9_.+:/~<>=-]*$/))fail('"'"'INVALID_REQUEST'"'"');
  } else if(operation=='"'"'fetch'"'"'||operation=='"'"'probe'"'"') {
+  if(operation=='"'"'probe'"'"'&&length(args)==1&&args[0]==core_release_api)return true;
   if(length(args)!=1||args[0]!=release_api&&
    !match(args[0],/^https:\/\/github\.com\/foxhole-team\/foxhole-openwrt-client\/releases\/download\/v[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}\/(SHA256SUMS|foxhole-openwrt-client-[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}-r[1-9][0-9]{0,5}\.apk)$/))fail('"'"'INVALID_REQUEST'"'"');
  } else if(operation=='"'"'switch'"'"') {

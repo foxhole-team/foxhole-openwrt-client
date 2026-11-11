@@ -72,6 +72,7 @@ class Memory {
         : path === '/proc/uptime' ? `${(this.clock/1000).toFixed(2)} 0.00` : path === '/proc/meminfo' ? 'MemAvailable: 131072 kB\n'
         : path === '/proc/sys/kernel/random/boot_id' ? '12345678-1234-1234-1234-123456789abc'
         : path === '/proc/self/mountinfo' ? '' : this.get(path)?.slice(0,maximum) ?? null,
+      chmod: (path,mode) => {const value=this.files.get(path);if(!value)return false;value.mode=mode;return true;},
       open: (...args) => this.open(...args), unlink: path => this.files.delete(path),
       rmdir: path => this.files.delete(path), rename: (from,to) => {if(!this.files.has(from))return false;this.files.set(to,this.files.get(from));this.files.delete(from);return true;},
       glob: pattern => {const p=dirname(pattern),hidden=pattern.endsWith('/.*');return [...this.files.keys()].filter(path=>path!==p&&dirname(path)===p&&(path.slice(p.length+1).startsWith('.')===hidden));} };
@@ -102,7 +103,7 @@ function fixture() {
     ['usr/share/rpcd/ucode/foxhole.uc','fixture'],['etc/config/foxhole','fixture'],['lib/apk/packages/foxhole-openwrt-client.list','fixture'],
     ['usr/share/foxhole/foxhole-openwrt-apk.pem',publicKey]
   ]);
-  const folders=new Map();for(const [path,body]of bodies){const parent=dirname(path);if(!folders.has(parent))folders.set(parent,[]);folders.get(parent).push({name:path.slice(parent.length+1),size:body.length,hash:sha(body),acl:{mode:0o644,user:'0',group:'0'}});}
+  const folders=new Map([['',[]]]);for(const [path,body]of bodies){const parent=dirname(path);if(!folders.has(parent))folders.set(parent,[]);folders.get(parent).push({name:path.slice(parent.length+1),size:body.length,hash:sha(body),acl:{mode:0o644,user:'0',group:'0'}});}
   const payload={info:{name:'foxhole-openwrt-client',version:'1.0.2-r1',arch:'noarch','installed-size':2000,depends:['libc']},scripts:{},triggers:[],paths:[...folders].map(([name,files])=>({name,acl:{mode:0o755,user:'0',group:'0'},files}))};
   const apk='signed-fixture-apk',manifest={expectedRevision:0,requestId:'a'.repeat(32),releaseTag:'v1.0.2',version:'1.0.2-r1',fileSha256:sha(apk),fileBytes:apk.length};
   const principal={kind:'admin',user:'root',verifier:'a'.repeat(64)};
@@ -132,6 +133,9 @@ function fixture() {
     throw new Error(`unexpected native operation ${operation}`);
   };
   const service=load('ram-update-service.uc',{model,updates,fs:memory.fs(),store:memory.store(),capture,
+    core_upload:{busy:()=>false},core_updates:{check:()=>{if(environment.coreOffline)throw new Error('update_download_failed');return null;},cleanup_staging:()=>{},recent_current:value=>value.coreCheckedCandidate||null,current_identity:value=>value.coreCheckedCandidate!=null},
+    core_catalog:{network_unreachable:()=>environment.coreOffline===true},
+    bootstrap:{flash_required_bytes:1048576,prove:()=>({modeled:true}),recheck:()=>{}},
     native:{target:()=>({architecture:'aarch64_cortex-a53',release:'25.12.5',target:'mediatek/filogic'})},
     engine:{update_locked:fn=>fn(),update_principal_current:()=>environment.authorized,update_process_snapshot:()=>({pid:100}),update_self_worker:()=>({pid:100,start:'1',commandSha256:sha('worker'),bootId:'12345678-1234-1234-1234-123456789abc'})},
     registry:{snapshot_context:binding,read:()=>({schema:1,revision:0,selected:[],slots:[]})},engines:{selected:()=>null,worker_current:()=>environment.workerAlive!==false},
@@ -236,4 +240,20 @@ test('Stop deferred during the selector is applied after the atomic phase withou
   assert.equal(result.state,'SUCCEEDED');assert.equal(result.previousConnectionRestored,false);
   assert.ok(f.environment.launched.some(args=>args[0]==='/etc/init.d/foxhole-runtime'&&args[1]==='restart'));
   assert.equal(f.memory.json(PROFILE).activeServerId,null);
+});
+
+test('recent verified Core-current evidence lets offline CHECK reach the existing BASE relay',()=>{
+ const f=fixture();f.environment.coreOffline=true;
+ f.memory.put(STATE,JSON.stringify({schema:1,deployment:'RAM_BASE',revision:0,
+  coreCheckedCandidate:{component:'CORE',changes:[],reference:{bodySha256:'a'.repeat(64)}},
+  availability:'NOT_CHECKED',availableVersion:null,failureReason:null}));
+ const job=f.service.check({expectedRevision:0},f.principal);f.service.run(job.jobId);
+ const status=f.service.status(f.principal);
+ assert.equal(status.deviceDownloadRequired,true);assert.equal(status.deviceDownloadKind,'BASE');
+ assert.equal(status.coreAvailability,'CURRENT');
+});
+test('CORE relay evidence cannot authorize an old BASE upload request',()=>{
+ const f=fixture();f.checkOffline();
+ const value=f.memory.json(STATE);value.relayEvidence.cohortKind='CORE';f.memory.put(STATE,JSON.stringify(value));
+ assert.throws(()=>f.service.device_begin({...f.manifest,expectedRevision:value.revision,requestId:'b'.repeat(32)},f.principal));
 });

@@ -40,6 +40,16 @@ test('unverified and failed check statuses never become current', () => {
   const value = status(); value.availability = 'CURRENT';
   assert.throws(() => updateStatus(value));
 });
+test('Core-only current preserves an unchecked BASE and uses a scoped label', () => {
+  const value = { ...status(), availability: 'NOT_CHECKED', availableVersion: null,
+    coreAvailability: 'CURRENT', coreCohortSha256: H, coreCohortRelay: 1 };
+  assert.equal(availabilityLabel(updateStatus(value), key => key), 'updates.core_up_to_date');
+  assert.equal(value.availability, 'NOT_CHECKED');
+  for (const mutate of [v => { v.coreAvailability = 'FIRMWARE'; },
+    v => { v.coreCohortSha256 = null; }, v => { v.coreCohortRelay = 2; }]) {
+    const changed = structuredClone(value); mutate(changed); assert.throws(() => updateStatus(changed));
+  }
+});
 test('unknown failure, cadence and automatic owner references fail closed', () => {
   for (const mutate of [v => { v.failureReason = 'UNKNOWN'; }, v => { v.autoUpdate.intervalSeconds = 1; },
     v => { v.autoUpdate.suspendedReason = 'PAIR_REVOKED'; }, v => { v.activeAutomaticJob = job(); }]) {

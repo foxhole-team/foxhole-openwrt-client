@@ -361,6 +361,7 @@
   "error.update_router_unavailable": "El router no está disponible. Vuelva a conectarse y consulte el estado.",
   "error.update_recovery_required": "Se requiere recuperación. No repita la actualización.",
   "error.update_invalid_request": "Se rechazó la solicitud de actualización.",
+  "updates.core_up_to_date": "Módulos Core actualizados; comprobación del paquete pendiente",
   "updates.up_to_date": "Actualizado",
   "error.update_legacy_connection_active": "Desconecte primero la VPN del router",
   "language.ja": "日本語",

@@ -10,6 +10,7 @@ export const reserve_bytes=16777216;
 export const signer_sha256='fa220a28fd8662fc5f617f46594bafe2415b4f605136570dc3c446caeb7d1ef1';
 export const origin='https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/';
 export const release_api='https://api.github.com/repos/foxhole-team/foxhole-openwrt-client/releases?per_page=10';
+export const core_release_api='https://api.github.com/repos/foxhole-team/foxhole-core/releases/latest';
 
 export function fail(reason) { updates.fail(reason); };
 export function integer(value) { return type(value)=='int'&&value>=0&&value<=9007199254740991; };
@@ -130,6 +131,7 @@ export function capture_arguments(output,operation,args) {
   if(operation=='dependencies')for(let constraint in slice(args,2))
    if(type(constraint)!='string'||length(constraint)>255||!match(constraint,/^[A-Za-z0-9][A-Za-z0-9_.+:/~<>=-]*$/))fail('INVALID_REQUEST');
  } else if(operation=='fetch'||operation=='probe') {
+  if(operation=='probe'&&length(args)==1&&args[0]==core_release_api)return true;
   if(length(args)!=1||args[0]!=release_api&&
    !match(args[0],/^https:\/\/github\.com\/foxhole-team\/foxhole-openwrt-client\/releases\/download\/v[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}\/(SHA256SUMS|foxhole-openwrt-client-[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}-r[1-9][0-9]{0,5}\.apk)$/))fail('INVALID_REQUEST');
  } else if(operation=='switch') {

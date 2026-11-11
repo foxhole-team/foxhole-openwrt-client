@@ -13,6 +13,11 @@ import * as backup_model from './backup-model.uc';
 import * as backup from './backup-service.uc';
 import * as store from './private-store.uc';
 import * as bootstrap from './ram-bootstrap-link.uc';
+import * as core_updates from './core-update-service.uc';
+import * as core_transaction from './core-update-transaction.uc';
+import * as update_capture from './update-capture.uc';
+import * as core_upload from './core-update-upload.uc';
+import * as core_catalog from './core-update-native.uc';
 
 const ROOT='/tmp/foxhole/ram-updates';
 const STATE='/etc/foxhole/update-state.json';
@@ -88,6 +93,7 @@ function save_state(value) {value.revision++;write(STATE,value);return value;};
 function job_record() {return read(JOB);};
 function active(value) {return value!=null&&index(TERMINAL,value.state)<0;};
 function require_idle() {
+ if(core_upload.busy())fail('BUSY');
  backup.guard();let job=job_record(),module_job=read('/etc/foxhole/engine-job.json');
  if(active(job)||job?.state=='RECOVERY_REQUIRED'||active(module_job)||module_job?.state=='RECOVERY_REQUIRED')fail('BUSY');
 };
@@ -102,27 +108,7 @@ function stop_intent() {
  let value=read('/etc/foxhole/engine-intent.json',4096)||{schema:1,revision:0};
  if(value.schema!=1||!model.integer(value.revision)||value.revision>=0x7fffffff)fail('PACKAGE_VERIFICATION_FAILED');return value.revision;
 };
-function capture(operation,args,maximum,milliseconds) {
- admit(2*maximum);store.directory(ROOT);let nonce=random(),output=ROOT+'/io-'+nonce;
- model.capture_arguments(output,operation,args);
- let directory='/tmp/foxhole/engine-command-'+nonce+'.io';store.directory(directory);
- if(command_generation==null)command_generation={helper:raw('/usr/libexec/foxhole-ram-update-command',32768,false),
-  utility:raw('/usr/share/foxhole/engine-capture.uc',32768,false)};
- store.write(directory+'/helper',command_generation.helper);
- store.write(directory+'/utility.uc',command_generation.utility);
- let code=system(['/bin/sh',directory+'/helper',output,''+maximum,''+milliseconds,operation,...args],milliseconds+5000);
- let clean=!fs.lstat(directory+'/owner.json')&&!fs.lstat(directory+'/stdout')&&!fs.lstat(directory+'/stderr');
- let stdout=null,stderr=null;
- if(fs.lstat(output)&&fs.lstat(output+'.err')) {
-  stdout=raw(output,maximum,true);stderr=raw(output+'.err',operation=='probe'?16384:1048576,true);
- }
- if(clean) {
-  for(let path in [directory+'/helper',directory+'/utility.uc'])if(!fs.unlink(path))clean=false;
-  if(!fs.rmdir(directory))clean=false;
- }
- for(let path in [output,output+'.err'])if(fs.lstat(path)&&!fs.unlink(path))clean=false;
- if(!clean||stdout==null||stderr==null)fail('PACKAGE_VERIFICATION_FAILED');return {code,stdout,stderr};
-};
+function capture(operation,args,maximum,milliseconds) {return update_capture.capture(operation,args,maximum,milliseconds);};
 function native_command(operation,args,maximum) {
  let result=capture(operation,args,maximum||8388608,130000);
  if(result.code!=0)fail('PACKAGE_VERIFICATION_FAILED');return result.stdout;
@@ -149,7 +135,7 @@ function context() {
  let profile=data_state(),value=registry.snapshot_context(profile),installed=registry.read(),modules=[];
  for(let selected in installed.selected) {
   let slot=engines.selected(installed,selected.id);if(!slot)fail('PACKAGE_VERIFICATION_FAILED');
-  push(modules,{id:slot.id,storage:slot.storage,version:slot.version});
+  push(modules,{id:slot.id,storage:slot.storage,version:slot.packageVersion});
  }
  return {...value,stateRevision:profile.revision,stateWithoutStop:backup_model.without_stop(profile),
   modules,registrySha256:digest.sha256(sprintf('%J',installed))};
@@ -268,8 +254,11 @@ function publish_candidate(candidate,guard) {
 };
 function record_check_failure(job,error,network) {
  transaction(()=>{let value=state();value.availability='CHECK_FAILED';value.availableVersion=null;value.candidate=null;
-  value.lastCheckedAtUnixMs=time()*1000;value.failureReason=error;value.deviceDownloadRequired=network==true;
-  value.relayEvidence=network?{owner:job.owner,jobId:job.jobId,bootId:boot(),observedAtUptimeMs:now()}:null;save_state(value);});
+  value.lastCheckedAtUnixMs=time()*1000;value.failureReason=error;value.deviceDownloadRequired=network==true||network=='CORE';
+  let proof=core_updates.recent_current(value);
+  value.coreAvailability=proof?'CURRENT':'UNKNOWN';
+  value.coreCohortSha256=proof?proof.reference.bodySha256:null;
+  value.relayEvidence=network?{owner:job.owner,jobId:job.jobId,bootId:boot(),observedAtUptimeMs:now(),cohortKind:network=='CORE'?'CORE':'BASE'}:null;save_state(value);});
 };
 function upload_record() {
  let value=read(UPLOAD,16384);if(value==null)return null;
@@ -379,6 +368,8 @@ function switch_available() {
 };
 function make_plan(principal,automatic) {
  let value=state(),candidate=value.candidate,ctx=context(),installed=current();
+ if(candidate?.component=='CORE')
+  return core_updates.plan(candidate,automatic?null:model.owner(principal),value.revision);
  if(value.availability!='AVAILABLE'||candidate==null)fail('NOT_CHECKED');
  if(candidate.checkedAtUptimeMs>now()||now()-candidate.checkedAtUptimeMs>300000||!same(candidate.binding,binding(ctx)))fail('STALE_PLAN');
  if(model.compare(candidate.version,installed.version)<=0)fail('DOWNGRADE_REJECTED');
@@ -408,7 +399,7 @@ function failed(job,error) {
  if(job.operation=='CHECK') {
   let value=state(),relay=value.relayEvidence?.jobId==job.jobId&&value.deviceDownloadRequired==true&&
    !stop_changed&&authorized(job);
-  record_check_failure(job,reason,relay);
+  record_check_failure(job,reason,relay&&value.relayEvidence.cohortKind=='CORE'?'CORE':relay);
  }
  transaction(()=>profile_locked(()=>{
   let live=job_record();if(live?.jobId!=job.jobId)fail('RECOVERY_REQUIRED');
@@ -460,6 +451,12 @@ function protected_snapshot() {
 };
 function protected_unchanged(before,job) {
  let after=protected_snapshot();before={...before};after={...after};
+ if(job.plan?.candidate?.component=='CORE') {
+  // Native identities, world pins and registry deltas are fenced.
+  for(let path in ['/etc/apk/world','/lib/apk/db/installed','/etc/foxhole/engines.json']) {
+   delete before[path];delete after[path];
+  }
+ }
  for(let path in ['/etc/foxhole/history.json.gz','/etc/foxhole/history.json.gz.new']){delete before[path];delete after[path];}
  if(stop_intent()>job.stopIntent) {
   let profile=data_state(),expected=job.plan.binding;
@@ -514,24 +511,75 @@ function finish_atomic(job) {
  // Once the atomic phase ends, apply the current stopped/kill-switch policy.
  if(stopped&&system(['/etc/init.d/foxhole-runtime','restart'],30000)!=0)fail('RECOVERY_REQUIRED');
 };
+function core_journal(job) {
+ if(job?.plan?.candidate?.component!='CORE' ||
+  core_updates.plan_digest(job.plan)!=job.plan.planSha256)
+  fail('RECOVERY_REQUIRED');
+};
+function core_callbacks() {
+ return {journal:core_journal,
+  admit:job=>{core_journal(job);require_job(job);
+   if(!same(job.plan.binding,core_updates.current_binding()))fail('STALE_PLAN');},
+  authorized,save:save_job,progress,
+  protect:job=>protected_snapshot(),preserved:protected_unchanged,
+  beginAtomic:job=>transaction(()=>profile_locked(()=>{
+   core_journal(job);require_job(job);
+   if(now()>job.plan.expiresAtUptimeMs||
+    !same(job.plan.binding,core_updates.current_binding()))fail('STALE_PLAN');
+   job.mutationStarted=true;job.atomicPackagePhase=true;
+   job.state='INSTALLING';job.step='BACKING_UP';job.progressPercent=30;save_job(job);
+  })),
+  endAtomic:finish_atomic,
+  restart:job=>profile_locked(()=>{
+   if(!authorized(job) || !engines.restart_allowed(job.plan.binding,
+    registry.snapshot_context(data_state())))return false;
+   return system(['/etc/init.d/foxhole-runtime','start'],15000)==0;
+  })};
+};
+function core_complete(job, error) {
+ transaction(()=>{
+  let value=state();value.availability='NOT_CHECKED';value.availableVersion=null;
+  value.candidate=null;value.deviceDownloadRequired=false;value.relayEvidence=null;
+  let recovered=job.coreRecoverySucceeded==true;
+  job.failureReason=error==null?null:recovered?failure_reason(error):
+   job.mutationStarted?'RECOVERY_REQUIRED':failure_reason(error);
+  value.failureReason=job.failureReason;save_state(value);
+  job.state=error==null?'SUCCEEDED':job.mutationStarted&&!recovered?'RECOVERY_REQUIRED':'FAILED';
+  job.step=job.state=='SUCCEEDED'?'COMPLETED':job.state;
+  job.progressPercent=error==null?100:job.progressPercent;
+  job.cancelledByStop=stop_intent()>job.stopIntent;
+  if(job.cancelledByStop)job.previousConnectionRestored=false;
+  save_job(job);
+ });
+};
 
 export function status(principal) {
  let owner=principal_current(principal),installed=current(),ctx=context(),flag=policy(),job=reconcile_job(job_record()),value=state();
+ if(value.coreAvailability=='CURRENT'&&!core_updates.current_identity(value)) {
+  value.coreAvailability='UNKNOWN';value.coreCohortSha256=null;
+  if(value.availability=='CURRENT')value.availability='NOT_CHECKED';
+ }
  let relay=value.deviceDownloadRequired==true&&value.relayEvidence?.owner==owner&&value.relayEvidence.bootId==boot()&&
   value.relayEvidence.observedAtUptimeMs<=now()&&now()-value.relayEvidence.observedAtUptimeMs<=model.upload_lifetime_ms;
  let own=job?.deployment=='RAM_BASE'&&!job.automatic&&job.owner==owner?public_job(job):null;
  if(value.availability=='CURRENT'&&value.availableVersion!=installed.version) {
   value.availability='NOT_CHECKED';value.availableVersion=null;value.failureReason='NOT_CHECKED';
  }
- if(value.availability=='AVAILABLE'&&(value.candidate==null||!fs.lstat(candidate_directory(value.candidate.id)+'/receipt.json')||
+ if(value.availability=='AVAILABLE'&&value.candidate?.component=='CORE'&&!core_updates.valid(value.candidate)) {
+  value.availability='CHECK_FAILED';value.availableVersion=null;value.failureReason='STALE_PLAN';
+ }
+ if(value.availability=='AVAILABLE'&&value.candidate?.component!='CORE'&&(value.candidate==null||!fs.lstat(candidate_directory(value.candidate.id)+'/receipt.json')||
   value.candidate.checkedAtUptimeMs>now()||now()-value.candidate.checkedAtUptimeMs>300000||
   !same(value.candidate.binding,binding(ctx)))) {
   value.availability='CHECK_FAILED';value.availableVersion=null;value.failureReason='STALE_PLAN';
  }
  return {schema:1,supported:true,routerId:ctx.routerId,revision:value.revision,currentVersion:installed.version,
   availableVersion:value.availableVersion,availability:value.availability,lastCheckedAtUnixMs:value.lastCheckedAtUnixMs,
-  failureReason:value.failureReason,busy:active(job)||job?.state=='RECOVERY_REQUIRED',deviceDownloadRequired:relay,
-  autoUpdate:{enabled:flag.enabled,intervalSeconds:86400,lastAttemptAtUnixMs:flag.lastAttemptAtUnixMs,
+  failureReason:value.failureReason,busy:active(job)||job?.state=='RECOVERY_REQUIRED'||core_upload.busy(),deviceDownloadRequired:relay,
+  deviceDownloadKind:relay?value.relayEvidence.cohortKind||'BASE':'BASE',coreCohortRelay:1,
+  coreAvailability:value.coreAvailability||'UNKNOWN',
+  coreCohortSha256:value.candidate?.component=='CORE'?value.candidate.reference.bodySha256:value.coreCohortSha256||null,
+  autoUpdate:{enabled:flag.enabled,configured:fs.lstat(POLICY)!=null,intervalSeconds:86400,lastAttemptAtUnixMs:flag.lastAttemptAtUnixMs,
    nextCheckAtUnixMs:flag.enabled?(flag.lastAttemptAtUnixMs==null?time()*1000:flag.lastAttemptAtUnixMs+86400000):null,
    suspendedReason:job?.state=='RECOVERY_REQUIRED'?'RECOVERY_REQUIRED':null},installedModules:ctx.modules,
   activeOwnJob:own&&active(job)?own:null,lastOwnJob:own,activeAutomaticJob:job?.automatic&&active(job)?{
@@ -552,17 +600,26 @@ export function check(request,principal) {
   let value=state();if(!model.integer(request.expectedRevision)||request.expectedRevision!=value.revision)fail('STALE_SESSION');
   cleanup_pending_assets();
   value.deviceDownloadRequired=false;value.relayEvidence=null;value.availability='NOT_CHECKED';value.failureReason='NOT_CHECKED';
+  value.coreAvailability='UNKNOWN';value.coreCohortSha256=null;
   value.candidate=null;value.availableVersion=null;save_state(value);
   let job=new_job('CHECK',principal,false,null);write(JOB,job);return job;}));return launch(job);
 };
 export function plan(request,principal) {
  principal_current(principal);current();
  return engine.update_locked(()=>transaction(()=>{require_idle();if(!model.integer(request.expectedRevision)||request.expectedRevision!=state().revision)fail('STALE_SESSION');
-  let value=make_plan(principal,false);write(ROOT+'/plan-'+model.owner(principal),value);return public_plan(value);}));
+  let value=make_plan(principal,false);
+  write(ROOT+(value.candidate?.component=='CORE'?'/core-plan-':'/plan-')+model.owner(principal),value);
+  return public_plan(value);}));
 };
 export function apply(request,principal) {
  let owner=principal_current(principal);current();
- let job=engine.update_locked(()=>transaction(()=>{require_idle();let plan=read(ROOT+'/plan-'+owner,16384);
+ let job=engine.update_locked(()=>transaction(()=>{require_idle();
+  let core=state().candidate?.component=='CORE';
+  let plan=read(ROOT+(core?'/core-plan-':'/plan-')+owner,core?524288:16384);
+  if(core) {
+   core_updates.admit(plan,request,owner,state().revision);
+   let value=new_job('APPLY',principal,false,plan);write(JOB,value);return value;
+  }
   if(request.confirmed!=true||type(request.confirmed)!='bool'||!model.integer(request.expectedRevision)||plan==null||plan.owner!=owner||plan.revision!=request.expectedRevision||
    plan.revision!=state().revision||plan.planId!=request.planId||plan.planSha256!=request.planSha256||plan_digest(plan)!=plan.planSha256||
    now()>plan.expiresAtUptimeMs||plan.bootId!=boot()||!same(plan.binding,binding(context())))fail('STALE_PLAN');
@@ -582,6 +639,7 @@ export function device_begin(request,principal) {
   if(old!=null&&index(['EXPIRED','FAILED','FINISHED'],old.phase)<0)fail('BUSY');
   let value=state(),proof=value.relayEvidence;
   if(value.revision!=request.expectedRevision||!value.deviceDownloadRequired||proof?.owner!=owner||proof.bootId!=boot()||
+   proof.cohortKind!=null&&proof.cohortKind!='BASE'||
    proof.observedAtUptimeMs>now()||now()-proof.observedAtUptimeMs>model.upload_lifetime_ms)fail('STALE_PLAN');
   if(model.compare(manifest.version,installed.version)<=0)fail('DOWNGRADE_REJECTED');
   discard_upload(old);if(old?.phase=='FAILED')clean_candidate(old.candidateId);admit(2*manifest.fileBytes);
@@ -654,6 +712,31 @@ export function run(id) {
  try {
   require_job(job);backup.guard();
   if(job.operation=='CHECK') {
+   core_updates.cleanup_staging(job.jobId);
+   store.directory('/tmp/foxhole/'+job.jobId);
+   let core=null,core_failure=null;
+   try{core=core_updates.recent_current(state())||
+    core_updates.check('/tmp/foxhole/'+job.jobId+'/core');require_job(job);}
+   catch(error){core_failure=failure_reason(error);}
+   if(index(['DOWNLOAD_FAILED','RELEASE_UNAVAILABLE'],core_failure)>=0 &&
+    core_catalog.network_unreachable()) {
+    record_check_failure(job,'DOWNLOAD_FAILED','CORE');fail('DOWNLOAD_FAILED');
+   }
+   if(core && length(core.changes)) {
+    transaction(()=>{require_job(job);let value=state();
+     value.candidate=core;value.availability='AVAILABLE';
+     value.availableVersion=current().version;value.failureReason=null;
+     value.lastCheckedAtUnixMs=time()*1000;value.coreCheckFailure=null;
+     value.coreAvailability='AVAILABLE';value.coreCohortSha256=core.reference.bodySha256;
+     value.coreCheckedCandidate=null;
+     save_state(value);});
+    progress(job,'SUCCEEDED','COMPLETED',100);
+    let automatic=automatic_apply(job);if(automatic)launch(automatic);
+    return public_job(job_record());
+   }
+   transaction(()=>{let value=state();value.coreCheckedCandidate=core;
+    value.coreAvailability=core?'CURRENT':'UNKNOWN';
+    value.coreCohortSha256=core?core.reference.bodySha256:null;save_state(value);});
    let probe=capture('probe',[model.release_api],32,6000);require_job(job);
    if(probe.code!=0){record_check_failure(job,'DOWNLOAD_FAILED',model.network_unreachable(probe.code,probe.stderr));fail('DOWNLOAD_FAILED');}
    let id='candidate-'+random(),directory=candidate_directory(id);store.directory(ROOT+'/candidates');store.directory(directory);
@@ -677,8 +760,20 @@ export function run(id) {
     progress(job,'VERIFYING','VERIFYING_PACKAGE',30);
     let candidate=stage_candidate(directory+'/base.apk',selected,id);require_job(job);publish_candidate(candidate,()=>require_job(job));
    }
+   let package_state=state();
+   if(core_failure!=null && package_state.availability!='AVAILABLE')fail(core_failure);
+   transaction(()=>{let value=state();value.coreCheckFailure=core_failure;
+    value.coreAvailability=core_failure?'UNKNOWN':core?'CURRENT':'UNKNOWN';
+    value.coreCohortSha256=core?core.reference.bodySha256:null;
+    if(core && length(core.changes)) {
+     value.packageCandidate=value.candidate;value.candidate=core;
+     value.availability='AVAILABLE';value.availableVersion=current().version;
+    }
+    save_state(value);});
    progress(job,'SUCCEEDED','COMPLETED',100);
    let automatic=automatic_apply(job);if(automatic)launch(automatic);
+  } else if(job.operation=='APPLY'&&job.plan?.candidate?.component=='CORE') {
+   core_transaction.apply(job,core_callbacks());core_complete(job,null);
   } else if(job.operation=='APPLY') {
    engine.update_locked(()=>{
     backup.guard();require_job(job);let plan=job.plan;
@@ -705,12 +800,18 @@ export function run(id) {
     if(current_policy.revision<job.policyBefore.revision||current_policy.revision==job.policyBefore.revision&&
      !same(current_policy,job.policyBefore))fail('RECOVERY_REQUIRED');
     finish_atomic(job);
-    transaction(()=>{let value=state();value.availability='CURRENT';value.availableVersion=installed.version;
+    transaction(()=>{let value=state();value.availability='NOT_CHECKED';value.availableVersion=installed.version;
      value.candidate=null;value.failureReason=null;value.deviceDownloadRequired=false;value.relayEvidence=null;save_state(value);});
     progress(job,'SUCCEEDED','COMPLETED',100);
    });
   } else fail('INVALID_REQUEST');
- }catch(error){failed(job,error);}
+ }catch(error){
+  if(job.plan?.candidate?.component=='CORE') {
+   if(job.mutationStarted&&!job.coreRecoveryAttempted)
+    try{core_transaction.recover(job,core_callbacks());}catch(_){}
+   core_complete(job,error);
+  }else failed(job,error);
+ }
  return public_job(job_record());
 };
 export function tick() {

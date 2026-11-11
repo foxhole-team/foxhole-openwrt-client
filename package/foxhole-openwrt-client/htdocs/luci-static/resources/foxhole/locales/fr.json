@@ -361,6 +361,7 @@
   "error.update_router_unavailable": "Routeur indisponible. Reconnectez-vous et lisez l’état.",
   "error.update_recovery_required": "Récupération requise. Ne répétez pas la mise à jour.",
   "error.update_invalid_request": "Demande de mise à jour refusée.",
+  "updates.core_up_to_date": "Modules Core à jour ; vérification du paquet en attente",
   "updates.up_to_date": "À jour",
   "error.update_legacy_connection_active": "Déconnectez d’abord le VPN du routeur",
   "language.ja": "日本語",
