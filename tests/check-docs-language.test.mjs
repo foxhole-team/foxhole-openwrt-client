@@ -171,3 +171,118 @@ test('Russian changelog still rejects invalid shell syntax', async () => {
   const result = await check('# Product\n', '# Security\n', { 'CHANGELOG.md': '# Изменения\n```sh\nif then\n```\n' });
   assert.equal(result.status, 1); assert.match(result.stderr, /Invalid shell example/);
 });
+
+// Exercise all eight approved README positions through the CLI.
+const styledLanguageRows = [
+  ["README.md", "🌐 [**English**](README.md) · [Русский](docs/README.ru.md) · [Deutsch](docs/README.de.md) · [Français](docs/README.fr.md) · [Español](docs/README.es.md) · [日本語](docs/README.ja.md) · [简体中文](docs/README.zh.md) · [العربية](docs/README.ar.md)"],
+  ["docs/README.ru.md", "🌐 [English](../README.md) · [**Русский**](README.ru.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [Español](README.es.md) · [日本語](README.ja.md) · [简体中文](README.zh.md) · [العربية](README.ar.md)"],
+  ["docs/README.de.md", "🌐 [English](../README.md) · [Русский](README.ru.md) · [**Deutsch**](README.de.md) · [Français](README.fr.md) · [Español](README.es.md) · [日本語](README.ja.md) · [简体中文](README.zh.md) · [العربية](README.ar.md)"],
+  ["docs/README.fr.md", "🌐 [English](../README.md) · [Русский](README.ru.md) · [Deutsch](README.de.md) · [**Français**](README.fr.md) · [Español](README.es.md) · [日本語](README.ja.md) · [简体中文](README.zh.md) · [العربية](README.ar.md)"],
+  ["docs/README.es.md", "🌐 [English](../README.md) · [Русский](README.ru.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [**Español**](README.es.md) · [日本語](README.ja.md) · [简体中文](README.zh.md) · [العربية](README.ar.md)"],
+  ["docs/README.ja.md", "🌐 [English](../README.md) · [Русский](README.ru.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [Español](README.es.md) · [**日本語**](README.ja.md) · [简体中文](README.zh.md) · [العربية](README.ar.md)"],
+  ["docs/README.zh.md", "🌐 [English](../README.md) · [Русский](README.ru.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [Español](README.es.md) · [日本語](README.ja.md) · [**简体中文**](README.zh.md) · [العربية](README.ar.md)"],
+  ["docs/README.ar.md", "🌐 [English](../README.md) · [Русский](README.ru.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [Español](README.es.md) · [日本語](README.ja.md) · [简体中文](README.zh.md) · [**العربية**](README.ar.md)"],
+];
+
+for (const [file, row] of styledLanguageRows) test(`styled navigation accepts the current language in ${file}`, async () => {
+  const result = file === 'README.md' ? await check(row) :
+    await check('# Product\n', '# Security\n', { [file]: row });
+  assert.equal(result.status, 0, result.stderr);
+});
+
+const styledRoot = styledLanguageRows[0][1];
+for (const [name, row] of [
+  ['wrong current language', styledRoot.replace('**English**', 'English').replace('[Русский]', '[**Русский**]')],
+  ['missing current emphasis', styledRoot.replace('**English**', 'English')],
+  ['multiple current languages', styledRoot.replace('[Deutsch]', '[**Deutsch**]')],
+  ['wrong existing target', styledRoot.replace('docs/README.ru.md', 'README.md')],
+  ['missing Arabic', styledRoot.replace(' · [العربية](docs/README.ar.md)', '')],
+  ['missing Russian', styledRoot.replace(' · [Русский](docs/README.ru.md)', '')],
+  ['duplicate styled rows', styledRoot + '\n' + styledRoot],
+  ['mixed plain rows', styledRoot + '\n' + plainLanguageRow()],
+  ['mixed legacy bar', styledRoot + '\n' + languageBar],
+  ['mixed legacy badge', styledRoot + '\n' + languageBadge],
+  ['adjacent Russian prose', styledRoot + '\nРусский текст\n']
+]) test(`styled navigation rejects ${name}`, async () => {
+  const result = await check(row);
+  assert.equal(result.status, 1); assert.match(result.stderr, /Russian prose belongs/);
+});
+
+test('styled navigation is rejected outside approved README paths', async () => {
+  const result = await check('# Product\n', styledRoot);
+  assert.equal(result.status, 1); assert.match(result.stderr, /invalid or duplicate language selector/);
+});
+
+test('styled navigation in Russian README still rejects a wrong current language', async () => {
+  const result = await check('# Product\n', '# Security\n', {
+    'docs/README.ru.md': styledLanguageRows[1][1].replace('**Русский**', 'Русский').replace('[Deutsch]', '[**Deutsch**]')
+  });
+  assert.equal(result.status, 1); assert.match(result.stderr, /invalid or duplicate language selector/);
+});
+
+test('styled navigation preserves local-link validation', async () => {
+  const result = await check(styledRoot + '\n[Missing](missing.md)\n');
+  assert.equal(result.status, 1); assert.match(result.stderr, /Broken local link/);
+});
+
+test('styled navigation preserves shell-example validation', async () => {
+  const result = await check(styledRoot + '\n```sh\nif then\n```\n');
+  assert.equal(result.status, 1); assert.match(result.stderr, /Invalid shell example/);
+});
+
+// Flag rows retain locale paths and the current label.
+const flagLanguageRows = [
+  ["README.md", "[🇬🇧 **English**](README.md) · [🇷🇺 Русский](docs/README.ru.md) · [🇩🇪 Deutsch](docs/README.de.md) · [🇫🇷 Français](docs/README.fr.md) · [🇪🇸 Español](docs/README.es.md) · [🇯🇵 日本語](docs/README.ja.md) · [🇨🇳 简体中文](docs/README.zh.md) · [🇸🇦 العربية](docs/README.ar.md)"],
+  ["docs/README.ru.md", "[🇬🇧 English](../README.md) · [🇷🇺 **Русский**](README.ru.md) · [🇩🇪 Deutsch](README.de.md) · [🇫🇷 Français](README.fr.md) · [🇪🇸 Español](README.es.md) · [🇯🇵 日本語](README.ja.md) · [🇨🇳 简体中文](README.zh.md) · [🇸🇦 العربية](README.ar.md)"],
+  ["docs/README.de.md", "[🇬🇧 English](../README.md) · [🇷🇺 Русский](README.ru.md) · [🇩🇪 **Deutsch**](README.de.md) · [🇫🇷 Français](README.fr.md) · [🇪🇸 Español](README.es.md) · [🇯🇵 日本語](README.ja.md) · [🇨🇳 简体中文](README.zh.md) · [🇸🇦 العربية](README.ar.md)"],
+  ["docs/README.fr.md", "[🇬🇧 English](../README.md) · [🇷🇺 Русский](README.ru.md) · [🇩🇪 Deutsch](README.de.md) · [🇫🇷 **Français**](README.fr.md) · [🇪🇸 Español](README.es.md) · [🇯🇵 日本語](README.ja.md) · [🇨🇳 简体中文](README.zh.md) · [🇸🇦 العربية](README.ar.md)"],
+  ["docs/README.es.md", "[🇬🇧 English](../README.md) · [🇷🇺 Русский](README.ru.md) · [🇩🇪 Deutsch](README.de.md) · [🇫🇷 Français](README.fr.md) · [🇪🇸 **Español**](README.es.md) · [🇯🇵 日本語](README.ja.md) · [🇨🇳 简体中文](README.zh.md) · [🇸🇦 العربية](README.ar.md)"],
+  ["docs/README.ja.md", "[🇬🇧 English](../README.md) · [🇷🇺 Русский](README.ru.md) · [🇩🇪 Deutsch](README.de.md) · [🇫🇷 Français](README.fr.md) · [🇪🇸 Español](README.es.md) · [🇯🇵 **日本語**](README.ja.md) · [🇨🇳 简体中文](README.zh.md) · [🇸🇦 العربية](README.ar.md)"],
+  ["docs/README.zh.md", "[🇬🇧 English](../README.md) · [🇷🇺 Русский](README.ru.md) · [🇩🇪 Deutsch](README.de.md) · [🇫🇷 Français](README.fr.md) · [🇪🇸 Español](README.es.md) · [🇯🇵 日本語](README.ja.md) · [🇨🇳 **简体中文**](README.zh.md) · [🇸🇦 العربية](README.ar.md)"],
+  ["docs/README.ar.md", "[🇬🇧 English](../README.md) · [🇷🇺 Русский](README.ru.md) · [🇩🇪 Deutsch](README.de.md) · [🇫🇷 Français](README.fr.md) · [🇪🇸 Español](README.es.md) · [🇯🇵 日本語](README.ja.md) · [🇨🇳 简体中文](README.zh.md) · [🇸🇦 **العربية**](README.ar.md)"],
+ ];
+for (const [file, row] of flagLanguageRows) test(`flag navigation accepts the exact current locale in ${file}`, async () => {
+  const result = file === 'README.md' ? await check(row) :
+    await check('# Product\n', '# Security\n', { [file]: row });
+  assert.equal(result.status, 0, result.stderr);
+});
+const flagRoot = flagLanguageRows[0][1];
+for (const [name, row] of [
+  ['wrong flag', flagRoot.replace('🇬🇧', '🇺🇸')],
+  ['wrong current language', flagRoot.replace('**English**', 'English').replace('🇷🇺 Русский', '🇷🇺 **Русский**')],
+  ['missing emphasis', flagRoot.replace('**English**', 'English')],
+  ['two current languages', flagRoot.replace('🇩🇪 Deutsch', '🇩🇪 **Deutsch**')],
+  ['wrong existing path', flagRoot.replace('docs/README.ru.md', 'README.md')],
+  ['missing Arabic', flagRoot.replace(' · [🇸🇦 العربية](docs/README.ar.md)', '')],
+  ['missing Russian', flagRoot.replace(' · [🇷🇺 Русский](docs/README.ru.md)', '')],
+  ['duplicate flag row', flagRoot + '\n' + flagRoot],
+  ['mixed legacy styled row', flagRoot + '\n' + styledRoot],
+  ['mixed plain row', flagRoot + '\n' + plainLanguageRow()],
+  ['mixed legacy bar', flagRoot + '\n' + languageBar],
+  ['mixed legacy badge', flagRoot + '\n' + languageBadge],
+  ['adjacent Russian prose', flagRoot + '\nРусский текст\n']
+]) test(`flag navigation rejects ${name}`, async () => {
+  const result = await check(row);
+  assert.equal(result.status, 1); assert.match(result.stderr, /Russian prose belongs/);
+});
+for (const [name, row] of [
+  ['wrong flag', flagLanguageRows[1][1].replace('🇷🇺', '🇺🇸')],
+  ['wrong current language', flagLanguageRows[1][1].replace('**Русский**', 'Русский').replace('🇩🇪 Deutsch', '🇩🇪 **Deutsch**')],
+  ['wrong existing target', flagLanguageRows[1][1].replace('../README.md', 'README.ru.md')],
+  ['duplicate row', flagLanguageRows[1][1] + '\n' + flagLanguageRows[1][1]]
+]) test(`flag navigation rejects ${name} even in Russian README`, async () => {
+  const result = await check('# Product\n', '# Security\n', { 'docs/README.ru.md': row });
+  assert.equal(result.status, 1); assert.match(result.stderr, /invalid or duplicate language selector/);
+});
+test('flag navigation remains rejected outside approved README paths', async () => {
+  const result = await check('# Product\n', flagRoot);
+  assert.equal(result.status, 1); assert.match(result.stderr, /invalid or duplicate language selector/);
+});
+test('flag navigation preserves local-link validation', async () => {
+  const result = await check(flagRoot + '\n[Missing](missing.md)\n');
+  assert.equal(result.status, 1); assert.match(result.stderr, /Broken local link/);
+});
+test('flag navigation preserves shell validation', async () => {
+  const result = await check(flagRoot + '\n```sh\nif then\n```\n');
+  assert.equal(result.status, 1); assert.match(result.stderr, /Invalid shell example/);
+});

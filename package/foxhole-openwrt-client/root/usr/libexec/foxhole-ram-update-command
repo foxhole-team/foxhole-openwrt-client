@@ -43,7 +43,8 @@ case "$limit" in ''|*[!0-9]*) exit 1 ;; esac
 [ "$limit" -gt 0 ] && [ "$limit" -le 8388608 ] || exit 1
 case "$timeout" in ''|*[!0-9]*) exit 1 ;; esac
 [ "$timeout" -ge 1000 ] && [ "$timeout" -le 130000 ] || exit 1
-# Keep argument validation in this captured generation across BASE switches.
+# Keep argument validation in this captured generation across BASE
+# switches.
 ucode -e 'import * as fs from "fs";
 function fail(){exit(1);};
 const release_api='"'"'https://api.github.com/repos/foxhole-team/foxhole-openwrt-client/releases?per_page=10'"'"';

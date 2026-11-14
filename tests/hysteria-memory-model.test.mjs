@@ -29,7 +29,8 @@ const parserFunctions = ['fail', 'object', 'text', 'only', 'decode', 'dns', 'end
   'from_uri', 'scalar', 'from_yaml', 'parse_config'].map(name => {
   let body = functionBody(modelSource, name);
   if (name === 'parse_config') {
-    // The generic brace helper treats the URI-regex terminator as a line comment.
+    // The generic brace helper treats the URI-regex terminator as a
+    // line comment.
     const start = modelSource.indexOf('{', modelSource.indexOf('export function parse_config('));
     const end = modelSource.indexOf('\nexport function config_uri(', start);
     assert.ok(start >= 0 && end > start);

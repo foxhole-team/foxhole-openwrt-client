@@ -36,7 +36,8 @@ function public_set(value) {
 function api_accept_present() {
  let path='/tmp/foxhole/mobile-fw4-input.json';
  store.write(path,'');store.target(path);
- // Only this query child inherits the file-size limit, never installers or APK writes.
+ // Only this query child inherits the file-size limit, never
+ // installers or APK writes.
  if(system(['/bin/sh','-c','umask 077; ulimit -f 1024 || exit 1; exec /usr/sbin/nft -j list chain inet fw4 input > /tmp/foxhole/mobile-fw4-input.json 2>/dev/null'],5000)!=0)fail();
  store.target(path);
  let before=fs.lstat(path);
@@ -77,11 +78,7 @@ let set=network.firewall_set(bindings);
 let batch='add set inet fw4 foxhole_mobile_endpoints { type ifname . ipv4_addr; }\n'+
  'flush set inet fw4 foxhole_mobile_endpoints\n'+
  (length(elements)?'add element inet fw4 foxhole_mobile_endpoints { '+elements+' }\n':'');
-let filter='add table inet foxhole_mobile\ndelete table inet foxhole_mobile\ntable inet foxhole_mobile {\n'+
- ' chain input { type filter hook input priority filter - 10; policy accept;\n'+
- (length(elements)?'  tcp dport 8443 iifname . ip daddr != { '+elements+' } counter drop\n':
-  '  tcp dport 8443 counter drop\n')+
- '  meta nfproto ipv6 tcp dport 8443 counter drop\n }\n}\n';
+let filter=network.api_input_policy(bindings);
 store.write('/tmp/foxhole/mobile-fw4.nft',batch);
 store.write('/tmp/foxhole/mobile.nft',filter);
 if(system(['/usr/sbin/nft','-c','-f','/tmp/foxhole/mobile.nft'],5000)!=0||

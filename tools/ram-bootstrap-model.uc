@@ -109,7 +109,8 @@ export function files(value) {
  }
  if(result[native_ca_alias]?.type=='symlink'&&result[native_ca_alias].linkTarget==native_ca_target) {
   let ca=result[native_ca_file];
-  // Preserve the native alias; join_inventory binds this regular target to the signed APK.
+  // Preserve the native alias; join_inventory binds this regular
+  // target to the signed APK.
   if(ca?.type!='file'||ca.mode!=0o644||!ca.bytes||!sha(ca.sha256))fail();
  }
  return result;
@@ -156,7 +157,8 @@ export function native_document(document,expected) {
    if(!relative(file.name)||index(file.name,'/')>=0)fail();let path=name+'/'+file.name,record;
    if(index(path,prefix+'/')!=0||result[path])fail();let mode=acl(file.acl);
    if(file.target!=null) {
-    // APKv3 target is hex: little-endian S_IFLNK followed by target bytes.
+    // APKv3 target is hex: little-endian S_IFLNK followed by target
+    // bytes.
     if(type(file.target)!='string'||!match(file.target,/^00[aA]0([a-fA-F0-9]{2})+$/))fail();
     let target=hexdec(substr(file.target,4));
     record={path,type:'symlink',mode,bytes:length(target),sha256:null,linkTarget:target};
@@ -197,7 +199,8 @@ export function accepted_download(stderr,code) {
   !match(stderr,/[Cc]ertificate|SSL error|[Tt][Ll][Ss] error/);
 };
 
-// Keep the established BASE path/layout guard; APK scripts remain disabled.
+// Keep the established BASE path/layout guard; APK scripts remain
+// disabled.
 function same_value(a,b) {return sprintf('%J',a)==sprintf('%J',b);};
 export function base_path(path) {
 	if (type(path) != 'string' || length(path) > 256 ||

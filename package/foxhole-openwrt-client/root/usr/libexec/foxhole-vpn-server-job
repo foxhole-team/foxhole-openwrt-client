@@ -1,0 +1,7 @@
+#!/usr/bin/ucode
+import * as service from '/usr/share/foxhole/server-install-service.uc';
+if (ARGV[0] == 'ensure' && length(ARGV) == 1) {
+ try { service.ensure(); } catch (_) { exit(1); } exit(0);
+}
+if (length(ARGV) != 1 || !match(ARGV[0] || '', /^vpn-server-job-[a-f0-9]{32}$/)) exit(1);
+try { service.run(ARGV[0]); } catch (_) { exit(1); }

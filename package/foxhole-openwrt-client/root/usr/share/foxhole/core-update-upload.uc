@@ -49,7 +49,7 @@ function active(value) {
 };
 function idle() {
  backup.guard();
- for(let value in [read(JOB),read('/etc/foxhole/engine-job.json')])
+ for(let value in [read(JOB),read('/etc/foxhole/engine-job.json'),read('/etc/foxhole/vpn-server-job.json',2097152)])
   if(active(value)||value?.state=='RECOVERY_REQUIRED')fail('BUSY');
 };
 function descriptor(value,id) {

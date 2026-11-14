@@ -1,21 +1,22 @@
-import { UpdatePanel, initializeUpdatePolicy } from './update-panel.js?v=1.0.6';
-import { EnginePanel } from './engine-panel.js?v=1.0.6';
-import { BackupPanel } from './backup-panel.js?v=1.0.6';
-import { LogsPanel } from './logs-panel.js?v=1.0.6';
-import { PairingPanel } from './pairing-panel.js?v=1.0.6';
-import { hasHost, request, cancelPending, PanelError } from './bridge.js?v=1.0.6';
-import { Charts, formatBytes, setCountryLabel } from './charts.js?v=1.0.6';
+import { UpdatePanel, initializeUpdatePolicy } from './update-panel.js?v=1.0.8-r2';
+import { EnginePanel } from './engine-panel.js?v=1.0.8-r2';
+import { BackupPanel } from './backup-panel.js?v=1.0.8-r2';
+import { LogsPanel } from './logs-panel.js?v=1.0.8-r2';
+import { PairingPanel } from './pairing-panel.js?v=1.0.8-r2';
+import { HelpPanel } from './help-content.js?v=1.0.8-r2';
+import { hasHost, request, cancelPending, PanelError } from './bridge.js?v=1.0.8-r2';
+import { Charts, formatBytes, setCountryLabel } from './charts.js?v=1.0.8-r2';
 import {
   clientDeviceIcon, clientDeviceType, clone, countryCodes,
   countryFlagPath, finite, maskIpv4, maskMac, networkDeviceIcon,
-  normalizeMac, normalizeRuntime, normalizeSitePattern, normalizedState,
+  normalizeMac, normalizeRuntime, normalizeSitePattern, normalizedState, packageMetadata,
   randomId,
   serverCountryCode,
   validAddress
-} from './frontend-model.js?v=1.0.6';
+, modalFooterActions } from './frontend-model.js?v=1.0.8-r2';
 import {
   ModalFlow, PopupController, waitForMotion
-} from './ui-controller.js?v=1.0.6';
+} from './ui-controller.js?v=1.0.8-r2';
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -36,6 +37,8 @@ const LICENSE_VERSION = 1;
 let licenseRequired = false;
 let licenseRequiredVersion = LICENSE_VERSION;
 let state = null;
+let installedPackage = null;
+let packageMetadataPending = null;
 let draft = null;
 let draftChange = 0;
 let draftSaved = 0;
@@ -87,6 +90,7 @@ function translate(root = document) {
   syncFontStyleLabel(root);
   pairingPanel.renderHeader(state?.pairedDeviceCount);
   pairingPanel.render();
+  helpPanel.updateFacts();
   selectSizingRoots.add(root);
   if (!selectSizingFrame) {
     selectSizingFrame = requestAnimationFrame(() => {
@@ -104,7 +108,7 @@ function syncFontStyleLabel(root = document) {
   const input = $('[data-setting="plainHeadings"]', root);
   if (!input) return;
   const key = preferredPlainHeadings ? 'font.jetbrains_mono' : 'font.tiny5';
-  const label = `${t('settings.foxhole_style')}: ${t(key)}`;
+  const label = `${t('settings.font')}: ${t(key)}`;
   if (input.getAttribute('aria-label') !== label) input.setAttribute('aria-label', label);
 }
 
@@ -187,6 +191,8 @@ const closeAction = {
 };
 
 const modalDefinitions = {
+ 'vpn-server-disable': { icon: 'server', actions: () => [backAction, { action: 'confirm-vpn-server-disable', icon: 'power', label: 'vpn_server.disable', tone: 'danger' }] },
+ 'vpn-server-enable': { icon: 'server', actions: view => [backAction, closeAction, { action: 'confirm-vpn-server', icon: 'check', label: 'action.confirm', tone: 'accent', disabled: view.data.plan?.available !== true }] },
   'add-choice': {
     icon: 'shield', actions: () => [closeAction, {
       action: 'open-networks', icon: 'settings', label: 'action.manage',
@@ -234,15 +240,14 @@ const modalDefinitions = {
   'engine-progress': { icon: 'download', actions: () => [closeAction] },
   'updates': { icon: 'download', actions: () => [backAction, closeAction] },
   'update-plan': { icon: 'download', actions: () => [backAction, { action: 'update-apply', icon: 'check', label: 'action.confirm', tone: 'accent' }] },
-  'logs': { icon: 'logs', actions: () => [backAction, { action: 'logs-refresh', icon: 'refresh', label: 'logs.refresh' }, closeAction] },
+  'logs': { icon: 'logs', layout: 'journal', actions: () => [backAction, { action: 'logs-refresh', icon: 'refresh', label: 'logs.refresh' }, closeAction] },
   'settings-home': {
-    icon: 'settings', actions: () => [{
-      action: 'open-help', icon: 'info', label: 'help.title'
-    }, closeAction]
+    icon: 'settings', actions: () => [closeAction]
   },
   'interface-settings': {
     icon: 'moon', actions: () => [backAction, closeAction]
   },
+  'about': { icon: 'info', actions: () => [backAction, closeAction] },
   exceptions: {
     icon: 'globe', actions: () => [backAction, closeAction]
   },
@@ -322,7 +327,8 @@ function renderModalChrome(view) {
 
   const footer = $('[data-modal-footer]');
   footer.className = `modal-footer layout-${definition.layout || 'default'}`;
-  const actions = definition.actions(view);
+  const actions = modalFooterActions(definition.actions(view));
+  footer.classList.toggle('has-navigation-pair', actions.some(item => item.action === 'modal-back') && actions.some(item => item.action === 'modal-close'));
   footer.classList.toggle('is-single', actions.length === 1);
   footer.replaceChildren(...actions.map((action) => {
     const button = element('button', `outline-button${action.tone
@@ -330,6 +336,7 @@ function renderModalChrome(view) {
     button.type = 'button';
     button.dataset.action = action.action;
     if (action.id) button.dataset.id = action.id;
+    if (action.topic) button.dataset.helpTopic = action.topic;
     if (action.marker === 'serverToggle') button.dataset.serverToggle = '';
     button.disabled = action.disabled === true;
     const label = element('span', '', t(action.label));
@@ -341,8 +348,23 @@ function renderModalChrome(view) {
 
 function prepareModalView(view) {
   renderModalChrome(view);
+  for (const entry of $$('[data-vpn-server-only]')) entry.hidden = state?.settings.vpnServerEnabled !== true;
+  if (view.name === 'vpn-server-enable') renderVpnServerPlan(view.data.plan);
+  if (view.name === 'vpn-server-disable') {
+    const checkbox = $('[data-vpn-server-remove-component]');
+    if (checkbox) { checkbox.checked = false; checkbox.disabled = view.data.plan?.removalAvailable !== true; }
+    const shared = $('[data-vpn-server-shared]');
+    if (shared) shared.hidden = view.data.plan == null || view.data.plan.removalAvailable === true || view.data.plan.available !== true;
+  }
   if (view.name === 'updates') void updatePanel.open();
   if (view.name === 'logs') void logsPanel.open();
+  if (view.name === 'about') {
+    renderAbout();
+    void refreshPackageMetadata().then(() => {
+      if (modal.current?.name === 'about') renderAbout();
+    });
+  }
+  if (view.name === 'help') helpPanel.render($('[data-help-content]'), view.data.topic);
   if (view.name === 'pairings') void pairingPanel.open();
   if (view.name === 'pairing-revoke') $('[data-pairing-revoke-name]').textContent = view.data.name;
   if (view.name === 'update-plan') updatePanel.render();
@@ -435,7 +457,10 @@ const backupPanel = new BackupPanel({
 });
 
 const logsPanel = new LogsPanel({ call: api, text: t, scope: () => epoch, bytes: formatBytes,
+  storage: () => refreshPackageMetadata().then(value => value?.storage),
   error: error => { if (['locked', 'unauthorized', 'luci_required'].includes(error.code)) localLock(); } });
+
+const helpPanel = new HelpPanel({ text: t, element, icon, facts: () => versionFacts() });
 
 const pairingPanel = new PairingPanel({
   call: api, text: t, element, icon, scope: () => epoch, language: () => language,
@@ -578,8 +603,55 @@ function setBusy(value) {
 }
 
 async function api(action, payload = {}) {
-  const response = await request(action, { ...payload, token });
+  const response = await request(action, action === 'package.status' ? {} : { ...payload, token });
   return response;
+}
+
+function refreshPackageMetadata() {
+  const scope = epoch;
+  if (packageMetadataPending?.scope === scope) return packageMetadataPending.promise;
+  const promise = api('package.status').then(packageMetadata).then(value => {
+    if (!token || scope !== epoch) return null;
+    installedPackage = value;
+    helpPanel.updateFacts();
+    return value;
+  }).catch(() => null).finally(() => {
+    if (packageMetadataPending?.promise === promise) packageMetadataPending = null;
+  });
+  packageMetadataPending = { scope, promise };
+  return promise;
+}
+
+function versionFacts() {
+  return { version: installedPackage?.version || null,
+    storage: installedPackage?.storage || null, modules: installedPackage?.installedModules ?? null,
+    routerInfo: installedPackage?.routerInfo || null, homeServerEnabled: installedPackage?.homeServerEnabled ?? null };
+}
+
+function renderAbout() {
+  const root = $('[data-modal-view="about"]');
+  if (!root) return;
+  const unavailable = t('about.unavailable');
+  const facts = versionFacts();
+  $('[data-about-version]', root).textContent = facts.version || unavailable;
+  const storage = $('[data-about-storage]', root);
+  storage.replaceChildren();
+  if (facts.storage) storage.append(icon(facts.storage === 'RAM' ? 'memory' : 'floppy'), document.createTextNode(facts.storage));
+  else storage.textContent = unavailable;
+  $('[data-about-firmware]', root).textContent = facts.routerInfo?.firmwareVersion || unavailable;
+  $('[data-about-model]', root).textContent = facts.routerInfo?.model || unavailable;
+  $('[data-about-address]', root).textContent = facts.routerInfo?.lanAddress || unavailable;
+  $('[data-about-home-server]', root).textContent = facts.homeServerEnabled == null
+    ? unavailable : t(facts.homeServerEnabled ? 'about.enabled' : 'about.disabled');
+  const modules = facts.modules;
+  const list = $('[data-about-modules]', root);
+  list.replaceChildren();
+  if (modules?.length) for (const item of modules) {
+    const row = element('p', 'about-module');
+    row.append(icon('network'), document.createTextNode(`FoxHole Core ${item.id}: ${item.version}`),
+      icon(item.storage === 'RAM' ? 'memory' : 'floppy'), document.createTextNode(item.storage));
+    list.append(row);
+  } else list.textContent = Array.isArray(modules) ? t('about.no_modules') : unavailable;
 }
 
 function applyState(next) {
@@ -642,7 +714,9 @@ function entityRenderKey() {
 }
 
 function renderLists() {
-  if (!state || $('#modal-shell').open) return;
+  if (!state) return;
+  $('[data-vpn-server-section]').hidden = state.settings.vpnServerEnabled !== true;
+  if ($('#modal-shell').open) return;
   const renderKey = entityRenderKey();
   if (renderKey === renderedEntities) {
     for (const server of state.servers) {
@@ -760,7 +834,9 @@ async function openView(name, data = {}, reset = false) {
     }
   }
   charts.setSuspended(true);
-  await modal.open(name, data, reset);
+  const opened = await modal.open(name, data, reset);
+  if (opened && name === 'help' && modal.current?.name === 'help')
+    helpPanel.focusTopic($('[data-help-content]'), data.topic);
   presentToast();
 }
 
@@ -779,8 +855,109 @@ async function closeModal() {
   await modal.close();
 }
 
+function renderVpnServerPlan(plan) {
+  const root = $('[data-vpn-server-plan]');
+  if (!root) return;
+  root.replaceChildren();
+  if (plan?.available !== true) {
+    root.append(element('p', 'muted', t('vpn_server.unavailable')));
+    return;
+  }
+  root.append(element('p', '', t(plan.action === 'install' ? 'vpn_server.install' : 'vpn_server.reuse', { version: plan.component.version })));
+  if (plan.action === 'install' && Array.isArray(plan.components)) {
+    const list = element('ul', 'vpn-server-components');
+    for (const component of plan.components) list.append(element('li', '', `${component.name} ${component.version}`));
+    root.append(list);
+  }
+  root.append(element('strong', '', t('vpn_server.download', { mb: (plan.downloadBytes / 1000000).toLocaleString(language, { maximumFractionDigits: 6 }) })));
+}
+
+async function requestVpnServerEnable() {
+  if (draftSaving) { renderSettings(); return; }
+  let approved;
+  await operation(async () => {
+    const candidate = await api('vpnServer.plan');
+    const plan = candidate;
+    if (plan?.schema !== 1 || plan.revision !== state.revision || typeof plan.available !== 'boolean' ||
+        typeof plan.planSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(plan.planSha256) ||
+        !['reuse', 'install', 'unavailable'].includes(plan.action) ||
+        (plan.action === 'install' && (!['RAM', 'FLASH'].includes(plan.storage) ||
+         !Array.isArray(plan.components) || plan.components.length > 64 ||
+         !plan.components.every(row => typeof row?.name === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.+-]{0,159}$/.test(row.name) &&
+          typeof row.version === 'string' && /^[0-9][A-Za-z0-9_.~+-]{0,159}$/.test(row.version)))) ||
+        (plan.available === true && ((!Number.isSafeInteger(plan.downloadBytes) || plan.downloadBytes < 0) ||
+         (plan.action === 'reuse' && plan.downloadBytes !== 0) ||
+         plan.component?.protocol !== 'hysteria2' || !['verified-legacy-server', 'verified-managed-server', 'verified-server-package'].includes(plan.component.kind) ||
+         !/^[0-9]+\.[0-9]+\.[0-9]+(?:-r[1-9][0-9]*)?$/.test(plan.component.version))))
+      throw new PanelError('unavailable');
+    approved = candidate;
+  });
+  renderSettings();
+  if (approved) await openView('vpn-server-enable', { plan: approved });
+}
+
+async function requestVpnServerDisable() {
+  if (draftSaving) { renderSettings(); return; }
+  if (state.settings.vpnServerEnabled !== true) { renderSettings(); return; }
+  await openView('vpn-server-disable', { plan: null });
+  void api('vpnServer.plan').then((plan) => {
+    if (modal.current?.name !== 'vpn-server-disable' || plan?.schema !== 1 ||
+        plan.revision !== state.revision || typeof plan.available !== 'boolean' ||
+        typeof plan.planSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(plan.planSha256) ||
+        (plan.removalAvailable !== undefined && typeof plan.removalAvailable !== 'boolean') ||
+        (plan.removalAvailable === true && (plan.action !== 'reuse' || plan.component?.kind !== 'verified-managed-server'))) return;
+    modal.current.data.plan = plan;
+    const checkbox = $('[data-vpn-server-remove-component]');
+    if (checkbox) checkbox.disabled = plan.removalAvailable !== true;
+    const shared = $('[data-vpn-server-shared]');
+    if (shared) shared.hidden = plan.removalAvailable === true || plan.available !== true;
+  }).catch(() => {});
+}
+
+function renderVpnServerProgress(job) {
+  const root = $('[data-vpn-server-plan]');
+  if (!root) return;
+  const percent = Math.max(0, Math.min(100, Number(job.progressPercent) || 0));
+  const progress = element('progress', 'vpn-server-progress');
+  progress.max = 100; progress.value = percent;
+  progress.setAttribute('aria-label', t('vpn_server.progress', { percent }));
+  root.replaceChildren(element('p', '', t('vpn_server.progress', { percent })), progress);
+}
+
+async function setVpnServer(enabled, removeComponent = false) {
+  if (draftSaving) { renderSettings(); return; }
+  const plan = views.at(-1)?.data.plan;
+  if (removeComponent && (enabled || plan?.removalAvailable !== true)) throw new PanelError('unavailable');
+  let saved = false;
+  await operation(async () => {
+    let next = await api('vpnServer.set', { revision: state.revision, enabled,
+      confirmed: enabled || removeComponent,
+      planSha256: enabled || removeComponent ? plan?.planSha256 || '' : '', removeComponent });
+    if (next?.jobId) {
+      const started = Date.now();
+      while (!['SUCCEEDED', 'FAILED', 'RECOVERY_REQUIRED'].includes(next.state)) {
+        renderVpnServerProgress(next);
+        if (Date.now() - started > 960000) throw new PanelError('unavailable');
+        await new Promise(resolve => setTimeout(resolve, 750));
+        next = await api('vpnServer.job', { jobId: next.jobId });
+      }
+      renderVpnServerProgress(next);
+      if (next.state !== 'SUCCEEDED') throw new PanelError(next.failureReason || 'vpn_server_unavailable');
+      next = await api('state');
+    }
+    applyState(next);
+    if (draft) { draft.revision = state.revision; draft.settings.vpnServerEnabled = state.settings.vpnServerEnabled; }
+    saved = true;
+    toast(t('settings.saved'));
+  });
+  if (saved && (enabled || views.at(-1)?.name === 'vpn-server-disable')) await back();
+  renderSettings();
+}
+
 function renderSettings() {
   if (!draft) return;
+  const serverToggle = $('[data-vpn-server-toggle]');
+  if (serverToggle) serverToggle.checked = state.settings.vpnServerEnabled === true;
   for (const node of $$('[data-setting]')) {
     const value = draft.settings[node.dataset.setting];
     if (node.type === 'checkbox') {
@@ -1563,17 +1740,28 @@ function queueDraftSave(noticeKey = 'settings.saved') {
   void persistDraft();
 }
 
+function serverTestNotice(result) {
+  if (result?.valid !== true) return { key: 'server.test_invalid', tone: 'error' };
+  const check = result.reachability;
+  if (check?.reachable === true && check.code === 'reachable') {
+    if (check.scope === 'tcp') return { key: 'server.test_tcp', tone: 'success' };
+    if (check.scope === 'host') return { key: 'server.test_host', tone: 'info' };
+  }
+  if (check?.code === 'blocked_address') return { key: 'server.test_blocked', tone: 'info' };
+  return { key: 'server.test_unconfirmed', tone: 'info' };
+}
+
 async function testServer() {
   await operation(async () => {
 
     toast(t('server.testing'), 'info');
     const result = await api('server.test', {
       config: $('[data-server-config]').value,
-      engine: views.at(-1)?.data.engine || ''
+      engine: views.at(-1)?.data.engine || '', reachability: true
     });
 
-    toast(t(result.valid ? 'server.test_valid' : 'server.test_invalid'),
-      result.valid ? 'success' : 'error');
+    const notice = serverTestNotice(result);
+    toast(t(notice.key), notice.tone);
   });
 }
 
@@ -1708,11 +1896,13 @@ function setSectionCollapsed(id, collapsed) {
   const key = collapsed ? 'action.expand' : 'action.collapse';
   button.classList.toggle('is-collapsed', collapsed);
   button.setAttribute('aria-expanded', String(!collapsed));
+  const heading = $('[data-status-heading]');
+  if (id === 'status' && heading) heading.setAttribute('aria-expanded', String(!collapsed));
   button.setAttribute('aria-label', t(key));
   button.title = t(key);
   button.dataset.i18nTitle = key;
   button.dataset.i18nAriaLabel = key;
-  const label = $('[data-i18n]', button);
+  const label = $('[data-collapse-label], .visually-hidden[data-i18n]', button);
   if (label) {
     label.dataset.i18n = key;
     label.textContent = t(key);
@@ -1915,6 +2105,7 @@ function renderPinCooldown() {
 function localLock() {
   enginePanel.close();
   updatePanel.close();
+  updatePanel.current = null;
   backupPanel.close();
   logsPanel.close();
   pairingPanel.close();
@@ -1928,6 +2119,8 @@ function localLock() {
   licenseRequired = false;
   licenseRequiredVersion = LICENSE_VERSION;
   state = null;
+  installedPackage = null;
+  packageMetadataPending = null;
   draft = null;
   popups.closeAll();
   modal.reset();
@@ -1977,6 +2170,7 @@ async function unlock(event) {
     $('#pin-gate').hidden = true;
     $('#pin-input').value = '';
     epoch += 1;
+    void refreshPackageMetadata();
     if (pinSetupRequired) await openView('pin-change', {
       titleKey: 'pin_setup.title'
     }, true);
@@ -2011,19 +2205,23 @@ async function perform(action, target) {
       break;
     }
     case 'toggle-section': {
-      const section = target.dataset.sectionToggle;
+      const section = target.dataset.sectionToggle || target.dataset.sectionId;
       setSectionCollapsed(section,
         target.getAttribute('aria-expanded') === 'true');
       break;
     }
     case 'open-add': await openView('add-choice', {}, true); break;
     case 'open-logs': await openView('logs'); break;
+    case 'open-about': await openView('about'); break;
     case 'logs-refresh': await logsPanel.refresh(); break;
+    case 'logs-older': await logsPanel.refresh(true); break;
     case 'open-settings':
       beginSettingsDraft();
       await openView('settings-home', {}, true); break;
     case 'add-server': await openView('server-config'); break;
-    case 'add-client': await openView('client-device'); break;
+    case 'add-client': if (state.settings.vpnServerEnabled === true) await openView('client-device'); break;
+    case 'confirm-vpn-server': await setVpnServer(true); break;
+    case 'confirm-vpn-server-disable': await setVpnServer(false, $('[data-vpn-server-remove-component]')?.checked === true); break;
     case 'open-server-control': await openView('server-control', { id }, true); break;
     case 'open-client-control': await openView('client-control', { id }, true); break;
     case 'manage-client': await loadEntity('client', id); break;
@@ -2114,7 +2312,7 @@ async function perform(action, target) {
       try { backupPanel.choose(); } catch (error) { toast(errorText(error), 'error'); }
       break;
     case 'backup-status': await operation(() => backupPanel.status()); backupPanel.render(); break;
-    case 'open-help': await openView('help'); break;
+    case 'open-help': await openView('help', { topic: target.dataset.helpTopic || null }); break;
     case 'open-router-stats': await openView('router-stats', {}, true); break;
     case 'test-server': await testServer(); break;
     case 'connect-server': await controlServer(id, false); break;
@@ -2253,8 +2451,14 @@ document.addEventListener('change', (event) => {
     renderRules();
   }
   if (input.matches('[data-period]')) { charts.setPeriod(input.value); storage.set('period', input.value); renderRouterStats(); }
+  if (input.matches('[data-vpn-server-toggle]')) {
+    if (input.checked) void requestVpnServerEnable();
+    else void requestVpnServerDisable();
+    return;
+  }
   if (input.matches('[data-setting]') && draft) {
-    const value = input.type === 'checkbox' ? input.checked : input.value;
+    if (input.dataset.valueType === 'boolean' && !['true', 'false'].includes(input.value)) return;
+    const value = input.type === 'checkbox' ? input.checked : input.dataset.valueType === 'boolean' ? input.value === 'true' : input.value;
     draft.settings[input.dataset.setting] = input.hasAttribute(
       'data-setting-inverted') ? !value : value;
     appearance(draft.settings);
@@ -2293,6 +2497,12 @@ for (const button of $$('[data-chart-toggle]')) {
   setCollapsed(storage.get(`chart.${id}`) === '1');
   button.addEventListener('click', () => setCollapsed(!card.classList.contains('is-collapsed')));
 }
+
+$('.intro').addEventListener('click', event => {
+  if (event.target.closest('button, select, label, input, a')) return;
+  const control = $('[data-section-toggle="status"]');
+  setSectionCollapsed('status', control.getAttribute('aria-expanded') === 'true');
+});
 
 for (const button of $$('[data-section-toggle]')) {
   const id = button.dataset.sectionToggle;
@@ -2346,6 +2556,8 @@ document.addEventListener('keydown', (event) => {
 
 function syncViewport() {
   const visual = window.visualViewport;
+  document.documentElement.style.setProperty('--viewport-height', `${visual?.height || window.innerHeight}px`);
+  document.documentElement.style.setProperty('--viewport-top', `${visual?.offsetTop || 0}px`);
   const editing = document.activeElement?.matches('input:not([type="checkbox"]):not([type="radio"]), textarea');
   const keyboard = Boolean(editing && visual && window.innerHeight - visual.height > 100);
   document.documentElement.classList.toggle('has-visual-keyboard', keyboard);

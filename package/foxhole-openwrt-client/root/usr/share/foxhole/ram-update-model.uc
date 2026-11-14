@@ -66,7 +66,8 @@ export function upload_request(value) {
 };
 export function network_unreachable(code,stderr) {
  if(type(stderr)!='string'||length(stderr)>1048576)return false;
- // TLS, HTTP and verification errors never enable the device relay.
+ // TLS, HTTP and verification errors never enable the device
+ // relay.
  if(match(stderr,/(SSL|TLS|certificat|HTTP error|signature|verification)/i))return false;
  if(code!=4)return false;
  return match(stderr,/Connection error: Connection (failed|timed out)/)!=null;
@@ -103,13 +104,22 @@ export function checksum(raw,file) {
  }
  if(!sha(wanted))fail('PACKAGE_VERIFICATION_FAILED');return wanted;
 };
-export function policy(value,wanted,release) {
+export function supports_firmware(value,observed) {
+ if(index(['25.12.5','25.12.6'],observed)<0)fail('UNSUPPORTED_TARGET');
+ let releases=value.schema==1?[value.osRelease]:value.supportedOpenWrt;
+ if(index(releases,observed)<0)fail('UNSUPPORTED_TARGET');return true;
+};
+export function policy(value,wanted,release,observed) {
+ let legacy=value?.schema==1,fields=['schema','transactionAbi','stateAbi',legacy?'osRelease':'supportedOpenWrt','packageVersion','releaseTag','targets'];
  if(type(value)!='object'||length(keys(value))!=7)fail('PACKAGE_VERIFICATION_FAILED');
- for(let key in keys(value))if(index(['schema','transactionAbi','stateAbi','osRelease','packageVersion','releaseTag','targets'],key)<0)
-  fail('PACKAGE_VERIFICATION_FAILED');
- if(type(value)!='object'||value.schema!=1||value.transactionAbi!=1||value.stateAbi!=1||
-  value.osRelease!='25.12.5'||value.packageVersion!=wanted||value.releaseTag!=release||
-  sprintf('%J',value.targets)!=sprintf('%J',['x86/64','mediatek/filogic']))fail('PACKAGE_VERIFICATION_FAILED');
+ for(let key in keys(value))if(index(fields,key)<0)fail('PACKAGE_VERIFICATION_FAILED');
+ if(type(value.schema)!='int'||index([1,2],value.schema)<0||type(value.transactionAbi)!='int'||value.transactionAbi!=1||
+  type(value.stateAbi)!='int'||value.stateAbi!=1||value.packageVersion!=wanted||value.releaseTag!=release||
+  !version(wanted)||release_for(wanted)!=release||type(value.targets)!='array'||length(value.targets)!=2||
+  value.targets[0]!='x86/64'||value.targets[1]!='mediatek/filogic')fail('PACKAGE_VERIFICATION_FAILED');
+ if(legacy?value.osRelease!='25.12.5':type(value.supportedOpenWrt)!='array'||length(value.supportedOpenWrt)!=2||
+  value.supportedOpenWrt[0]!='25.12.5'||value.supportedOpenWrt[1]!='25.12.6')fail('PACKAGE_VERIFICATION_FAILED');
+ if(observed!=null)supports_firmware(value,observed);
  return value;
 };
 export function metadata(value,wanted) { return updates.base_layout(value,wanted); };

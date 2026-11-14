@@ -15,16 +15,16 @@ with tempfile.TemporaryDirectory() as directory:
  evidence=p.source_evidence(out/p.PROVENANCE_FILES[0],out/p.PROVENANCE_FILES[1])
  for name in p.LICENSES:(out/name).write_text('synthetic legal fixture: '+name)
  record={'sourceSha256':p.SOURCE_SHA,'sourceCommit':p.SOURCE_COMMIT,'sourcePatch':p.patch_record(evidence),
-  'toolchain':'go version go1.26.10 linux/amd64','binaryRuntimeVersion':'go1.26.10','buildInfo':['dep\\tgolang.org/x/net\\tv0.60.0\\th1:synthetic'],
+  'toolchain':'go version go1.26.11 linux/amd64','binaryRuntimeVersion':'go1.26.11','buildInfo':['dep\\t'+name+'\\t'+version+'\\th1:synthetic' for name,version in {'golang.org/x/net':'v0.62.0','golang.org/x/crypto':'v0.59.0','golang.org/x/sys':'v0.50.0','github.com/andybalholm/brotli':'v1.2.7','github.com/klauspost/compress':'v1.20.2'}.items()],
   'filesSha256':{name:hashlib.sha256((out/name).read_bytes()).hexdigest() for name in p.LICENSES+p.PROVENANCE_FILES}}
- record['testSuite']={'schema':1,'sourceReceiptSha256':'4384fa5b283cde9a33ac2147756a4ce61e31708b9b1271e8c0929a330296181b','freshCompleteReceiptSha256':'f66db45fa33d2895c9ca8945ef6c668d0db8910748a063bbed638788004a506e','casePass':510,'caseFail':0,'caseSkip':0,'packagePass':29,'packageSkip':15,'oldCasesRetained':0,'actualSuiteExitCode':0}
- record['sourceTestScope']={'kind':'retained-exact-source-tests','compilerVersion':'go1.26.9','currentCompilerTestsExecuted':False,'freshCompleteReceiptSha256':'f66db45fa33d2895c9ca8945ef6c668d0db8910748a063bbed638788004a506e'}
- record['currentCompilerQualification']={'schema':1,'runtimeReceiptSha256':'3b39d555cb1fedecefcde92f72da72abdd0a26abbf769b0e220992a88c6bf2fd','archiveSha256':'ccfe7ae822d2c2f41f4fe7c956199967a4dac22d0ee0d2b2bfdb440aab3b20c5','ordinaryTlsControlReceiptSha256':'9bd8a66cdc799c7df449640469ecb8986de2e1e2b9588baa3c8a126a15e16f50','ordinaryTlsControlScope':'Linux/amd64 existing TestGoVerify ordinary chain control; not Hysteria target runtime or denylist regression','ordinaryTlsControlReused':True,'currentTargetRuntimeAcceptance':None}
+ record['testSuite']={'schema':1,'sourceReceiptSha256':'6e3995f198b93654ea2b6cb5f780191ab22c10acc496447c419e7d44bd7cc7f0','freshCompleteReceiptSha256':'f66db45fa33d2895c9ca8945ef6c668d0db8910748a063bbed638788004a506e','casePass':510,'caseFail':0,'caseSkip':0,'packagePass':29,'packageSkip':15,'oldCasesRetained':0,'actualSuiteExitCode':0}
+ record['sourceTestScope']={'kind':'fresh-current-compiler-tests','compilerVersion':'go1.26.11','currentCompilerTestsExecuted':True,'freshCompleteReceiptSha256':'f66db45fa33d2895c9ca8945ef6c668d0db8910748a063bbed638788004a506e'}
+ record['currentCompilerQualification']={'schema':2,'origin':'source-built-Go-toolchain','version':'go1.26.11','sourceCommit':'26b4433366fce47e480679e0b5a30222b63996e0','sourceArchiveSha256':'d44101b0ff27ed2a4c75ad46c17b9c74359209e2eb2ca7c9df6cb4fdb68e1969','binGoSha256':'26ee101a4b1aa25cc4fcf0f7d1934779eedffe6297b721284167723693852b06','binGoBytes':15548742,'compilerComponentReceiptSha256':'289bce83337162a9e7d0e8825a8329c4789d8d28f2c4781408e8417f12925dfd','runtimeManifestSha256':'c4b52158ad3392089146c65ec2ce01240e97632f93591c2c15e391b1af0513c7','runtimeFileCount':15048,'sourceCompilerBuildReplayedInGo8Job':False,'runtimeFencesPassed':True,'currentTargetRuntimeAcceptance':None}
  if case=='missing-compiler-qualification':record.pop('currentCompilerQualification')
- if case=='wrong-compiler-runtime':record['currentCompilerQualification']['runtimeReceiptSha256']='a'*64
+ if case=='wrong-compiler-runtime':record['currentCompilerQualification']['compilerComponentReceiptSha256']='a'*64
  if case=='invented-current-acceptance':record['currentCompilerQualification']['currentTargetRuntimeAcceptance']=True
  if case=='retagged-source-suite':record['sourceTestScope']['compilerVersion']='go1.26.10'
- if case=='invented-current-tests':record['sourceTestScope']['currentCompilerTestsExecuted']=True
+ if case=='invented-current-tests':record['sourceTestScope']['currentCompilerTestsExecuted']=False
  if case=='missing-suite':record.pop('testSuite')
  if case=='boolean-suite-schema':record['testSuite']['schema']=True
  if case=='old-suite-source':record['testSuite']['sourceReceiptSha256']='59f1f3a0ff584073e23dc1bb80da1ef9584c82b07c101a74d58d00110e2df2e7'
@@ -36,6 +36,11 @@ with tempfile.TemporaryDirectory() as directory:
  if case=='old-toolchain':record['toolchain']='go version go1.26.8 linux/amd64'
  if case=='old-binary-runtime':record['binaryRuntimeVersion']='go1.26.8'
  if case=='old-network':record['buildInfo']=['dep\\tgolang.org/x/net\\tv0.57.0\\th1:synthetic']
+ if case=='old-compression':record['buildInfo']=[x.replace('v1.20.2','v1.18.7') for x in record['buildInfo']]
+ if case=='old-brotli':record['buildInfo']=[x.replace('v1.2.7','v1.1.0') for x in record['buildInfo']]
+ if case=='wrong-go-binary':record['currentCompilerQualification']['binGoSha256']='a'*64
+ if case=='boolean-runtime-count':record['currentCompilerQualification']['runtimeFileCount']=True
+ if case=='unfenced-runtime':record['currentCompilerQualification']['runtimeFencesPassed']=False
  if case=='false-unmodified':record['sourcePatch']['sourceUnmodified']=True
  if case=='integer-unmodified':record['sourcePatch']['sourceUnmodified']=0
  if case=='boolean-schema':record['sourcePatch']['schema']=True
@@ -47,6 +52,7 @@ with tempfile.TemporaryDirectory() as directory:
 
 for (const scenario of ['synthetic-complete', 'missing-compiler-qualification', 'wrong-compiler-runtime', 'invented-current-acceptance', 'retagged-source-suite', 'invented-current-tests', 'old-toolchain', 'old-binary-runtime', 'old-network', 'false-unmodified',
   'integer-unmodified', 'boolean-schema', 'missing-patch', 'tampered-patch', 'tampered-notice',
+  'old-compression', 'old-brotli', 'wrong-go-binary', 'boolean-runtime-count', 'unfenced-runtime',
   'missing-suite', 'boolean-suite-schema', 'old-suite-source', 'malformed-suite-digest',
   'empty-suite', 'partial-suite', 'old-retained-cases', 'failed-suite']) {
   test('Hysteria repair evidence admission: ' + scenario, () => {

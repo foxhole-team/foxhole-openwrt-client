@@ -8,8 +8,10 @@ if(fs.stat('/proc/self')?.uid!=0||length(ARGV)>1||length(ARGV)==1&&ARGV[0]!='--a
  die('Root backup recovery required\n');
 try {backup.recover();}
 catch(error) {
- // Stop can enforce the current disconnected policy while a live restore
- // worker owns the engine lock. This never permits a tunnel to start.
+ // Stop can enforce the current disconnected policy while a live
+ // restore
+ // worker owns the engine lock. This never permits a tunnel to
+ // start.
  if(ARGV[0]!='--allow-stopped'||!backup.stopped())die(error);
  exit(10);
 }

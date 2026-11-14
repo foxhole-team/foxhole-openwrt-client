@@ -1,6 +1,6 @@
 # Verification and release
 
-The forthcoming 1.0 release uses selectable Core client modules. The incoming
+This release process uses selectable Core client modules. The incoming
 Hysteria server is optional in compact catalogs. Host checks do not establish firmware
 compatibility or reproducible APKs. Keep the release unpublished until actual
 firmware gates and owner review are complete.

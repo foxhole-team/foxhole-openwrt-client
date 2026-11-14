@@ -73,7 +73,8 @@ export function preview_json(points) {
 		if (count <= 2) break;
 		count = max(2, int(count / 2));
 	}
-	// An unrepresentable endpoint never truncates or replaces the full owner history.
+	// An unrepresentable endpoint never truncates or replaces the
+	// full owner history.
 	return '[]';
 };
 

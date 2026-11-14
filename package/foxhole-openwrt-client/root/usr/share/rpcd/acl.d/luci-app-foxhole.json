@@ -30,7 +30,10 @@
           "backup.validate",
           "backup.status",
           "updates.deviceStatus",
-          "diagnostics.logs"
+          "diagnostics.logs",
+          "diagnostics.journal",
+          "vpnServer.plan",
+          "vpnServer.job"
         ]
       },
       "uci": [
@@ -62,7 +65,8 @@
           "backup.apply",
           "updates.deviceBegin",
           "updates.deviceChunk",
-          "updates.deviceFinish"
+          "updates.deviceFinish",
+          "vpnServer.set"
         ]
       },
       "uci": [

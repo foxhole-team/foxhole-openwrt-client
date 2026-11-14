@@ -65,7 +65,8 @@ exit "$FETCH_STATUS"
 `, { mode: 0o755 });
     await writeFile(join(bin, 'ln'), '#!/bin/sh\n[ "$1" = -T ] || exit 97\nexec /bin/ln "$2" "$3"\n', { mode: 0o755 });
     const script = join(directory, 'hint.sh');
-    // Darwin sh uses 1024-byte blocks; the target BusyBox uses 512-byte blocks.
+    // Darwin sh uses 1024-byte blocks; the target BusyBox uses
+    // 512-byte blocks.
     let adapted = helper.replaceAll('/tmp/foxhole', root);
     if (process.platform === 'darwin') adapted = adapted.replace('ulimit -f 2048', 'ulimit -f 1024');
     await writeFile(script, adapted);

@@ -94,3 +94,11 @@ test('an already signed and selected package remains usable after discovery expi
  assert.equal(model().cached_feed(value, later, installed).sequence, 5);
  assert.throws(() => model().cached_feed(value, later, { ...installed, sequence: 6 }), /identity_conflict/);
 });
+
+test('a separately signed 25.12.6 feed requires the same exact observed firmware', () => {
+ const value = fixture(); value.compatibility.osRelease = '25.12.6';
+ assert.equal(model().feed(value, { ...context, osRelease: '25.12.6' }, { sequence: 4, sha256: J }, H).compatibility.osRelease, '25.12.6');
+ rejected(value, context);
+ rejected(fixture(), { ...context, osRelease: '25.12.6' });
+ value.compatibility.osRelease = '25.12.7'; rejected(value, { ...context, osRelease: '25.12.7' });
+});

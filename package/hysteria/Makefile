@@ -2,9 +2,11 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=hysteria
 PKG_VERSION:=2.12.2
-PKG_RELEASE:=5
+PKG_RELEASE:=6
+ifeq ($(HYSTERIA_PACKAGE_INPUT),)
 PKG_SOURCE:=hysteria-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/apernet/hysteria/tar.gz/app/v$(PKG_VERSION)?
+endif
 PKG_HASH:=8db04a112e73685a1e5916d5d4d3df3ed897dbabc3e639fda4880b7ca9a7d18e
 PKG_SOURCE_SUBDIR:=hysteria-app-v$(PKG_VERSION)
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_SOURCE_SUBDIR)
@@ -60,6 +62,7 @@ endef
 else
 define Build/Compile
 	@test -n "$(HYSTERIA_TEST_SUITE_INPUT)" || { echo "Verified fresh Hysteria test suite required" >&2; exit 1; }
+	@test -n "$(HYSTERIA_COMPILER_QUALIFICATION)" || { echo "Qualified Go1.26.11 compiler required" >&2; exit 1; }
 	cd $(PKG_BUILD_DIR) && $(GO_PKG_VARS) CGO_ENABLED=0 \
 		$(FOXHOLE_GO) build \
 			-mod=readonly -trimpath -buildvcs=false \
@@ -80,7 +83,8 @@ define Build/Compile
 			--version $(PKG_VERSION) --source-sha256 $(PKG_HASH) \
 			--source-commit $(HYSTERIA_COMMIT) \
 			--output $(PKG_BUILD_DIR)/hysteria-producer.json \
-			--test-suite "$(HYSTERIA_TEST_SUITE_INPUT)"
+			--test-suite "$(HYSTERIA_TEST_SUITE_INPUT)" \
+			--compiler-qualification "$(HYSTERIA_COMPILER_QUALIFICATION)"
 endef
 endif
 
@@ -98,4 +102,7 @@ define Package/hysteria/install
 		$(1)/usr/share/licenses/hysteria/
 endef
 
+# The server manager owns activation; APK payloads have no
+# lifecycle hooks.
+override APK_SCRIPTS_hysteria:=
 $(eval $(call BuildPackage,hysteria))

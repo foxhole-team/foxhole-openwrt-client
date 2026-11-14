@@ -3,8 +3,12 @@
 'require view';
 
 const parameters = {
+ 'vpnServer.plan': ['token'],
+ 'vpnServer.job': ['token', 'jobId'],
+ 'vpnServer.set': ['token', 'revision', 'enabled', 'confirmed', 'planSha256', 'removeComponent'],
   'package.status': [],
   'diagnostics.logs': ['token'],
+  'diagnostics.journal': ['token', 'beforeSequence'],
   'backup.export': ['token'],
   'backup.validate': ['token', 'document', 'expectedRevision'],
   'backup.apply': ['token', 'document', 'expectedRevision', 'confirmed', 'requestId'],
@@ -30,7 +34,7 @@ const parameters = {
 	'pair.revoke': ['token', 'id'],
 	telemetry: ['token'],
 	settings: ['token', 'revision', 'settings', 'countries', 'devices', 'sites'],
-	'server.test': ['token', 'config', 'engine'],
+	'server.test': ['token', 'config', 'engine', 'reachability'],
 	'server.save': ['token', 'revision', 'config', 'id', 'name', 'engine', 'subscription'],
 	'server.get': ['token', 'id'],
 	'server.start': ['token', 'revision', 'id'],
@@ -78,16 +82,46 @@ function validMessage(message) {
 	}
 }
 
+function panelMetadata() {
+	const title = document.title, changes = [];
+	document.title = 'FoxHole OpenWRT';
+	for (const [tag, selector, attributes] of [
+		['meta', 'meta[name="application-name"]', { name: 'application-name', content: 'FoxHole OpenWRT' }],
+		['meta', 'meta[name="apple-mobile-web-app-title"]', { name: 'apple-mobile-web-app-title', content: 'FoxHole OpenWRT' }],
+		['link', 'link[rel="icon"]', { rel: 'icon', href: L.resource('foxhole/assets/foxhole-32.png'), type: 'image/png', sizes: '32x32' }],
+		['link', 'link[rel="apple-touch-icon"]', { rel: 'apple-touch-icon', href: L.resource('foxhole/assets/foxhole-180.png'), sizes: '180x180' }],
+		['link', 'link[rel="manifest"]', { rel: 'manifest', href: L.resource('foxhole/manifest.json?v=1.0.8-r2') }]
+	]) {
+		const existing = document.querySelector(selector);
+		const node = existing || document.createElement(tag);
+		const before = Object.fromEntries(Object.keys(attributes).map(key => [key, node.getAttribute(key)]));
+		for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, value);
+		if (!existing) document.head.appendChild(node);
+		changes.push(() => {
+			if (!existing) { node.remove(); return; }
+			for (const [key, value] of Object.entries(before)) {
+				if (value == null) node.removeAttribute(key);
+				else node.setAttribute(key, value);
+			}
+		});
+	}
+	return () => {
+		if (document.title === 'FoxHole OpenWRT') document.title = title;
+		changes.forEach(restore => restore());
+	};
+}
+
 return view.extend({
 	load: function() {
 		return Promise.resolve();
 	},
 
 	render: function() {
+		this._foxholeRestoreMetadata = panelMetadata();
 		const frame = E('iframe', {
 			'class': 'foxhole-luci-frame',
 			'src': L.resource('foxhole/shell.html'),
-			'title': 'FoxHole OpenWRT Client',
+			'title': 'FoxHole OpenWRT',
 			'referrerpolicy': 'no-referrer',
 			'loading': 'eager',
 			'allow': 'clipboard-write'
@@ -97,8 +131,9 @@ return view.extend({
 			'.foxhole-luci-host{width:100%;min-height:720px;margin:0}',
 			'.foxhole-luci-frame{display:block;width:100%;min-height:720px;',
 			'height:calc(100vh - 112px);border:0;background:#080808}',
-			'@media(max-width:700px){.foxhole-luci-host{min-height:640px}',
-			'.foxhole-luci-frame{min-height:640px;height:calc(100vh - 64px)}}'
+			'@media(max-width:720px){.foxhole-luci-host{width:100vw;max-width:none;',
+			'min-height:0;margin-inline:calc(50% - 50vw)}',
+			'.foxhole-luci-frame{min-height:0;height:calc(100dvh - 64px)}}'
 		]);
 		if (!document.getElementById('foxhole-luci-style')) {
 			style.id = 'foxhole-luci-style';
@@ -140,6 +175,7 @@ return view.extend({
 	handleReset: null,
 
 	remove: function() {
+		this._foxholeRestoreMetadata?.();
 		if (this._foxholeRelay)
 			window.removeEventListener('message', this._foxholeRelay);
 		if (this._foxholeFrame && this._foxholeFrame.contentWindow)

@@ -105,6 +105,14 @@ export async function initializeUpdatePolicy(eligible, enabled, call) {
   return { initialized: true, status: saved };
 }
 
+export function updateBadgeKey(value) {
+  if (!value?.supported || value.busy || value.activeOwnJob || value.activeAutomaticJob || value.lastCheckedAtUnixMs == null) return null;
+  if (value.availability === 'AVAILABLE') return 'updates.badge_available';
+  if (value.availability === 'CURRENT' && value.failureReason === null && value.currentVersion === value.availableVersion)
+    return 'updates.badge_latest';
+  return null;
+}
+
 export class UpdatePanel {
   constructor({ call, text, element, show, scope, error }) {
     Object.assign(this, { call, text, element, show, scope, error });
@@ -129,11 +137,20 @@ export class UpdatePanel {
   }
   async summary() {
     const sequence = this.sequence, scope = this.scope();
+    const previous = document.querySelector('[data-update-summary]');
+    if (previous) { previous.hidden = true; previous.textContent = ''; delete previous.dataset.i18n; }
     try {
       const value = updateStatus(await this.call('updates.status'));
       if (!this.fresh(sequence, scope)) return;
+      this.current = value;
       const node = document.querySelector('[data-update-summary]');
-      if (node) node.textContent = [value.currentVersion || '—', availabilityLabel(value, this.text)].filter(Boolean).join(' · ');
+      if (node) {
+        const key = updateBadgeKey(value);
+        node.hidden = key === null;
+        node.textContent = key ? this.text(key) : '';
+        node.dataset.updateState = key === 'updates.badge_available' ? 'available' : 'latest';
+        if (key) node.dataset.i18n = key;
+      }
     } catch { /* Older or unreachable packages never appear current. */ }
   }
   async action(name, payload = {}) {
@@ -184,7 +201,11 @@ export class UpdatePanel {
     const root = document.querySelector('[data-update-detail]');
     if (root) {
       root.replaceChildren(); const v = this.current;
-      if (!v) { root.append(this.element('p', 'muted', this.text('updates.unavailable'))); return; }
+      if (!v) {
+        root.append(this.element('p', 'muted', this.text('updates.unavailable')),
+          this.button('update-status', 'updates.status_only', this.pending));
+        return;
+      }
       const versions = this.element('dl', 'engine-budget');
       for (const [key, value] of [['current', v.currentVersion], ['available_version', v.availableVersion]])
         versions.append(this.element('dt', '', this.text(`updates.${key}`)), this.element('dd', '', value || '—'));
@@ -199,6 +220,7 @@ export class UpdatePanel {
         root.append(this.element('p', 'muted', this.text(`updates.state_${job.state.toLowerCase()}`)));
         const progress = this.element('progress', 'engine-progress'); progress.max = 100; progress.value = job.progressPercent;
         progress.setAttribute('aria-label', this.text('updates.progress')); root.append(progress);
+        root.append(this.element('p', 'update-progress-label', `${job.progressPercent}%`));
       }
       const row = this.element('label', 'setting-row'); const label = this.element('span', 'setting-copy');
       label.append(this.element('strong', '', this.text('updates.auto'))); const control = this.element('input');

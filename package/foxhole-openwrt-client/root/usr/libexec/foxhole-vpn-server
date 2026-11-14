@@ -1,0 +1,31 @@
+#!/usr/bin/ucode
+import * as fs from 'fs';
+import * as store from '/usr/share/foxhole/private-store.uc';
+import * as model from '/usr/share/foxhole/model.uc';
+import * as mode from '/usr/share/foxhole/server-mode.uc';
+import * as service from '/usr/share/foxhole/server-install-service.uc';
+import * as engine from '/usr/share/foxhole/engine-service.uc';
+
+// Local root entrypoint with explicit confirmation.
+if (fs.stat('/proc/self')?.uid != 0) die('unauthorized');
+let action = ARGV[0];
+if (action != 'plan' && action != 'enable' && action != 'disable') die('invalid_settings');
+engine.guard_mutation();
+store.target('/etc/foxhole/state.lock');
+let lock = fs.open('/etc/foxhole/state.lock', 'a+', 0o600);
+if (!lock?.lock('xn') || !store.file_metadata(fs.lstat('/etc/foxhole/state.lock'))) die('locked');
+let state = model.validate_state(json(store.read('/etc/foxhole/state.json', 262144)));
+if (action == 'plan') {
+ print(sprintf('%J', mode.plan(state, service.installed())));
+ lock.lock('u'); lock.close(); exit(0);
+}
+if (!match(ARGV[1] || '', /^(0|[1-9][0-9]{0,9})$/)) die('invalid_settings');
+let enabled = action == 'enable';
+let next = mode.change(state, { enabled, revision: int(ARGV[1]),
+ confirmed: enabled && ARGV[3] == '--confirm', planSha256: ARGV[2] || '' }, enabled ? service.installed() : null);
+store.write('/etc/foxhole/state.json', sprintf('%J', next));
+lock.lock('u'); lock.close();
+let ok = system(['/usr/libexec/foxhole-inbound', 'force'], 30000) == 0;
+if (system(['/etc/init.d/foxhole-inbound', enabled ? 'start' : 'stop'], 15000) != 0) ok = false;
+if (!ok) die('runtime_unavailable');
+print(sprintf('%J', { schema: 1, enabled, revision: next.revision }));

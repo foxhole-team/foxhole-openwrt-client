@@ -43,6 +43,7 @@ test('paired phones can query guarded package updates on either storage mode', a
   const rpc = await read(`${packageRoot}/root/usr/share/rpcd/ucode/foxhole.uc`);
   for (const storage of ['RAM', 'FLASH']) {
     const context = vm.createContext({ phone_session: () => {},
+      server_install: { installed: () => null }, protocol_facts: { server: () => null }, server_mode: { enabled: () => false }, state_record: () => ({ settings: {} }),
       core_adapter: { receipt: () => null }, fs: { stat: () => null },
       read_json: () => null, ram_deployment: () => storage === 'RAM' });
     vm.runInContext(`function phone_capabilities(request) ${functionBody(rpc, 'phone_capabilities')}`, context);

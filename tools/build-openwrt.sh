@@ -45,6 +45,9 @@ core_ram_reserve=''
 server_input=''
 server_download=''
 server_ram_reserve=''
+go_input=''
+go_qualification=''
+test_suite=''
 out=''
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -56,6 +59,9 @@ while [ "$#" -gt 0 ]; do
     --server-input) server_input=${2:?}; shift 2 ;;
     --server-download-url) server_download=${2:?}; shift 2 ;;
     --server-ram-reserve-bytes) server_ram_reserve=${2:?}; shift 2 ;;
+    --go-input) go_input=${2:?}; shift 2 ;;
+    --go-qualification) go_qualification=${2:?}; shift 2 ;;
+    --test-suite) test_suite=${2:?}; shift 2 ;;
     --wg|-wg) requested="${requested}wireguard,"; shift ;;
     --hy2) requested="${requested}hysteria2,"; shift ;;
     --vless|--vmess|--tuic|--trojan|--shadowsocks|--naive|--anytls|--shadowtls|--socks|--http)
@@ -90,6 +96,26 @@ if [ -n "$server_input" ]; then
   fi
 elif [ -n "$server_download" ] || [ -n "$server_ram_reserve" ]; then
   echo 'Server RAM requires a verified native producer' >&2; exit 2
+fi
+if [ -z "$server_input" ]; then
+  [ -n "$go_input" ] && [ -n "$go_qualification" ] && [ -n "$test_suite" ] || {
+    echo 'Source build requires qualified Go1.26.11 and fresh tests' >&2
+    exit 2
+  }
+  case "$go_input:$go_qualification:$test_suite" in
+    /*:/*:/*) ;;
+    *) echo 'Compiler and test inputs must be absolute paths' >&2
+       exit 2 ;;
+  esac
+  python3 - "$root/tools" "$go_input" "$go_qualification" <<'PY'
+import json, pathlib, sys
+sys.path.insert(0, sys.argv[1])
+import hysteria_provenance as provenance
+go = pathlib.Path(sys.argv[2]).resolve(strict=True)
+qualification = provenance.compiler_qualification(json.loads(pathlib.Path(sys.argv[3]).read_text()))
+assert go.stat().st_size == qualification['binGoBytes']
+assert provenance.digest(go) == qualification['binGoSha256']
+PY
 fi
 if [ -n "$core_input" ]; then
   [ -n "$core_source" ] || { echo 'Core producer source digest required' >&2; exit 2; }
@@ -133,23 +159,19 @@ if [ "$target" = filogic ]; then
   sdk_url=https://downloads.openwrt.org/releases/25.12.5/targets/mediatek/filogic/openwrt-sdk-25.12.5-mediatek-filogic_gcc-14.3.0_musl.Linux-x86_64.tar.zst
   sdk_hash=ff4a38a397caa2cfe1c39e18f84ddede14878221b3593c3f2c4cfe24e3ec4c25
 fi
-go_url=https://go.dev/dl/go1.26.10.linux-amd64.tar.gz
-go_hash=ccfe7ae822d2c2f41f4fe7c956199967a4dac22d0ee0d2b2bfdb440aab3b20c5
 fetch() {
   curl --fail --location --proto '=https' --proto-redir '=https' \
     --retry 3 --connect-timeout 20 --max-time 900 -o "$scratch/$3" "$1"
   printf '%s  %s\n' "$2" "$scratch/$3" | sha256sum -c -
 }
 fetch "$sdk_url" "$sdk_hash" sdk.tar.zst
-fetch "$go_url" "$go_hash" go.tar.gz
 mkdir "$scratch/sdk"
 tar --zstd -xf "$scratch/sdk.tar.zst" -C "$scratch/sdk" --strip-components=1
-tar -xzf "$scratch/go.tar.gz" -C "$scratch"
 cp "$root/tools/feeds.conf" "$scratch/sdk/feeds.conf"
 printf 'src-link foxhole %s/package\n' "$root" >> "$scratch/sdk/feeds.conf"
 export SOURCE_DATE_EPOCH=1788825600
 export GOTOOLCHAIN=local
-export FOXHOLE_GO="$scratch/go/bin/go"
+[ -z "$go_input" ] || export FOXHOLE_GO="$go_input"
 cd "$scratch/sdk"
 ./scripts/feeds update -a
 packages='hysteria foxhole-openwrt-client'
@@ -168,7 +190,7 @@ EOF
 [ -z "$core_input" ] || echo CONFIG_PACKAGE_foxcore-cli=m >> .config
 [ -z "$core_download" ] || echo CONFIG_PACKAGE_foxcore-cli-ram=m >> .config
 [ -z "$server_download" ] || echo CONFIG_PACKAGE_hysteria-server-ram=m >> .config
-make defconfig
+make defconfig HYSTERIA_PACKAGE_INPUT="$server_input" FOXHOLE_GO="$go_input"
 for option in ALL ALL_NONSHARED ALL_KMODS SIGNED_PACKAGES; do
   if grep -Eq "^CONFIG_$option=[ym]$" .config; then
     echo "Unexpected SDK option: $option" >&2
@@ -182,7 +204,9 @@ for package in $packages; do
     FOXCORE_PACKAGE_INPUT="$core_input" FOXCORE_SOURCE_SHA256="$core_source" \
     FOXCORE_DOWNLOAD_URL="$core_download" FOXCORE_RAM_RESERVE_BYTES="$core_ram_reserve" \
     HYSTERIA_PACKAGE_INPUT="$server_input" HYSTERIA_DOWNLOAD_URL="$server_download" \
-    HYSTERIA_RAM_RESERVE_BYTES="$server_ram_reserve" V=s
+    HYSTERIA_RAM_RESERVE_BYTES="$server_ram_reserve" \
+    HYSTERIA_TEST_SUITE_INPUT="$test_suite" \
+    HYSTERIA_COMPILER_QUALIFICATION="$go_qualification" V=s
 done
 mkdir -p "$out"
 find bin/packages -type f \( -name 'foxhole-openwrt-client-*.apk' \
@@ -195,8 +219,8 @@ if find "$out" -name 'hysteria-ram-*.apk' | grep -q .; then
 fi
 [ -z "$core_input" ] || test -f "$out/foxcore-cli-1.0.2-r1.apk"
 [ -z "$core_download" ] || test -f "$out/foxcore-cli-ram-1.0.2-r2.apk"
-[ -z "$server_download" ] || test -f "$out/hysteria-server-ram-2.12.2-r2.apk"
-test -f "$out/hysteria-2.12.2-r5.apk"
+[ -z "$server_download" ] || test -f "$out/hysteria-server-ram-2.12.2-r5.apk"
+test -f "$out/hysteria-2.12.2-r6.apk"
 cp .config "$out/sdk.config"
 cp "$root/tools/feeds.conf" "$out/feeds.buildinfo"
 PYTHONDONTWRITEBYTECODE=1 python3 "$root/tools/check-apk-signing.py" \

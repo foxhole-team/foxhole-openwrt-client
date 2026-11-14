@@ -1,4 +1,4 @@
-"""Bind the corrected Hysteria source, retained source tests and current compiler evidence."""
+"""Bind Hysteria source, fresh source tests and the exact compiler."""
 from pathlib import Path
 import hashlib
 import json
@@ -6,10 +6,18 @@ import re
 
 SOURCE_SHA = "8db04a112e73685a1e5916d5d4d3df3ed897dbabc3e639fda4880b7ca9a7d18e"
 SOURCE_COMMIT = "619a6f856b69fb7ee6a7a379e810e68b84004605"
-PATCH_SHA = "13741cc70614625da775b9ae049c74a27cc5a1a92410aebd7d1649bb58f6cf01"
-RECEIPT_SHA = "9c78d87d33ace6e323a3590ce78263f809a5a87083964cf85f0c9dc2589f4c52"
+PATCH_SHA = "9356841dfca7add5755c91bb5ddd8398588d04b6c23430bf2f01067e8b763bcd"
+RECEIPT_SHA = "db872fa2964b2f4ebce109fb49bc336cceac6a13756530550fbf219fc3dfbd21"
 SOURCE_PATCH_FILE = "combined-source.patch"
-SUITE_SOURCE_SHA = "4384fa5b283cde9a33ac2147756a4ce61e31708b9b1271e8c0929a330296181b"
+SUITE_SOURCE_SHA = "6e3995f198b93654ea2b6cb5f780191ab22c10acc496447c419e7d44bd7cc7f0"
+RUNTIME_VERSION = "go1.26.11"
+REQUIRED_MODULES = {
+    "golang.org/x/net": "v0.62.0",
+    "golang.org/x/crypto": "v0.59.0",
+    "golang.org/x/sys": "v0.50.0",
+    "github.com/andybalholm/brotli": "v1.2.7",
+    "github.com/klauspost/compress": "v1.20.2",
+}
 PROVENANCE_FILES = ("HYSTERIA-SOURCE-PATCH.patch", "HYSTERIA-PATCH-SOURCE.json")
 LICENSES = ("LICENSE.md", "app.LICENSE.md", "core.LICENSE.md", "extras.LICENSE.md",
             "go-modules.json", "GO-THIRD-PARTY-NOTICES.txt")
@@ -44,7 +52,7 @@ def test_suite(value):
             value["schema"] != 1 or value["sourceReceiptSha256"] != SUITE_SOURCE_SHA or
             not isinstance(value["freshCompleteReceiptSha256"], str) or
             re.fullmatch(r"[a-f0-9]{64}", value["freshCompleteReceiptSha256"]) is None or
-            value["casePass"] < 5 or value["packagePass"] <= 0 or value["packageSkip"] < 0 or
+            value["casePass"] < 510 or value["packagePass"] <= 0 or value["packageSkip"] < 0 or
             value["packagePass"] + value["packageSkip"] != 44 or
             any(value[name] != 0 for name in ("caseFail", "caseSkip", "oldCasesRetained", "actualSuiteExitCode"))):
         raise ValueError("Complete fresh modified-source upstream test proof required")
@@ -52,39 +60,49 @@ def test_suite(value):
 
 
 def compiler_qualification(value):
-    fields = {"schema", "runtimeReceiptSha256", "archiveSha256", "ordinaryTlsControlReceiptSha256",
-              "ordinaryTlsControlScope", "ordinaryTlsControlReused", "currentTargetRuntimeAcceptance"}
-    if (not isinstance(value, dict) or set(value) != fields or type(value.get("schema")) is not int or value.get("schema") != 1 or
-            value.get("runtimeReceiptSha256") != "3b39d555cb1fedecefcde92f72da72abdd0a26abbf769b0e220992a88c6bf2fd" or
-            value.get("archiveSha256") != "ccfe7ae822d2c2f41f4fe7c956199967a4dac22d0ee0d2b2bfdb440aab3b20c5" or
-            re.fullmatch(r"[a-f0-9]{64}", str(value.get("ordinaryTlsControlReceiptSha256"))) is None or
-            value.get("ordinaryTlsControlScope") != "Linux/amd64 existing TestGoVerify ordinary chain control; not Hysteria target runtime or denylist regression" or
-            value.get("ordinaryTlsControlReused") is not True or value.get("currentTargetRuntimeAcceptance") is not None):
-        raise ValueError("Current Go1.26.10 compiler with separately scoped ordinary control required")
+    expected = {
+        "schema": 2, "origin": "source-built-Go-toolchain",
+        "version": RUNTIME_VERSION,
+        "sourceCommit": "26b4433366fce47e480679e0b5a30222b63996e0",
+        "sourceArchiveSha256": "d44101b0ff27ed2a4c75ad46c17b9c74359209e2eb2ca7c9df6cb4fdb68e1969",
+        "binGoSha256": "26ee101a4b1aa25cc4fcf0f7d1934779eedffe6297b721284167723693852b06",
+        "binGoBytes": 15548742,
+        "compilerComponentReceiptSha256": "289bce83337162a9e7d0e8825a8329c4789d8d28f2c4781408e8417f12925dfd",
+        "runtimeManifestSha256": "c4b52158ad3392089146c65ec2ce01240e97632f93591c2c15e391b1af0513c7",
+        "runtimeFileCount": 15048,
+        "sourceCompilerBuildReplayedInGo8Job": False,
+        "runtimeFencesPassed": True,
+        "currentTargetRuntimeAcceptance": None,
+    }
+    if (not isinstance(value, dict) or value != expected or
+            any(type(value.get(name)) is not type(wanted)
+                for name, wanted in expected.items())):
+        raise ValueError("Exact fenced source-built Go1.26.11 compiler required")
     return value
 
 
 def verify(record, payload):
     test_suite(record.get("testSuite"))
     if record.get("sourceTestScope") != {
-            "kind": "retained-exact-source-tests", "compilerVersion": "go1.26.9",
-            "currentCompilerTestsExecuted": False,
-            "freshCompleteReceiptSha256": "f66db45fa33d2895c9ca8945ef6c668d0db8910748a063bbed638788004a506e"}:
-        raise ValueError("Explicit retained Go1.26.9 source-test scope required")
-    if record["testSuite"]["freshCompleteReceiptSha256"] != record["sourceTestScope"]["freshCompleteReceiptSha256"]:
-        raise ValueError("Retained source suite identity differs")
+            "kind": "fresh-current-compiler-tests", "compilerVersion": RUNTIME_VERSION,
+            "currentCompilerTestsExecuted": True,
+            "freshCompleteReceiptSha256": record["testSuite"]["freshCompleteReceiptSha256"]}:
+        raise ValueError("Fresh current-compiler source-test scope required")
+    if record["sourceTestScope"]["currentCompilerTestsExecuted"] is not True:
+        raise ValueError("Actual current-compiler tests required")
     compiler_qualification(record.get("currentCompilerQualification"))
     evidence = source_evidence(payload / PROVENANCE_FILES[0], payload / PROVENANCE_FILES[1])
     selected = record.get("sourcePatch")
     if (record.get("sourceSha256") != SOURCE_SHA or record.get("sourceCommit") != SOURCE_COMMIT or
             not isinstance(selected, dict) or type(selected.get("schema")) is not int or
             selected.get("sourceUnmodified") is not False or selected != patch_record(evidence) or
-            record.get("toolchain") != "go version go1.26.10 linux/amd64" or
-            record.get("binaryRuntimeVersion") != "go1.26.10" or
+            record.get("toolchain") != "go version " + RUNTIME_VERSION + " linux/amd64" or
+            record.get("binaryRuntimeVersion") != RUNTIME_VERSION or
             set(record.get("filesSha256", {})) != set(LICENSES + PROVENANCE_FILES) or
-            not any(line.startswith("dep\tgolang.org/x/net\tv0.60.0\t")
-                    for line in record.get("buildInfo", []) if isinstance(line, str))):
-        raise ValueError("Patched Go1.26.10/xnet0.60 Hysteria producer required")
+            not all(any(line.startswith("dep\t" + module + "\t" + version + "\t")
+                        for line in record.get("buildInfo", []) if isinstance(line, str))
+                    for module, version in REQUIRED_MODULES.items())):
+        raise ValueError("Patched Go1.26.11 Hysteria producer required")
     for name in LICENSES + PROVENANCE_FILES:
         if digest(payload / name) != record["filesSha256"][name]:
             raise ValueError("Hysteria legal or repair provenance digest differs")

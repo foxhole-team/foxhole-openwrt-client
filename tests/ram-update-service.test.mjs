@@ -1,5 +1,7 @@
-// Actual controller source with in-memory OS/native-command adapters.
-// These tests prove protocol ordering, not real APK signatures or switch QA.
+// Actual controller source with in-memory OS/native-command
+// adapters.
+// These tests prove protocol ordering, not real APK signatures or
+// switch QA.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

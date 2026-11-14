@@ -4,7 +4,7 @@
 
 为 OpenWrt 路由器提供 VPN 配置、路由规则和简洁的管理面板。
 出站 VPN 连接使用 [FoxHole Core](https://github.com/foxhole-team/foxhole-core)。
-精简安装为每个选定协议使用独立客户端模块。入站Hysteria服务器单独提供，不包含在已发布的v1.0.1客户端套件中。
+精简安装为每个选定协议使用独立客户端模块。v1.0.8新增可选且经过独立验证的入站 Hysteria2 服务器包。远程访问需要固定公网 WAN 地址和外部可达的 UDP 端口。
 
 </div>
 
@@ -19,7 +19,7 @@
 
 <div align="center">
 
-[English](../README.md) · [Русский](README.ru.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [Español](README.es.md) · [日本語](README.ja.md) · [简体中文](README.zh.md) · [العربية](README.ar.md)
+[🇬🇧 English](../README.md) · [🇷🇺 Русский](README.ru.md) · [🇩🇪 Deutsch](README.de.md) · [🇫🇷 Français](README.fr.md) · [🇪🇸 Español](README.es.md) · [🇯🇵 日本語](README.ja.md) · [🇨🇳 **简体中文**](README.zh.md) · [🇸🇦 العربية](README.ar.md)
 
 </div>
 
@@ -30,21 +30,48 @@
   <img src="https://img.shields.io/badge/status-beta-yellow?style=flat-square" alt="Status: beta">
 </p>
 
+<a id="ecosystem"></a>
+<a id="-foxhole生态系统"></a>
+
+<div align="center">
+  <strong>FoxHole ecosystem</strong><br>
+  <a href="https://github.com/foxhole-team/foxhole-guard">FoxHole Guard</a> ·
+  <a href="https://github.com/foxhole-team/foxhole-vpn">FoxHole VPN</a> ·
+  <a href="https://github.com/foxhole-team/foxhole-core">FoxHole Core</a> ·
+  <a href="https://github.com/foxhole-team/foxhole-openwrt-client"><strong>FoxHole OpenWRT</strong></a> ·
+  <a href="https://github.com/foxhole-team/foxhole-db">FoxHole DB</a>
+
+<details>
+<summary>项目职责</summary>
+
+| 项目 | 用途 |
+| --- | --- |
+| [FoxHole Guard](https://github.com/foxhole-team/foxhole-guard) | Android：VPN、Tor/I2P、流量规则和本地监控 |
+| [FoxHole VPN](https://github.com/foxhole-team/foxhole-vpn) | Android：简洁VPN客户端及已配对OpenWrt管理 |
+| [FoxHole Core](https://github.com/foxhole-team/foxhole-core) | 共用Rust网络核心；功能取决于构建 |
+| [**FoxHole OpenWrt**](https://github.com/foxhole-team/foxhole-openwrt-client) | 路由器VPN及局域网管理 |
+| [FoxHole DB](https://github.com/foxhole-team/foxhole-db) | 签名规则和参考数据 |
+
+</details>
+
+</div>
+
 <p align="center"><a href="#quickstart">开始使用</a> · <a href="#features">功能</a> · <a href="#details">详情</a> · <a href="#whats-new">更新内容</a></p>
 
 <a id="whats-new"></a>
 
-> **🆕 更新内容 - 1.0.6 Beta**
+> **🆕 更新内容 - 1.0.8 Beta**
 >
-> - 无需重新安装 OpenWrt 软件包，即可独立更新已签名的 Core 模块。
-> - 路由器无法连接 GitHub 时，可通过已配对的 Android 应用中继经过验证的 Core 更新。
-> - 首次通过网页或 Android 配置时默认启用自动更新，可选择关闭，并保留现有设置。
-> - 改进回滚和 Stop 处理，保留配置文件及配对信息。
+> - 新增对 OpenWrt 25.12.6 的支持
+> - 优化了界面
+> - 新增经过单独验证的可选 Hysteria2 服务器包（需要固定公网 IP）
+> - 更新了帮助、应用更新检查和关于页面
+> - 日志仅在 FLASH 中可用，最多循环保留30天，并限制存储占用
+> - 改进了通过 VPN 管理路由器以及在 RAM 中重新安装软件包的流程
 >
-> Android 应用：FoxHole VPN 1.0.5 和 Guard 1.0.6 新增 Android 7 支持，并改进通知样式。
-> FoxHole VPN 新增网页地址路由；Guard 改进网页地址路由过滤器。
+> 配套应用：FoxHole VPN 1.0.6和Guard 1.0.7修复了路由器首次安装和配置；Guard还更新了Tor传输组件Lyrebird和conjure-client
 >
-> 持久bootstrap注册仍未启用。冷启动恢复尚未验证，ELF库路径检查问题仍未解决。
+> 持久bootstrap注册仍未启用。冷启动恢复尚未验证，ELF库路径检查问题仍未解决
 
 <a id="features"></a>
 
@@ -60,12 +87,13 @@
 
 ## 📋 要求
 
-- 带apk包管理器的OpenWrt 25.12.5和root权限。直接下载需要路由器联网；本地`--bundle`只需可信局域网。
+- 带apk包管理器的OpenWrt 25.12.5 或 25.12.6和root权限。直接下载需要路由器联网；本地`--bundle`只需可信局域网。
 - 适用于准确固件、目标、架构及所选协议的已发布软件包。当前软件包与更新策略允许 `x86/64` 和 `mediatek/filogic`；SDK 构建或 ARM 架构名称本身不能证明所有路由器型号均兼容。
 - 足以容纳完整且经过验证的软件包预算的闪存和 RAM。更改软件包前，安装程序会检查依赖关系、内核 ABI 和暂存空间。
 - 从可信本地网络访问。通过Android查找和初次设置时，请将手机连接到路由器Wi-Fi。
 
-此公开测试版的出站 VPN 模块使用 FoxHole Core 1.0.2。
+[v1.0.6版本](https://github.com/foxhole-team/foxhole-openwrt-client/releases/tag/v1.0.6)包含BASE 1.0.6-r1和FoxHole Core 1.0.4客户端模块。兼容的Core更新可以单独安装。软件包的可用性和兼容性取决于所选版本、固件和目标平台。
+
 仅有源码支持和交叉编译的二进制文件，并不能证明路由器兼容性。
 只能安装已验证真实性的发布目录中包含的软件包。
 入站服务器在未使用的 S2/OpenPGP 软件包中仍有两项经过审查的依赖问题；
@@ -112,13 +140,12 @@ sh install.sh --bundle /tmp/bundle --manifest-sha256 HASH --hy2 --ram --apply
 | 存储方式 | 行为 |
 | --- | --- |
 | `--flash` | 重启后引擎仍保留在闪存中。默认选项。 |
-| `--ram` | 引擎使用 RAM，并在重启后下载其固定版本的二进制文件。设置保留在闪存中。 |
+| `--ram` | 引擎二进制文件加载到RAM中，重启后按需重新获取。设置保留在闪存中。 |
 | `--auto` | 完整资源预算充足时选择闪存，否则选择可用的 RAM 模块组合。 |
 
-移除 `--apply` 可仅检查选定发布包，而不执行安装。
-绝不会通过升级内核软件包来适配不兼容的发布包。
-对于精简目录，`--server` 会将入站 Hysteria 服务器计入资源预算。
-在配置远程访问之前，服务器保持关闭。
+`--ram`存储模式与实验性的native RAM bootstrap不同。持久bootstrap注册仍被禁用，冷启动恢复尚未通过验证，自定义ELF库路径的准入问题仍未解决。参见[RAM bootstrap限制](RAM-BOOTSTRAP.md)。
+
+去掉`--apply`即可只检查选定包而不安装。不会为了适配不兼容的包而升级内核软件包。精简目录中的`--server`仅在所选目录包含兼容且经过验证的入站Hysteria服务器包时可用，此时才将其计入资源预算。配置远程访问前保持关闭。
 
 <p align="center">
   <img src="../media/dashboard.png" width="100%" alt="FoxHole OpenWrt Client dashboard">
@@ -141,12 +168,8 @@ sh install.sh --bundle /tmp/bundle --manifest-sha256 HASH --hy2 --ram --apply
 解除配对会移除管理权限。若要撤销远程客户端的 VPN 凭据，请另行删除该客户端。
 删除旧的共享配置只会移除其记录，无法撤销外部 VPN 服务商持有的凭据。
 
-已发布的v1.0.1客户端套件不包含入站Hysteria服务器。创建远程VPN客户端需要单独验证的服务器包，只有包含该包的目录才可使用`--server`。还需要公网WAN地址和可从外部访问的UDP端口。
+创建远程VPN客户端需要单独验证的入站Hysteria服务器包，只有所选发布目录包含该包时才可用`--server`安装。此外还需公网WAN地址和外部可达的UDP端口。满足条件后，**创建 VPN 配置**可添加远程客户端；选择已有客户端会打开其配置。
 
-远程访问需要通过 `--server` 选中的 Hysteria 服务器。
-在具有公网 WAN 地址的路由器上，**创建 VPN 配置**会添加一个远程客户端。
-选择客户端会打开其已有配置。
-UDP 监听端口还必须能够从家庭网络外部访问。
 家庭网络中的 VPN 自动切换在实际路由验收完成前保持禁用，
 验收包括故障时阻断流量（fail-closed）和隧道所有权检查。
 
@@ -183,7 +206,7 @@ Wi-Fi 图标仅表示实际的 Wi-Fi 连接，不读取 SSID 或访问定位。�
 
 在网页面板或已配对应用的 **设置 → FoxHole 更新** 中，通过同一套经过身份验证的事务检查并安装更新。更新范围是 FoxHole 面板/runtime 和所选的已安装客户端协议模块，并保留其 FLASH/RAM 模式。新协议须单独安装。配置与配对会保留，不升级 OpenWrt 固件或其他系统软件包。
 
-通过 CLI/backend 直接安装时，自动更新默认关闭。通过手机进行新设置时，独立且可见的自动更新复选框默认开启；不希望启用时可取消勾选。所选策略在安装和配对后写入。配对已有路由器会保留原有策略，稍后可在设置中更改。
+直接通过CLI／后端安装时，默认关闭自动更新。首次通过网页或Android配置时，独立且可见的自动更新复选框默认勾选；可取消勾选以退出。配对或打开配置时保留路由器现有策略，包括已关闭自动更新的选择。之后可在设置中修改。
 
 启用后，路由器每天检查并安装经过验证的 FoxHole 软件包更新。取消手机配对不会关闭此策略。没有更新器的旧软件包须先进行单独审核的迁移。请参阅[软件更新](UPDATES.md)。
 
@@ -193,20 +216,9 @@ Wi-Fi 图标仅表示实际的 Wi-Fi 连接，不读取 SSID 或访问定位。�
 请使用经过验证的发布软件包。
 不使用旧版安装器和ARM专用下载。FoxHole Core支持Hysteria2。现有legacy配置继续使用独立的Hysteria运行时，不会自动迁移到Core。更新前请手动停止正在运行的legacy Hysteria连接。
 
-[命令](CLI.md) · [架构](ARCHITECTURE.md) ·
-[构建与发布](RELEASE.md) · [安全](../SECURITY.md)
-
-<a id="ecosystem"></a>
-
-## 🔗 FoxHole生态系统
-
-| 项目 | 用途 |
-| --- | --- |
-| [FoxHole Guard](https://github.com/foxhole-team/foxhole-guard) | Android：VPN、Tor/I2P、流量规则和本地监控 |
-| [FoxHole VPN](https://github.com/foxhole-team/foxhole-vpn) | Android：简洁VPN客户端及已配对OpenWrt管理 |
-| [FoxHole Core](https://github.com/foxhole-team/foxhole-core) | 共用Rust网络核心；功能取决于构建 |
-| [**FoxHole OpenWrt**](https://github.com/foxhole-team/foxhole-openwrt-client) | 路由器VPN及局域网管理 |
-| [FoxHole DB](https://github.com/foxhole-team/foxhole-db) | 签名规则和参考数据 |
+- **使用说明:** [CLI](CLI.md) · [Updates](UPDATES.md) · [Rollback](ROLLBACK.md)
+- **架构:** [Architecture](ARCHITECTURE.md) · [Mobile networks](MOBILE-NETWORKS.md) · [Backup](BACKUP-ARCHITECTURE.md) · [Profile origin](PROFILE-ORIGIN.md)
+- **维护:** [Release](RELEASE.md) · [Bundle transport](BUNDLE-TRANSPORT.md) · [RAM install](RAM-INSTALL.md) · [Bootstrap](RAM-BOOTSTRAP.md) · [Prerequisites](RAM-PREREQUISITES.md) · [RAM updates](RAM-UPDATE-CONTROLLER.md) · [Engine origin](engine-release-origin.md) · [Security](../SECURITY.md)
 
 ## 🤝 参与开发
 

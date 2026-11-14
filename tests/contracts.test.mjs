@@ -4,10 +4,10 @@ import vm from 'node:vm';
 import { functionBody, hostHarness, modelPath, packageRoot, panelRoot,
   plain, read, rpcMethods } from './helpers.mjs';
 
-const readMethods = ['backup.export', 'backup.validate', 'backup.status', 'updates.deviceStatus', 'updates.status', 'updates.plan', 'updates.job', 'engines.status', 'engines.plan', 'engines.job', 'package.status', 'unlock', 'lock', 'state', 'telemetry', 'server.test',
+const readMethods = ['vpnServer.plan', 'vpnServer.job', 'diagnostics.logs', 'diagnostics.journal', 'backup.export', 'backup.validate', 'backup.status', 'updates.deviceStatus', 'updates.status', 'updates.plan', 'updates.job', 'engines.status', 'engines.plan', 'engines.job', 'package.status', 'unlock', 'lock', 'state', 'telemetry', 'server.test',
   'server.get', 'client.get', 'client.status', 'device.resolve', 'device.list',
   'pair.unlock', 'pair.list', 'phone.status', 'phone.capabilities', 'phone.resolve'];
-const writeMethods = ['backup.apply', 'updates.deviceBegin', 'updates.deviceChunk', 'updates.deviceFinish', 'updates.check', 'updates.apply', 'updates.settings', 'engines.apply', 'setup.reset', 'settings', 'server.save', 'server.delete',
+const writeMethods = ['vpnServer.set', 'backup.apply', 'updates.deviceBegin', 'updates.deviceChunk', 'updates.deviceFinish', 'updates.check', 'updates.apply', 'updates.settings', 'engines.apply', 'setup.reset', 'settings', 'server.save', 'server.delete',
   'server.start', 'server.stop', 'client.save', 'client.update', 'client.access',
   'client.delete', 'pin.change', 'pair.create', 'pair.revoke', 'phone.provision',
   'phone.handoff'];
@@ -23,7 +23,7 @@ test('LuCI declarations match RPC names, arguments and ACL scopes', async () => 
   assert.deepEqual(acl['luci-app-foxhole-pin'].write.ubus,
     { 'foxhole.admin': ['set_pin'] });
   assert.deepEqual([...host.declarations.keys()].sort(), Object.keys(methods)
-    .filter((name) => !mobileMethods.includes(name)).sort());
+    .filter((name) => !mobileMethods.includes(name) || ['pair.list', 'pair.revoke'].includes(name)).sort());
   assert.deepEqual([...scope.read.ubus.foxhole].sort(), [...readMethods].sort());
   assert.deepEqual([...scope.write.ubus.foxhole].sort(), [...writeMethods].sort());
   assert.deepEqual([...readMethods, ...writeMethods].sort(), Object.keys(methods).sort());
@@ -169,10 +169,11 @@ test('dashboard separates WAN traffic from latency series', async () => {
   assert.match(charts, /point\.latency\?\.wan/);
   assert.match(charts, /point\.latency\?\.serverId === this\.vpn\.serverId/);
   assert.match(charts,
-    /const duration = id === 'wrt' \|\| latency \? periods\[this\.period\]/);
+    /const \{ start, duration \} = chartDomain\(this\.period, end\)/);
+  assert.match(charts, /this\.pointsBetween\(start, end\)/);
   assert.doesNotMatch(shell, /day_average/);
   assert.match(charts,
-    /if \(canvas\.closest\('\.is-collapsed'\)\) \{\s*this\.updateMeta\(id, points\)/);
+    /if \(canvas\.closest\('\.is-collapsed'\)\) \{\s*this\.updateMeta\(id, points, end\)/);
 });
 
 test('package root entry and browser cache key follow the release', async () => {
@@ -184,7 +185,9 @@ test('package root entry and browser cache key follow the release', async () => 
   const release = makefile.match(/^PKG_RELEASE:=(.+)$/m)?.[1];
   const cacheKey = `${version}-r${release}`;
   const postinst = makefile.match(/define Package\/foxhole-openwrt-client\/postinst([\s\S]*?)endef/)?.[1];
-  assert.equal(cacheKey, '1.0.0-r3');
+  assert.equal(version, JSON.parse(await read('package.json')).version);
+  assert.equal(version, (await read('config/release-version.txt')).trim());
+  assert.match(release, /^\d+$/);
   assert.match(makefile, /\$\(1\)\/www\/foxhole\.html/);
   assert.match(defaults, /panel_index='foxhole\.html'/);
   assert.match(defaults, /legacy_index='luci-static\/resources\/foxhole\/shell\.html'/);
@@ -225,7 +228,14 @@ test('package installs one supervised Hysteria routing runtime', async () => {
   assert.match(controller, /\[NFT, '-c', '-f', POLICY_PATH\]/);
   assert.match(policy, /meta mark set meta mark \| ' \+ MARK/);
   assert.match(policy, /config\.tun =/);
-  assert.doesNotMatch(supervisor, /logger|logread|set -x/);
+  assert.doesNotMatch(supervisor, /logread|set -x/);
+  assert.equal([...supervisor.matchAll(/^logger\b/gm)].length, 1);
+  assert.ok(supervisor.includes('logger -t foxhole -p ' +
+    ['dae', 'mon.warn'].join('')));
+  assert.match(supervisor,
+    /logger -t foxhole -p \S+ \\\n\s*"tunnel_exited engine=\$report_engine stage=running exit_status=\$child_status"/);
+  assert.match(supervisor,
+    /core\|hysteria\) report_engine="\$engine"[\s\S]*report_engine='unknown'/);
 });
 
 test('modal actions use one accessible native dialog flow', async () => {
@@ -269,7 +279,9 @@ test('modal actions use one accessible native dialog flow', async () => {
     /\.modal\.is-opening::backdrop|\.modal\.is-closing::backdrop/);
   assert.doesNotMatch(css,
     /@keyframes (?:modal|sheet)-(?:in|out) \{[^}]*opacity:/);
-  assert.doesNotMatch(flow, /setTimeout|\bdelay\b/);
+  assert.doesNotMatch(flow, /\bdelay\b/);
+  assert.match(flow, /Promise\.race\(/);
+  assert.match(flow, /clearTimeout\(timer\)/);
   assert.match(app, /dialog\.addEventListener\('cancel'/);
   assert.doesNotMatch(app, /button:not\(:disabled\)[\s\S]*event\.key !== 'Tab'/);
   assert.match(css, /\.outline-button\.is-close \{ background: transparent/);
@@ -284,7 +296,7 @@ test('modal actions use one accessible native dialog flow', async () => {
   assert.doesNotMatch(flow,
     /this\.dialog\.getBoundingClientRect\(\);\s*this\.dialog\.classList/);
   assert.match(css,
-    /@media \(max-width: 720px\) and \(pointer: coarse\)/);
+    /@media \(max-width: 540px\)/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(css, /\.add-choice-routes \{ margin-top: 9px/);
   assert.doesNotMatch(css, /\.setting-icon \{[^}]*align-self: flex-start/);
@@ -299,11 +311,13 @@ test('help uses the shared modal without another overlay', async () => {
   const shell = await read(`${panelRoot}/shell.html`);
   const app = await read(`${panelRoot}/app.js`);
   const css = await read(`${panelRoot}/app.css`);
-  assert.doesNotMatch(shell, /help-root|modal-help|icon-help|data-help/);
+  assert.equal([...shell.matchAll(/<dialog\b/g)].length, 1);
+  assert.doesNotMatch(shell, /help-root|data-help-overlay|icon-help/);
   assert.doesNotMatch(app, /openHelp|closeHelp|helpButton/);
   assert.doesNotMatch(css, /\.help-(?:backdrop|button|dialog)/);
   assert.match(shell, /id="tpl-help"/);
-  assert.match(app, /action: 'open-help', icon: 'info'/);
+  assert.match(shell, /data-action="open-help"[^>]*data-main-help-entry/);
+  assert.match(shell, /data-help-content/);
   assert.doesNotMatch(shell, /data-i18n="[^"]*_copy"/);
 });
 
@@ -334,12 +348,14 @@ test('FoxHole themes, WAN metadata and section controls are explicit', async () 
   assert.doesNotMatch(shell, /data-setting="darkStyle"/);
   assert.match(shell, /data-setting="darkCharts"/);
   assert.match(shell,
-    /id="foxhole-style"[^>]*data-setting="plainHeadings"[^>]*data-setting-inverted/);
+    /<select id="font-select"[^>]*data-setting="plainHeadings"[^>]*data-value-type="boolean"/);
   assert.match(shell,
     /tpl-interface-settings[\s\S]*data-action="open-pin-change"/);
   assert.match(css, /html\.theme-light/);
   assert.doesNotMatch(shell, /\sstyle=/);
-  assert.doesNotMatch(app, /\.style\b/);
+  const inlineStyleProperties = [...app.matchAll(/\.style\.setProperty\('([^']+)'/g)].map(match => match[1]);
+  assert.deepEqual(inlineStyleProperties.sort(), ['--viewport-height', '--viewport-top']);
+  assert.doesNotMatch(app, /\.style\.(?:cssText|color|background|width|height)\s*=/);
   assert.match(css, /data-closed-size="0"/);
   assert.match(css, /html\.theme-plain-headings/);
   assert.match(css,
@@ -400,11 +416,12 @@ test('FoxHole themes, WAN metadata and section controls are explicit', async () 
   assert.doesNotMatch(app, /navigator\.userAgent|mobile-sheet-platform/);
   assert.doesNotMatch(css, /mobile-sheet-platform|modal-backdrop/);
   assert.match(css,
-    /@media \(max-width: 720px\) and \(pointer: coarse\)/);
+    /@media \(max-width: 540px\)/);
   assert.match(css,
     /\.modal-footer\.layout-server-config \[data-action="test-server"\] \{[^}]*grid-column: 1 \/ -1/);
-  assert.doesNotMatch(css, /backdrop-filter|will-change/);
-  assert.match(css, /select \{ padding-right: 30px; \}/);
+  assert.doesNotMatch(css, /backdrop-filter/);
+  assert.match(css, /\.modal:is\(\.is-opening, \.is-closing\) \{ will-change: transform; \}/);
+  assert.match(css, /select \{ padding-inline-end: 30px; \}/);
   assert.match(app,
     /\$\('\[data-period-control\]'\)\.hidden = collapsed/);
 });
@@ -452,7 +469,7 @@ test('scope and theme choices use local icon assets without emoji', async () => 
   assert.match(css, /assets\/tabler\/moon\.svg/);
   assert.match(css, /assets\/tabler\/devices\.svg/);
   assert.match(css,
-    /\.setting-picker-menu \{[^}]*right: 0;[^}]*width: max-content/);
+    /\.setting-picker-menu \{[^}]*inset-inline-end: 0;[^}]*width: max-content/);
   assert.doesNotMatch(css, /\.setting-picker\.is-open[^}]*width:/);
 });
 
@@ -495,7 +512,7 @@ test('site direction and all destructive actions are explicit', async () => {
   assert.match(css,
     /\.modal\.view-exceptions \.modal-panel \{[^}]*repeat\(2/);
   assert.match(css,
-    /@media \(max-width: 720px\) and \(pointer: coarse\)[\s\S]*\.modal\.view-exceptions \.country-picker \{ width: 100%/);
+    /@media \(max-width: 720px\)[\s\S]*\.modal\.view-exceptions \.country-picker \{ width: 100%/);
   assert.match(shell, /data-country-options/);
   assert.doesNotMatch(shell,
     /<label for="site-input"[^>]*exceptions\.site_label/);
@@ -508,7 +525,7 @@ test('site direction and all destructive actions are explicit', async () => {
   assert.match(css,
     /\.modal-heading-icon \{[^}]*width: 23px; height: 23px/);
   assert.equal(ru['settings.local_scope'], 'Область применения правил');
-  assert.equal(ru['add.title'], 'Управление VPN-сетями');
+  assert.equal(ru['add.title'], 'Управление VPN');
   assert.equal(ru['add.server'], 'Добавить VPN-сервер');
   assert.equal(ru['add.client'], 'Добавить VPN-клиент');
   assert.equal(ru['exceptions.address_title'], 'Добавить устройство');
@@ -553,7 +570,7 @@ test('site direction and all destructive actions are explicit', async () => {
   assert.match(css,
     /\.rule-table-head,[\s\S]*\.rule-row \{[^}]*grid-template-columns:/);
   assert.match(css,
-    /\.rule-route-cell \{[^}]*justify-self: stretch;[^}]*justify-content: flex-end;[^}]*text-align: right;/);
+    /\.rule-route-cell \{[^}]*justify-self: stretch;[^}]*justify-content: flex-end;[^}]*text-align: end;/);
   assert.match(css,
     /\.modal\.view-exceptions \.settings-group:nth-child\(n \+ 3\) \{[^}]*grid-column: 1 \/ -1;[^}]*padding-top: 16px;[^}]*border-top:/);
   assert.match(css,
@@ -576,7 +593,7 @@ test('site direction and all destructive actions are explicit', async () => {
   assert.match(shell,
     /icon-mobile[\s\S]*icon-tablet[\s\S]*icon-monitor[\s\S]*icon-laptop[\s\S]*icon-tv[\s\S]*icon-gamepad/);
   assert.match(css,
-    /\.device-picker-menu \{[^}]*right: 0;[^}]*left: 0;[^}]*width: 100%/);
+    /\.device-picker-menu \{[^}]*inset-inline-end: 0;[^}]*inset-inline-start: 0;[^}]*width: 100%/);
   assert.match(shell,
     /data-client-type[\s\S]*value="smartphone"[\s\S]*value="tablet"[\s\S]*value="computer"/);
   assert.match(shell,
@@ -586,7 +603,7 @@ test('site direction and all destructive actions are explicit', async () => {
   assert.match(css,
     /\.client-name-line \{[^}]*grid-template-columns: minmax\(0, 1fr\) auto;[^}]*border:/);
   assert.match(css,
-    /\.client-type-picker \{[^}]*border-left: 1px solid var\(--line\)/);
+    /\.client-type-picker \{[^}]*border-inline-start: 1px solid var\(--line\)/);
   assert.doesNotMatch(shell, /data-pin-guidance|error\.pin_mismatch/);
   assert.doesNotMatch(app, /data-pin-guidance/);
   assert.match(shell, /data-client-form[^>]*novalidate/);
@@ -603,7 +620,9 @@ test('top notifications expose success and error states', async () => {
   assert.match(shell,
     /data-toast[\s\S]*data-toast-icon[\s\S]*data-toast-text/);
   assert.match(app, /function toast\(message, kind = 'success'\)/);
-  assert.match(app, /#icon-close' : '#icon-check/);
+  assert.match(app,
+    /success: '#icon-check', error: '#icon-close', info: '#icon-info'/);
+  assert.match(app, /\}\[kind\] \?\? '#icon-info'/);
   assert.match(app, /node\.className = `toast is-\$\{kind\}`/);
   assert.match(css,
     /\.toast \{[^}]*top: max\(16px, env\(safe-area-inset-top\)\)/);
@@ -648,7 +667,7 @@ test('settings views share one bounded modal height with scrollable help', async
   const css = await read(`${panelRoot}/app.css`);
   const views = [
     ['settings-home', ['localScope', 'localRules', 'clientRules', 'killSwitch'],
-      ['open-exceptions', 'open-updates', 'open-engines', 'open-interface-settings'], 0],
+      ['open-exceptions', 'open-engines', 'open-backup', 'open-logs', 'open-interface-settings', 'open-updates', 'open-about'], 0],
     ['interface-settings', ['theme', 'darkCharts', 'hideRouterStatus', 'plainHeadings'],
       ['open-pin-change'], 1]
   ];
@@ -660,11 +679,13 @@ test('settings views share one bounded modal height with scrollable help', async
       .map((match) => match[1]), actions, name);
     assert.equal([...template.matchAll(/\bid="language-select"/g)].length, languageRows, name);
     assert.equal([...template.matchAll(/class="setting-row\b/g)].length,
-      settings.length + actions.length + languageRows, name);
+      settings.length + actions.length + languageRows + (name === 'settings-home' ? 1 : 0), name);
   }
   const help = shell.split('id="tpl-help"')[1].split('</template>')[0];
   assert.match(help, /class="modal-panel" data-modal-view="help"/);
-  assert.match(help, /class="help-topic"/);
+  assert.match(help, /data-help-content/);
+  const helpModel = await read(`${panelRoot}/help-content.js`);
+  assert.match(helpModel, /help-topic/);
   assert.match(css, /\.modal:is\(\.view-settings-home, \.view-interface-settings\) \{ --modal-base-height: 28rem; \}/);
   assert.match(css, /\.modal-stage \{ flex: 1;[^}]*min-height: 0;[^}]*overflow-y: auto;[^}]*overscroll-behavior: contain;/);
   assert.match(css, /\.modal \{[^}]*max-height: calc\(var\(--viewport-height\) - 36px\)/);

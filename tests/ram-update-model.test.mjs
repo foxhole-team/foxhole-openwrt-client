@@ -1,4 +1,5 @@
-// Source-adapted Ucode model checks; native parser/signature QA is separate.
+// Source-adapted Ucode model checks; native parser/signature QA
+// is separate.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -81,4 +82,25 @@ test('native capture admits only fixed transport, isolated stages and fixed swit
   assert.throws(() => model.capture_arguments(output, 'fetch', ['http://github.com/payload']));
   assert.throws(() => model.capture_arguments(output, 'current', ['/', 'aarch64_cortex-a53']));
   assert.throws(() => model.capture_arguments(output, 'switch', ['/tmp/user-script']));
+});
+
+test('unpublished installed107 is not mistaken for an invalid signed published106 package', () => {
+  assert.equal(model.select_release([release('1.0.6-r1',{prerelease:false})], '1.0.7-r1'), null);
+});
+
+test('108 policy uses the exact two-version list while legacy policy remains a singleton', () => {
+  const value = { schema: 2, transactionAbi: 1, stateAbi: 1, supportedOpenWrt: ['25.12.5', '25.12.6'],
+    packageVersion: '1.0.8-r1', releaseTag: 'v1.0.8', targets: ['x86/64', 'mediatek/filogic'] };
+  for (const observed of ['25.12.5', '25.12.6']) assert.equal(model.policy(value, '1.0.8-r1', 'v1.0.8', observed), value);
+  const { supportedOpenWrt, ...fields } = value;
+  const legacy = { ...fields, schema: 1, osRelease: '25.12.5' };
+  assert.equal(model.policy(legacy, '1.0.8-r1', 'v1.0.8', '25.12.5'), legacy);
+  assert.throws(() => model.policy(legacy, '1.0.8-r1', 'v1.0.8', '25.12.6'), /UNSUPPORTED_TARGET/);
+  for (const patch of [{ supportedOpenWrt: ['25.12.5'] }, { supportedOpenWrt: ['25.12.6', '25.12.5'] },
+    { supportedOpenWrt: ['25.12.5', '25.12.5'] }, { supportedOpenWrt: ['25.12.5', '25.12.7'] },
+    { supportedOpenWrt: '25.12.*' }, { osRelease: '25.12.5' }, { schema: '2' }, { stateAbi: '1' },
+    { transactionAbi: 2 }, { targets: ['mediatek/filogic', 'x86/64'] }, { releaseTag: 'v1.0.9' }]) {
+    assert.throws(() => model.policy({ ...value, ...patch }, '1.0.8-r1', 'v1.0.8'));
+  }
+  assert.throws(() => model.policy(value, '1.0.8-r1', 'v1.0.8', '25.12.7'), /UNSUPPORTED_TARGET/);
 });

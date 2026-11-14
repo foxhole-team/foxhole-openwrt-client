@@ -4,7 +4,7 @@
 
 OpenWrt ルーター向けの VPN プロファイル、ルーティングルール、シンプルな管理パネル。
 外向きの VPN 接続には [FoxHole Core](https://github.com/foxhole-team/foxhole-core) を使用します。
-コンパクト構成では選択プロトコルごとに個別のクライアントモジュールを使います。着信用Hysteriaサーバーは別途提供され、公開済みv1.0.1クライアントセットには含まれません。
+コンパクト構成では選択プロトコルごとに個別のクライアントモジュールを使います。v1.0.8では、検証済みの着信用Hysteria2サーバーパッケージを任意で追加できます。リモートアクセスには固定のパブリックWANアドレスと外部から到達可能なUDPポートが必要です。
 
 </div>
 
@@ -19,7 +19,7 @@ OpenWrt ルーター向けの VPN プロファイル、ルーティングルー�
 
 <div align="center">
 
-[English](../README.md) · [Русский](README.ru.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [Español](README.es.md) · [日本語](README.ja.md) · [简体中文](README.zh.md) · [العربية](README.ar.md)
+[🇬🇧 English](../README.md) · [🇷🇺 Русский](README.ru.md) · [🇩🇪 Deutsch](README.de.md) · [🇫🇷 Français](README.fr.md) · [🇪🇸 Español](README.es.md) · [🇯🇵 **日本語**](README.ja.md) · [🇨🇳 简体中文](README.zh.md) · [🇸🇦 العربية](README.ar.md)
 
 </div>
 
@@ -30,21 +30,48 @@ OpenWrt ルーター向けの VPN プロファイル、ルーティングルー�
   <img src="https://img.shields.io/badge/status-beta-yellow?style=flat-square" alt="Status: beta">
 </p>
 
+<a id="ecosystem"></a>
+<a id="-foxholeエコシステム"></a>
+
+<div align="center">
+  <strong>FoxHole ecosystem</strong><br>
+  <a href="https://github.com/foxhole-team/foxhole-guard">FoxHole Guard</a> ·
+  <a href="https://github.com/foxhole-team/foxhole-vpn">FoxHole VPN</a> ·
+  <a href="https://github.com/foxhole-team/foxhole-core">FoxHole Core</a> ·
+  <a href="https://github.com/foxhole-team/foxhole-openwrt-client"><strong>FoxHole OpenWRT</strong></a> ·
+  <a href="https://github.com/foxhole-team/foxhole-db">FoxHole DB</a>
+
+<details>
+<summary>各プロジェクトの役割</summary>
+
+| プロジェクト | 役割 |
+| --- | --- |
+| [FoxHole Guard](https://github.com/foxhole-team/foxhole-guard) | Android：VPN、Tor/I2P、通信ルールとローカル監視 |
+| [FoxHole VPN](https://github.com/foxhole-team/foxhole-vpn) | Android：シンプルなVPNとペアリング済みOpenWrt管理 |
+| [FoxHole Core](https://github.com/foxhole-team/foxhole-core) | 共通Rustネットワークコア。機能はビルドによる |
+| [**FoxHole OpenWrt**](https://github.com/foxhole-team/foxhole-openwrt-client) | ルーターVPNとローカルネットワーク管理 |
+| [FoxHole DB](https://github.com/foxhole-team/foxhole-db) | 署名付きルールと参照データ |
+
+</details>
+
+</div>
+
 <p align="center"><a href="#quickstart">使い始める</a> · <a href="#features">機能</a> · <a href="#details">詳細</a> · <a href="#whats-new">新機能と変更点</a></p>
 
 <a id="whats-new"></a>
 
-> **🆕 更新内容 - 1.0.6 Beta**
+> **🆕 更新内容 - 1.0.8 Beta**
 >
-> - OpenWrt パッケージを再インストールせず、署名済み Core モジュールを個別に更新できます。
-> - ルーターが GitHub に接続できない場合、ペアリング済み Android アプリで検証済み Core 更新を中継できます。
-> - Web／Android の初回設定では自動更新が有効になり、無効化も可能です。既存の設定は保持されます。
-> - ロールバックと Stop の処理を改善し、プロファイルとペアリングを保持します。
+> - OpenWrt 25.12.6への対応を追加
+> - インターフェースを最適化しました
+> - 検証済みの Hysteria2 サーバーパッケージを追加（固定のパブリック IP が必要）
+> - ヘルプ、更新確認、アプリ情報を更新しました
+> - ジャーナルはFLASHのみで利用でき、容量を制限しながら最大30日間の記録を循環保存します
+> - VPN経由のルーター管理とRAMパッケージの再インストールを改善しました
 >
-> Android アプリ：FoxHole VPN 1.0.5 と Guard 1.0.6 は Android 7 に対応し、通知の表示を改善しました。
-> FoxHole VPN に Web アドレスのルーティングを追加し、Guard の Web アドレス用ルーティングフィルターを改善しました。
+> 関連アプリ：FoxHole VPN 1.0.6とGuard 1.0.7でルーターの初回インストールと設定を修正しました。GuardではTorトランスポートのLyrebirdとconjure-clientも更新しました
 >
-> 永続的なbootstrap登録は無効のままです。コールドブート後の復旧は未検証であり、ELFライブラリのパスを検証する際の問題も未解決です。
+> 永続的なbootstrap登録は無効のままです。コールドブート後の復旧は未検証であり、ELFライブラリのパスを検証する際の問題も未解決です
 
 <a id="features"></a>
 
@@ -60,12 +87,13 @@ OpenWrt ルーター向けの VPN プロファイル、ルーティングルー�
 
 ## 📋 必要条件
 
-- apkパッケージマネージャーを備えたOpenWrt 25.12.5とroot権限。直接ダウンロードにはルーターのインターネット接続が必要ですが、ローカル`--bundle`は信頼できるLANで利用できます。
+- apkパッケージマネージャーを備えたOpenWrt 25.12.5または25.12.6とroot権限。直接ダウンロードにはルーターのインターネット接続が必要ですが、ローカル`--bundle`は信頼できるLANで利用できます。
 - 正確なファームウェア、対象、アーキテクチャ、選択したプロトコルに対応する公開済みパッケージ。現在のパッケージ・更新ポリシーは `x86/64` と `mediatek/filogic` を許可します。SDK ビルドや ARM アーキテクチャ名だけでは、すべてのルーターモデルとの互換性を証明できません。
 - 検証済みパッケージ全体の予算に十分なフラッシュと RAM。パッケージを変更する前に、インストーラーが依存関係、カーネル ABI、一時領域を確認します。
 - 信頼できるローカルネットワークからのアクセス。Androidでの検出と初期設定では、電話をルーターのWi-Fiに接続してください。
 
-このパブリックベータでは、送信用 VPN モジュールに FoxHole Core 1.0.2 を使用します。
+[v1.0.6リリース](https://github.com/foxhole-team/foxhole-openwrt-client/releases/tag/v1.0.6)にはBASE 1.0.6-r1とFoxHole Core 1.0.4のクライアントモジュールが含まれます。互換性のあるCore更新は個別にインストールできます。パッケージの提供と互換性はリリース、ファームウェア、ターゲットによって異なります。
+
 ソースでの対応とクロスコンパイル済みバイナリだけでは、ルーターとの互換性を確認したことにはなりません。
 真正性を確認済みのリリースカタログに含まれるパッケージだけをインストールできます。
 着信接続用サーバーには、未使用の S2/OpenPGP パッケージに関する、精査済みの依存関係の指摘が 2 件残っています。
@@ -112,13 +140,12 @@ sh install.sh --bundle /tmp/bundle --manifest-sha256 HASH --hy2 --ram --apply
 | 保存先 | 動作 |
 | --- | --- |
 | `--flash` | 再起動後もエンジンを flash に保持します。既定の設定です。 |
-| `--ram` | エンジンは RAM を使い、再起動後に固定されたバイナリをダウンロードします。設定は flash に残ります。 |
+| `--ram` | エンジンのバイナリをRAMに読み込み、再起動後は必要に応じて再取得します。設定はflashに残ります。 |
 | `--auto` | 全体の必要容量を満たせば flash を選び、それ以外は利用可能な RAM モジュール一式を選びます。 |
 
-`--apply` を省くと、インストールせずに選択したバンドルを確認できます。
-互換性のないバンドルを使うためにカーネルパッケージを更新することはありません。
-コンパクトカタログでは、`--server` により着信接続用 Hysteria サーバーの必要リソースを加算します。
-サーバーはリモートアクセスを設定するまで無効のままです。
+`--ram`保存モードは、実験的なnative RAM bootstrapとは別の機能です。永続的なbootstrap登録は無効のままで、コールドブートからの復旧は未検証、カスタムELFライブラリパスの許可問題も未解決です。[RAM bootstrapの制限](RAM-BOOTSTRAP.md)を参照してください。
+
+`--apply`を省くと、インストールせずにバンドルを検査できます。互換性のないバンドルに合わせてカーネルパッケージを更新することはありません。コンパクトカタログの`--server`は、選択したカタログに互換性のある検証済み着信Hysteriaサーバーパッケージがある場合のみ利用でき、その場合に必要リソースへ加算されます。リモートアクセスを設定するまでは無効です。
 
 <p align="center">
   <img src="../media/dashboard.png" width="100%" alt="FoxHole OpenWrt Client dashboard">
@@ -141,12 +168,8 @@ PINを変更するとペアリングがリセットされ、端末の再接続�
 ペアリングを解除すると管理アクセスが削除されます。VPN 認証情報を失効させるには、リモートクライアントを別途削除してください。
 従来の共有プロファイルの削除では、その記録だけが削除されます。外部 VPN プロバイダーが保持する認証情報は失効させられません。
 
-公開済みv1.0.1クライアントセットに着信用Hysteriaサーバーは含まれません。リモートVPNクライアントの作成には別途検証済みのサーバーパッケージが必要で、`--server`はそれを含むカタログでのみ利用できます。公開WANアドレスと外部から到達可能なUDPポートも必要です。
+リモートVPNクライアントの作成には、別途検証済みの着信Hysteriaサーバーパッケージが必要です。選択したリリースカタログに含まれる場合のみ`--server`でインストールできます。公開WANアドレスと外部から到達可能なUDPポートも必要です。条件を満たすと**VPN プロファイルを作成**でリモートクライアントを追加でき、既存クライアントを選択するとそのプロファイルが開きます。
 
-リモートアクセスには、`--server` で選択した Hysteria サーバーが必要です。
-パブリック WAN アドレスを持つルーターでは、**VPN プロファイルを作成**でリモートクライアントを追加します。
-クライアントを選択すると、その既存のプロファイルが開きます。
-UDP リスナーには、自宅ネットワークの外部からも到達できる必要があります。
 自宅ネットワークでの VPN 自動切り替えは、fail-closed と所有権の確認を含む実際のルーティング検証が完了するまで無効のままです。
 
 Android アプリでは：
@@ -182,7 +205,7 @@ Wi-Fi アイコンは物理的な Wi-Fi 接続のみを示し、SSID や位置�
 
 ウェブパネルまたはペアリング済みアプリの **設定 → FoxHole 更新** で、同じ認証付きトランザクションによる確認とインストールを行います。FoxHole パネル/runtime と選択済みのインストール済みクライアントプロトコルモジュールが対象で、FLASH/RAM の選択を保持します。新しいプロトコルは別途インストールします。プロファイルとペアリングは保持され、OpenWrt ファームウェアや他のシステムパッケージは更新しません。
 
-CLI/backend から直接インストールした場合、自動更新は既定でオフです。電話からの新規設定では、独立した表示付きチェックボックスが最初からオンです。希望しない場合はオフにしてください。選択した更新設定はインストールとペアリング後に保存されます。既存ルーターのペアリングでは設定を保持し、後から設定画面で変更できます。
+CLI／バックエンドからの直接インストールでは、自動更新は既定で無効です。WebまたはAndroidで新規設定する際は、独立した自動更新チェックボックスが有効になっています。不要な場合はオフにしてください。無効化を含む既存のルーターポリシーは、ペアリング時や設定を開く際も保持されます。後から設定画面で変更できます。
 
 有効にすると、ルーターは毎日確認し、検証済み FoxHole パッケージ更新をインストールします。電話のペアリング解除でもこの設定は無効になりません。更新機能がない古いパッケージには、個別に検証した移行が必要です。[ソフトウェア更新](UPDATES.md)を参照してください。
 
@@ -192,20 +215,9 @@ CLI/backend から直接インストールした場合、自動更新は既定�
 検証済みのリリースパッケージを使用してください。
 旧インストーラーとARM専用ダウンロードは使用しません。FoxHole CoreはHysteria2に対応します。既存のlegacyプロファイルは別のHysteriaランタイムを使い、Coreへ自動移行されません。更新前に稼働中のlegacy Hysteria接続を手動停止してください。
 
-[コマンド](CLI.md) · [アーキテクチャ](ARCHITECTURE.md) ·
-[ビルドとリリース](RELEASE.md) · [セキュリティ](../SECURITY.md)
-
-<a id="ecosystem"></a>
-
-## 🔗 FoxHoleエコシステム
-
-| プロジェクト | 役割 |
-| --- | --- |
-| [FoxHole Guard](https://github.com/foxhole-team/foxhole-guard) | Android：VPN、Tor/I2P、通信ルールとローカル監視 |
-| [FoxHole VPN](https://github.com/foxhole-team/foxhole-vpn) | Android：シンプルなVPNとペアリング済みOpenWrt管理 |
-| [FoxHole Core](https://github.com/foxhole-team/foxhole-core) | 共通Rustネットワークコア。機能はビルドによる |
-| [**FoxHole OpenWrt**](https://github.com/foxhole-team/foxhole-openwrt-client) | ルーターVPNとローカルネットワーク管理 |
-| [FoxHole DB](https://github.com/foxhole-team/foxhole-db) | 署名付きルールと参照データ |
+- **利用手順:** [CLI](CLI.md) · [Updates](UPDATES.md) · [Rollback](ROLLBACK.md)
+- **アーキテクチャ:** [Architecture](ARCHITECTURE.md) · [Mobile networks](MOBILE-NETWORKS.md) · [Backup](BACKUP-ARCHITECTURE.md) · [Profile origin](PROFILE-ORIGIN.md)
+- **保守:** [Release](RELEASE.md) · [Bundle transport](BUNDLE-TRANSPORT.md) · [RAM install](RAM-INSTALL.md) · [Bootstrap](RAM-BOOTSTRAP.md) · [Prerequisites](RAM-PREREQUISITES.md) · [RAM updates](RAM-UPDATE-CONTROLLER.md) · [Engine origin](engine-release-origin.md) · [Security](../SECURITY.md)
 
 ## 🤝 開発への参加
 

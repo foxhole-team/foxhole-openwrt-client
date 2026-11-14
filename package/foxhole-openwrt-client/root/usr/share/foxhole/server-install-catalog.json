@@ -1,0 +1,1500 @@
+{
+  "schema": 1,
+  "kind": "verified-server-install-catalog-v1",
+  "entries": [
+    {
+      "schema": 1,
+      "kind": "server-install-entry-v1",
+      "architecture": "aarch64_cortex-a53",
+      "target": "mediatek/filogic",
+      "openwrtRelease": "25.12.5",
+      "storage": "RAM",
+      "releaseTag": "v1.0.7",
+      "sourceCatalogSha256": "8e4ab7697358e2bfb45174b57ea3342a8a326e89f464f87de4c21cf6d078bb62",
+      "sourceBudgetSha256": "6f7e1cfec7dca4429a4fe64dc9ae3d5c7d4e22781dda3e50e4b184cd6134e04e",
+      "server": {
+        "name": "hysteria-server-ram",
+        "version": "2.12.2-r5",
+        "binarySha256": "3031cabece2131d6242f7a5ce276ec8b6fc9520ed9566163e78edb6dd6b00912",
+        "binaryBytes": 21495934,
+        "executableSha256": "a5fe32693b6e6ffa27f43f793b713654e918b799f24da5069ce5f4650c275e63",
+        "producerSha256": "7348a920bf4d118e1a9674f2e3afc4cec8b65e5bbf9b8408e30d379eb09c5d94",
+        "securityReceiptSha256": "db872fa2964b2f4ebce109fb49bc336cceac6a13756530550fbf219fc3dfbd21",
+        "runtimeMemoryBytes": 134217728,
+        "staticExecutable": true
+      },
+      "packages": [
+        {
+          "name": "libc",
+          "version": "1.2.5-r5",
+          "architecture": "aarch64_cortex-a53",
+          "file": "apk-0e8d6132d5a8471c37cce150e67258bfbd285d94c4819053f88b6a1db4258586.apk",
+          "sha256": "0e8d6132d5a8471c37cce150e67258bfbd285d94c4819053f88b6a1db4258586",
+          "archiveBytes": 297299,
+          "installedBytes": 590904,
+          "nativeId": "ba08b9e55a942436f73ddf801f8d4aadc482f7bcbc31f584cd3dfb4facc89ff8",
+          "indexFile": "index-92a21556949408177649e0030f303cbc2771d98386cfe1d5e11a6c200ebc1f72.adb",
+          "keyFiles": [
+            "openwrt-25.12.pem"
+          ],
+          "depends": [
+            "libgcc1"
+          ],
+          "payload": [],
+          "preinstalledOnly": true
+        },
+        {
+          "name": "ca-bundle",
+          "version": "20260816-r1",
+          "architecture": "noarch",
+          "file": "apk-22f49453c235d2caefe6859bf797a96bfcd874b1f43df6ee45dc6a48a37e57d3.apk",
+          "sha256": "22f49453c235d2caefe6859bf797a96bfcd874b1f43df6ee45dc6a48a37e57d3",
+          "archiveBytes": 107337,
+          "installedBytes": 181656,
+          "nativeId": "c9da5dce8954b214e8690964565c6be3a549c71694ad9c288ee8d10abe8dd948",
+          "indexFile": "index-f8d23233262d4643f2786df9a58a0330a344f909fa013a74d41fe237eba5c34e.adb",
+          "keyFiles": [
+            "openwrt-25.12.pem"
+          ],
+          "depends": [
+            "libc"
+          ],
+          "payload": [],
+          "preinstalledOnly": true
+        },
+        {
+          "name": "flock",
+          "version": "2.41.5-r1",
+          "architecture": "aarch64_cortex-a53",
+          "file": "apk-09baeb293e12f7bbae97a431a5ebf0da623dbc62e1920f19cb5476a20414c474.apk",
+          "sha256": "09baeb293e12f7bbae97a431a5ebf0da623dbc62e1920f19cb5476a20414c474",
+          "archiveBytes": 12673,
+          "installedBytes": 28853,
+          "nativeId": "cb0e7e64f232851053061ed8717bc65af444bb97b861d8333205c34a950d3e7e",
+          "indexFile": "index-f8d23233262d4643f2786df9a58a0330a344f909fa013a74d41fe237eba5c34e.adb",
+          "keyFiles": [
+            "openwrt-25.12.pem"
+          ],
+          "depends": [
+            "libc",
+            "librt"
+          ],
+          "payload": [],
+          "preinstalledOnly": true
+        },
+        {
+          "name": "uclient-fetch",
+          "version": "2026.06.07~daad21fa-r1",
+          "architecture": "aarch64_cortex-a53",
+          "file": "apk-c0f3eb1a74ca71aca170c05ed415ffb5b2b2797e96b7a7e03f37a204bc62b52b.apk",
+          "sha256": "c0f3eb1a74ca71aca170c05ed415ffb5b2b2797e96b7a7e03f37a204bc62b52b",
+          "archiveBytes": 9075,
+          "installedBytes": 20625,
+          "nativeId": "7fcfa7748dcc2914a504d2972901ef95ebd80c454951640c1e3b3b53c103aacb",
+          "indexFile": "index-f8d23233262d4643f2786df9a58a0330a344f909fa013a74d41fe237eba5c34e.adb",
+          "keyFiles": [
+            "openwrt-25.12.pem"
+          ],
+          "depends": [
+            "libuclient20201210"
+          ],
+          "payload": [],
+          "preinstalledOnly": true
+        },
+        {
+          "name": "ucode",
+          "version": "2026.01.16~85922056-r2",
+          "architecture": "aarch64_cortex-a53",
+          "file": "apk-e47ef6819d03412675b667a8208a76294b19afb3045433c6063d6c8ac416ee48.apk",
+          "sha256": "e47ef6819d03412675b667a8208a76294b19afb3045433c6063d6c8ac416ee48",
+          "archiveBytes": 7341,
+          "installedBytes": 16389,
+          "nativeId": "f69abfbdc050f691c4a59136408c2d573c071e8afc856d2c04ea12cdebe2bdbe",
+          "indexFile": "index-f8d23233262d4643f2786df9a58a0330a344f909fa013a74d41fe237eba5c34e.adb",
+          "keyFiles": [
+            "openwrt-25.12.pem"
+          ],
+          "depends": [
+            "libucode20230711"
+          ],
+          "payload": [],
+          "preinstalledOnly": true
+        },
+        {
+          "name": "ucode-mod-fs",
+          "version": "2026.01.16~85922056-r2",
+          "architecture": "aarch64_cortex-a53",
+          "file": "apk-921d5bef67f8fa8825accfb45362f7a11c5bf1c6c1a49aed5c997d8c17a81a39.apk",
+          "sha256": "921d5bef67f8fa8825accfb45362f7a11c5bf1c6c1a49aed5c997d8c17a81a39",
+          "archiveBytes": 12229,
+          "installedBytes": 32791,
+          "nativeId": "8d8e1bb61021810f3ebf31d58e1fa5789dc88e697f8a9f114795286c5934f8d5",
+          "indexFile": "index-f8d23233262d4643f2786df9a58a0330a344f909fa013a74d41fe237eba5c34e.adb",
+          "keyFiles": [
+            "openwrt-25.12.pem"
+          ],
+          "depends": [
+            "ucode"
+          ],
+          "payload": [],
+          "preinstalledOnly": true
+        },
+        {
+          "name": "libgcc1",
+          "version": "14.3.0-r5",
+          "architecture": "aarch64_cortex-a53",
+          "file": "apk-d8b548046d39ba8dd6902c2f1f2348bcfe1aab276660adff42d524664fd147b5.apk",
+          "sha256": "d8b548046d39ba8dd6902c2f1f2348bcfe1aab276660adff42d524664fd147b5",
+          "archiveBytes": 50219,
+          "installedBytes": 131107,
+          "nativeId": "c7a5295cbd41ef8b511a6a6198fba51edda78df577547856136e4fb6d3492258",
+          "indexFile": "index-92a21556949408177649e0030f303cbc2771d98386cfe1d5e11a6c200ebc1f72.adb",
+          "keyFiles": [
+            "openwrt-25.12.pem"
+          ],
+          "depends": [],
+          "payload": [],
+          "preinstalledOnly": true
+        },
+        {
+          "name": "librt",
+          "version": "1.2.5-r5",
+          "architecture": "aarch64_cortex-a53",
+          "file": "apk-e276773fff283b1e00cd6f840110cc18cf5ef310f28da1ec2fc901b45a135d11.apk",
+          "sha256": "e276773fff283b1e00cd6f840110cc18cf5ef310f28da1ec2fc901b45a135d11",
+          "archiveBytes": 657,
+          "installedBytes": 1,
+          "nativeId": "64324c473d60290afa7655c64647c49a0efb8ad45e35708cbddbb720beedd8ce",
+          "indexFile": "index-92a21556949408177649e0030f303cbc2771d98386cfe1d5e11a6c200ebc1f72.adb",
+          "keyFiles": [
+            "openwrt-25.12.pem"
+          ],
+          "depends": [
+            "libpthread"
+          ],
+          "payload": [],
+          "preinstalledOnly": true
+        },
+        {
+          "name": "libuclient20201210",
+          "version": "2026.06.07~daad21fa-r1",
+          "architecture": "aarch64_cortex-a53",
+          "file": "apk-9579c295395f23b729d116b49cb2269117910b89898db8b877ef199ff2cfb4c5.apk",
+          "sha256": "9579c295395f23b729d116b49cb2269117910b89898db8b877ef199ff2cfb4c5",
+          "archiveBytes": 12363,
+          "installedBytes": 24601,
+          "nativeId": "e740d3508ab69ececd0397c3866a9fb231d4c2d191e95b8f36062640c8d21df7",
+          "indexFile": "index-f8d23233262d4643f2786df9a58a0330a344f909fa013a74d41fe237eba5c34e.adb",
+          "keyFiles": [
+            "openwrt-25.12.pem"
+          ],
+          "depends": [
+            "libubox20260213"
+          ],
+          "payload": [],
+          "preinstalledOnly": true
+        },
+        {
+          "name": "libucode20230711",
+          "version": "2026.01.16~85922056-r2",
+          "architecture": "aarch64_cortex-a53",
+          "file": "apk-4a257e77c8d459d867a1fc53059aa6035019a1f2107bdf747a9e5a5c2b30d1cf.apk",
+          "sha256": "4a257e77c8d459d867a1fc53059aa6035019a1f2107bdf747a9e5a5c2b30d1cf",
+          "archiveBytes": 79586,
+          "installedBytes": 176689,
+          "nativeId": "b8e9273ac58b25aa1d263a1d8d60f04359cd15189074800869b3ff2c98d9a783",
+          "indexFile": "index-f8d23233262d4643f2786df9a58a0330a344f909fa013a74d41fe237eba5c34e.adb",
+          "keyFiles": [
+            "openwrt-25.12.pem"
+          ],
+          "depends": [
+            "libjson-c5"
+          ],
+          "payload": [],
+          "preinstalledOnly": true
+        },
+        {
+          "name": "libpthread",
+          "version": "1.2.5-r5",
+          "architecture": "aarch64_cortex-a53",
+          "file": "apk-2ff9fd162a3139cdec9750fdd209073b6ff85b12989fb7946f71aeb5c4adaad6.apk",
+          "sha256": "2ff9fd162a3139cdec9750fdd209073b6ff85b12989fb7946f71aeb5c4adaad6",
+          "archiveBytes": 646,
+          "installedBytes": 1,
+          "nativeId": "890f72559d85e100ea0481a95070135148d676c61e6d3806c29271f3323fc57f",
+          "indexFile": "index-92a21556949408177649e0030f303cbc2771d98386cfe1d5e11a6c200ebc1f72.adb",
+          "keyFiles": [
+            "openwrt-25.12.pem"
+          ],
+          "depends": [
+            "libgcc1"
+          ],
+          "payload": [],
+          "preinstalledOnly": true
+        },
+        {
+          "name": "libubox20260213",
+          "version": "2026.06.19~7dd12784-r1",
+          "architecture": "aarch64_cortex-a53",
+          "file": "apk-3d7c2d1db820574e45446528f82e049de2b03ba69fe973b860f4a444199a0d90.apk",
+          "sha256": "3d7c2d1db820574e45446528f82e049de2b03ba69fe973b860f4a444199a0d90",
+          "archiveBytes": 32905,
+          "installedBytes": 65658,
+          "nativeId": "e94ea6708498a1f656d9d94107fa3b18ca49cf1f29e4bc2bce7b5ec7729df2ab",
+          "indexFile": "index-f8d23233262d4643f2786df9a58a0330a344f909fa013a74d41fe237eba5c34e.adb",
+          "keyFiles": [
+            "openwrt-25.12.pem"
+          ],
+          "depends": [
+            "libc"
+          ],
+          "payload": [],
+          "preinstalledOnly": true
+        },
+        {
+          "name": "libjson-c5",
+          "version": "0.18-r1",
+          "architecture": "aarch64_cortex-a53",
+          "file": "apk-443a101a41cfb06e052ef05abe19e266a117b7843826e162f01120a9fd488588.apk",
+          "sha256": "443a101a41cfb06e052ef05abe19e266a117b7843826e162f01120a9fd488588",
+          "archiveBytes": 32904,
+          "installedBytes": 73834,
+          "nativeId": "ae3f48991bd5dcd1dc01de1be1a662aa5e09a0887e3db8d29efb81457fbdbc14",
+          "indexFile": "index-f8d23233262d4643f2786df9a58a0330a344f909fa013a74d41fe237eba5c34e.adb",
+          "keyFiles": [
+            "openwrt-25.12.pem"
+          ],
+          "depends": [
+            "libc"
+          ],
+          "payload": [],
+          "preinstalledOnly": true
+        },
+        {
+          "name": "hysteria-server-ram",
+          "version": "2.12.2-r5",
+          "architecture": "aarch64_cortex-a53",
+          "file": "apk-515819c7409ebbb319c6703405b5c4b31cffea47fba976649d41086f560aa951.apk",
+          "sha256": "515819c7409ebbb319c6703405b5c4b31cffea47fba976649d41086f560aa951",
+          "archiveBytes": 75723,
+          "installedBytes": 371021,
+          "nativeId": "f0e45366887ff847acbe1d4930250856f9dc9e88c6c2ca77afd1df66e2e5a624",
+          "indexFile": "servers-filogic.adb",
+          "keyFiles": [
+            "foxhole-openwrt-apk.pem"
+          ],
+          "depends": [
+            "ca-bundle",
+            "flock",
+            "libc",
+            "uclient-fetch",
+            "ucode",
+            "ucode-mod-fs"
+          ],
+          "payload": [
+            {
+              "path": "lib/apk/packages/hysteria-server-ram.list",
+              "bytes": 498,
+              "sha256": "07fa45c6d253af429b4b970f65c1268ec2f24f50b9287600cc0338e30c6bf994",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/bin/hysteria",
+              "bytes": 3103,
+              "sha256": "a5fe32693b6e6ffa27f43f793b713654e918b799f24da5069ce5f4650c275e63",
+              "mode": 493,
+              "target": null
+            },
+            {
+              "path": "usr/share/foxhole/hysteria-producer.json",
+              "bytes": 10576,
+              "sha256": "7348a920bf4d118e1a9674f2e3afc4cec8b65e5bbf9b8408e30d379eb09c5d94",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/foxhole/hysteria-server-download.txt",
+              "bytes": 185,
+              "sha256": "54860cff7fb9a2b46598af07ff5fec8c524d0cd8140aa648cc694f925df50857",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/GO-THIRD-PARTY-NOTICES.txt",
+              "bytes": 232646,
+              "sha256": "357bb425cac0ea358db9492f6ceb23ae4a7c467982dad90852f8254c5123d8cf",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/HYSTERIA-PATCH-SOURCE.json",
+              "bytes": 32759,
+              "sha256": "db872fa2964b2f4ebce109fb49bc336cceac6a13756530550fbf219fc3dfbd21",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/HYSTERIA-SOURCE-PATCH.patch",
+              "bytes": 40434,
+              "sha256": "9356841dfca7add5755c91bb5ddd8398588d04b6c23430bf2f01067e8b763bcd",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/LICENSE.md",
+              "bytes": 1052,
+              "sha256": "b279cfdac4db4b077f0660b5d8156d50a8bc7bd410036dc356499af43c4e84f5",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/app.LICENSE.md",
+              "bytes": 1052,
+              "sha256": "b279cfdac4db4b077f0660b5d8156d50a8bc7bd410036dc356499af43c4e84f5",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/core.LICENSE.md",
+              "bytes": 1052,
+              "sha256": "b279cfdac4db4b077f0660b5d8156d50a8bc7bd410036dc356499af43c4e84f5",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/extras.LICENSE.md",
+              "bytes": 1052,
+              "sha256": "b279cfdac4db4b077f0660b5d8156d50a8bc7bd410036dc356499af43c4e84f5",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/go-modules.json",
+              "bytes": 46612,
+              "sha256": "26410c102c35b20d29d624cc76861ab03d8c5b13125485b1ef93086c6c53c407",
+              "mode": 420,
+              "target": null
+            }
+          ],
+          "preinstalledOnly": false
+        }
+      ],
+      "assets": [
+        {
+          "file": "apk-0e8d6132d5a8471c37cce150e67258bfbd285d94c4819053f88b6a1db4258586.apk",
+          "sha256": "0e8d6132d5a8471c37cce150e67258bfbd285d94c4819053f88b6a1db4258586",
+          "bytes": 297299,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-0e8d6132d5a8471c37cce150e67258bfbd285d94c4819053f88b6a1db4258586.apk"
+        },
+        {
+          "file": "apk-22f49453c235d2caefe6859bf797a96bfcd874b1f43df6ee45dc6a48a37e57d3.apk",
+          "sha256": "22f49453c235d2caefe6859bf797a96bfcd874b1f43df6ee45dc6a48a37e57d3",
+          "bytes": 107337,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-22f49453c235d2caefe6859bf797a96bfcd874b1f43df6ee45dc6a48a37e57d3.apk"
+        },
+        {
+          "file": "apk-09baeb293e12f7bbae97a431a5ebf0da623dbc62e1920f19cb5476a20414c474.apk",
+          "sha256": "09baeb293e12f7bbae97a431a5ebf0da623dbc62e1920f19cb5476a20414c474",
+          "bytes": 12673,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-09baeb293e12f7bbae97a431a5ebf0da623dbc62e1920f19cb5476a20414c474.apk"
+        },
+        {
+          "file": "apk-c0f3eb1a74ca71aca170c05ed415ffb5b2b2797e96b7a7e03f37a204bc62b52b.apk",
+          "sha256": "c0f3eb1a74ca71aca170c05ed415ffb5b2b2797e96b7a7e03f37a204bc62b52b",
+          "bytes": 9075,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-c0f3eb1a74ca71aca170c05ed415ffb5b2b2797e96b7a7e03f37a204bc62b52b.apk"
+        },
+        {
+          "file": "apk-e47ef6819d03412675b667a8208a76294b19afb3045433c6063d6c8ac416ee48.apk",
+          "sha256": "e47ef6819d03412675b667a8208a76294b19afb3045433c6063d6c8ac416ee48",
+          "bytes": 7341,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-e47ef6819d03412675b667a8208a76294b19afb3045433c6063d6c8ac416ee48.apk"
+        },
+        {
+          "file": "apk-921d5bef67f8fa8825accfb45362f7a11c5bf1c6c1a49aed5c997d8c17a81a39.apk",
+          "sha256": "921d5bef67f8fa8825accfb45362f7a11c5bf1c6c1a49aed5c997d8c17a81a39",
+          "bytes": 12229,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-921d5bef67f8fa8825accfb45362f7a11c5bf1c6c1a49aed5c997d8c17a81a39.apk"
+        },
+        {
+          "file": "apk-d8b548046d39ba8dd6902c2f1f2348bcfe1aab276660adff42d524664fd147b5.apk",
+          "sha256": "d8b548046d39ba8dd6902c2f1f2348bcfe1aab276660adff42d524664fd147b5",
+          "bytes": 50219,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-d8b548046d39ba8dd6902c2f1f2348bcfe1aab276660adff42d524664fd147b5.apk"
+        },
+        {
+          "file": "apk-e276773fff283b1e00cd6f840110cc18cf5ef310f28da1ec2fc901b45a135d11.apk",
+          "sha256": "e276773fff283b1e00cd6f840110cc18cf5ef310f28da1ec2fc901b45a135d11",
+          "bytes": 657,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-e276773fff283b1e00cd6f840110cc18cf5ef310f28da1ec2fc901b45a135d11.apk"
+        },
+        {
+          "file": "apk-9579c295395f23b729d116b49cb2269117910b89898db8b877ef199ff2cfb4c5.apk",
+          "sha256": "9579c295395f23b729d116b49cb2269117910b89898db8b877ef199ff2cfb4c5",
+          "bytes": 12363,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-9579c295395f23b729d116b49cb2269117910b89898db8b877ef199ff2cfb4c5.apk"
+        },
+        {
+          "file": "apk-4a257e77c8d459d867a1fc53059aa6035019a1f2107bdf747a9e5a5c2b30d1cf.apk",
+          "sha256": "4a257e77c8d459d867a1fc53059aa6035019a1f2107bdf747a9e5a5c2b30d1cf",
+          "bytes": 79586,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-4a257e77c8d459d867a1fc53059aa6035019a1f2107bdf747a9e5a5c2b30d1cf.apk"
+        },
+        {
+          "file": "apk-2ff9fd162a3139cdec9750fdd209073b6ff85b12989fb7946f71aeb5c4adaad6.apk",
+          "sha256": "2ff9fd162a3139cdec9750fdd209073b6ff85b12989fb7946f71aeb5c4adaad6",
+          "bytes": 646,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-2ff9fd162a3139cdec9750fdd209073b6ff85b12989fb7946f71aeb5c4adaad6.apk"
+        },
+        {
+          "file": "apk-3d7c2d1db820574e45446528f82e049de2b03ba69fe973b860f4a444199a0d90.apk",
+          "sha256": "3d7c2d1db820574e45446528f82e049de2b03ba69fe973b860f4a444199a0d90",
+          "bytes": 32905,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-3d7c2d1db820574e45446528f82e049de2b03ba69fe973b860f4a444199a0d90.apk"
+        },
+        {
+          "file": "apk-443a101a41cfb06e052ef05abe19e266a117b7843826e162f01120a9fd488588.apk",
+          "sha256": "443a101a41cfb06e052ef05abe19e266a117b7843826e162f01120a9fd488588",
+          "bytes": 32904,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-443a101a41cfb06e052ef05abe19e266a117b7843826e162f01120a9fd488588.apk"
+        },
+        {
+          "file": "apk-515819c7409ebbb319c6703405b5c4b31cffea47fba976649d41086f560aa951.apk",
+          "sha256": "515819c7409ebbb319c6703405b5c4b31cffea47fba976649d41086f560aa951",
+          "bytes": 75723,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-515819c7409ebbb319c6703405b5c4b31cffea47fba976649d41086f560aa951.apk"
+        },
+        {
+          "file": "index-92a21556949408177649e0030f303cbc2771d98386cfe1d5e11a6c200ebc1f72.adb",
+          "sha256": "92a21556949408177649e0030f303cbc2771d98386cfe1d5e11a6c200ebc1f72",
+          "bytes": 14417,
+          "role": "index",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/index-92a21556949408177649e0030f303cbc2771d98386cfe1d5e11a6c200ebc1f72.adb"
+        },
+        {
+          "file": "index-f8d23233262d4643f2786df9a58a0330a344f909fa013a74d41fe237eba5c34e.adb",
+          "sha256": "f8d23233262d4643f2786df9a58a0330a344f909fa013a74d41fe237eba5c34e",
+          "bytes": 110768,
+          "role": "index",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/index-f8d23233262d4643f2786df9a58a0330a344f909fa013a74d41fe237eba5c34e.adb"
+        },
+        {
+          "file": "servers-filogic.adb",
+          "sha256": "047401e1820c10a02341efcaec16ead2ef85c9ce6171b9f1683b301456c17714",
+          "bytes": 816,
+          "role": "index",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/servers-filogic.adb"
+        },
+        {
+          "file": "openwrt-25.12.pem",
+          "sha256": "27d61d827d64ccf2f46dce5f52aec6279404d4a00686dafb22f52f3b4ee675f8",
+          "bytes": 178,
+          "role": "key",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/openwrt-25.12.pem"
+        },
+        {
+          "file": "foxhole-openwrt-apk.pem",
+          "sha256": "fa220a28fd8662fc5f617f46594bafe2415b4f605136570dc3c446caeb7d1ef1",
+          "bytes": 178,
+          "role": "key",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/foxhole-openwrt-apk.pem"
+        },
+        {
+          "file": "hysteria-linux-arm64",
+          "sha256": "3031cabece2131d6242f7a5ce276ec8b6fc9520ed9566163e78edb6dd6b00912",
+          "bytes": 21495934,
+          "role": "binary",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/hysteria-linux-arm64"
+        }
+      ],
+      "memoryEvidence": {
+        "schema": 1,
+        "type": "conservative",
+        "description": "Conservative server admission policy: 128 MiB runtime budget plus the declared 32 MiB flash/RAM reserves and separately counted staging. BASE prerequisites must already be installed at their exact signed native identities; they are never installed or upgraded by this operation. These are admission settings, not measurements or a minimum-device-RAM claim.",
+        "runtimeMemoryBytes": 134217728,
+        "acceptedForRelease": true
+      },
+      "flashReserveBytes": 33554432,
+      "ramReserveBytes": 33554432
+    },
+    {
+      "schema": 1,
+      "kind": "server-install-entry-v1",
+      "architecture": "aarch64_cortex-a53",
+      "target": "mediatek/filogic",
+      "openwrtRelease": "25.12.5",
+      "storage": "FLASH",
+      "releaseTag": "v1.0.7",
+      "sourceCatalogSha256": "8e4ab7697358e2bfb45174b57ea3342a8a326e89f464f87de4c21cf6d078bb62",
+      "sourceBudgetSha256": "116ae817e5ea0019e2b6059ca4bbc5a991960e70ce8ec4f4c2b2275dbe532fee",
+      "server": {
+        "name": "hysteria",
+        "version": "2.12.2-r6",
+        "binarySha256": "3031cabece2131d6242f7a5ce276ec8b6fc9520ed9566163e78edb6dd6b00912",
+        "binaryBytes": 21495934,
+        "executableSha256": "3031cabece2131d6242f7a5ce276ec8b6fc9520ed9566163e78edb6dd6b00912",
+        "producerSha256": "7348a920bf4d118e1a9674f2e3afc4cec8b65e5bbf9b8408e30d379eb09c5d94",
+        "securityReceiptSha256": "db872fa2964b2f4ebce109fb49bc336cceac6a13756530550fbf219fc3dfbd21",
+        "runtimeMemoryBytes": 134217728,
+        "staticExecutable": true
+      },
+      "packages": [
+        {
+          "name": "libc",
+          "version": "1.2.5-r5",
+          "architecture": "aarch64_cortex-a53",
+          "file": "apk-0e8d6132d5a8471c37cce150e67258bfbd285d94c4819053f88b6a1db4258586.apk",
+          "sha256": "0e8d6132d5a8471c37cce150e67258bfbd285d94c4819053f88b6a1db4258586",
+          "archiveBytes": 297299,
+          "installedBytes": 590904,
+          "nativeId": "ba08b9e55a942436f73ddf801f8d4aadc482f7bcbc31f584cd3dfb4facc89ff8",
+          "indexFile": "index-92a21556949408177649e0030f303cbc2771d98386cfe1d5e11a6c200ebc1f72.adb",
+          "keyFiles": [
+            "openwrt-25.12.pem"
+          ],
+          "depends": [
+            "libgcc1"
+          ],
+          "payload": [],
+          "preinstalledOnly": true
+        },
+        {
+          "name": "libgcc1",
+          "version": "14.3.0-r5",
+          "architecture": "aarch64_cortex-a53",
+          "file": "apk-d8b548046d39ba8dd6902c2f1f2348bcfe1aab276660adff42d524664fd147b5.apk",
+          "sha256": "d8b548046d39ba8dd6902c2f1f2348bcfe1aab276660adff42d524664fd147b5",
+          "archiveBytes": 50219,
+          "installedBytes": 131107,
+          "nativeId": "c7a5295cbd41ef8b511a6a6198fba51edda78df577547856136e4fb6d3492258",
+          "indexFile": "index-92a21556949408177649e0030f303cbc2771d98386cfe1d5e11a6c200ebc1f72.adb",
+          "keyFiles": [
+            "openwrt-25.12.pem"
+          ],
+          "depends": [],
+          "payload": [],
+          "preinstalledOnly": true
+        },
+        {
+          "name": "hysteria",
+          "version": "2.12.2-r6",
+          "architecture": "aarch64_cortex-a53",
+          "file": "apk-15f51fee28025d93953f7c3f1bb7656f995347f921c4cf3c918df29e0d0554c9.apk",
+          "sha256": "15f51fee28025d93953f7c3f1bb7656f995347f921c4cf3c918df29e0d0554c9",
+          "archiveBytes": 7899555,
+          "installedBytes": 21863619,
+          "nativeId": "504853831beb975be859aef448ef130d66596414a59ad0c44b7838302f654b17",
+          "indexFile": "servers-filogic.adb",
+          "keyFiles": [
+            "foxhole-openwrt-apk.pem"
+          ],
+          "depends": [
+            "libc"
+          ],
+          "payload": [
+            {
+              "path": "lib/apk/packages/hysteria.list",
+              "bytes": 450,
+              "sha256": "eb4beeffaca545038998214555f248fab156e3c4311d14ecaa0667714529f86f",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/bin/hysteria",
+              "bytes": 21495934,
+              "sha256": "3031cabece2131d6242f7a5ce276ec8b6fc9520ed9566163e78edb6dd6b00912",
+              "mode": 493,
+              "target": null
+            },
+            {
+              "path": "usr/share/foxhole/hysteria-producer.json",
+              "bytes": 10576,
+              "sha256": "7348a920bf4d118e1a9674f2e3afc4cec8b65e5bbf9b8408e30d379eb09c5d94",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/GO-THIRD-PARTY-NOTICES.txt",
+              "bytes": 232646,
+              "sha256": "357bb425cac0ea358db9492f6ceb23ae4a7c467982dad90852f8254c5123d8cf",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/HYSTERIA-PATCH-SOURCE.json",
+              "bytes": 32759,
+              "sha256": "db872fa2964b2f4ebce109fb49bc336cceac6a13756530550fbf219fc3dfbd21",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/HYSTERIA-SOURCE-PATCH.patch",
+              "bytes": 40434,
+              "sha256": "9356841dfca7add5755c91bb5ddd8398588d04b6c23430bf2f01067e8b763bcd",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/LICENSE.md",
+              "bytes": 1052,
+              "sha256": "b279cfdac4db4b077f0660b5d8156d50a8bc7bd410036dc356499af43c4e84f5",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/app.LICENSE.md",
+              "bytes": 1052,
+              "sha256": "b279cfdac4db4b077f0660b5d8156d50a8bc7bd410036dc356499af43c4e84f5",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/core.LICENSE.md",
+              "bytes": 1052,
+              "sha256": "b279cfdac4db4b077f0660b5d8156d50a8bc7bd410036dc356499af43c4e84f5",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/extras.LICENSE.md",
+              "bytes": 1052,
+              "sha256": "b279cfdac4db4b077f0660b5d8156d50a8bc7bd410036dc356499af43c4e84f5",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/go-modules.json",
+              "bytes": 46612,
+              "sha256": "26410c102c35b20d29d624cc76861ab03d8c5b13125485b1ef93086c6c53c407",
+              "mode": 420,
+              "target": null
+            }
+          ],
+          "preinstalledOnly": false
+        }
+      ],
+      "assets": [
+        {
+          "file": "apk-0e8d6132d5a8471c37cce150e67258bfbd285d94c4819053f88b6a1db4258586.apk",
+          "sha256": "0e8d6132d5a8471c37cce150e67258bfbd285d94c4819053f88b6a1db4258586",
+          "bytes": 297299,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-0e8d6132d5a8471c37cce150e67258bfbd285d94c4819053f88b6a1db4258586.apk"
+        },
+        {
+          "file": "apk-d8b548046d39ba8dd6902c2f1f2348bcfe1aab276660adff42d524664fd147b5.apk",
+          "sha256": "d8b548046d39ba8dd6902c2f1f2348bcfe1aab276660adff42d524664fd147b5",
+          "bytes": 50219,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-d8b548046d39ba8dd6902c2f1f2348bcfe1aab276660adff42d524664fd147b5.apk"
+        },
+        {
+          "file": "apk-15f51fee28025d93953f7c3f1bb7656f995347f921c4cf3c918df29e0d0554c9.apk",
+          "sha256": "15f51fee28025d93953f7c3f1bb7656f995347f921c4cf3c918df29e0d0554c9",
+          "bytes": 7899555,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-15f51fee28025d93953f7c3f1bb7656f995347f921c4cf3c918df29e0d0554c9.apk"
+        },
+        {
+          "file": "index-92a21556949408177649e0030f303cbc2771d98386cfe1d5e11a6c200ebc1f72.adb",
+          "sha256": "92a21556949408177649e0030f303cbc2771d98386cfe1d5e11a6c200ebc1f72",
+          "bytes": 14417,
+          "role": "index",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/index-92a21556949408177649e0030f303cbc2771d98386cfe1d5e11a6c200ebc1f72.adb"
+        },
+        {
+          "file": "servers-filogic.adb",
+          "sha256": "047401e1820c10a02341efcaec16ead2ef85c9ce6171b9f1683b301456c17714",
+          "bytes": 816,
+          "role": "index",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/servers-filogic.adb"
+        },
+        {
+          "file": "openwrt-25.12.pem",
+          "sha256": "27d61d827d64ccf2f46dce5f52aec6279404d4a00686dafb22f52f3b4ee675f8",
+          "bytes": 178,
+          "role": "key",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/openwrt-25.12.pem"
+        },
+        {
+          "file": "foxhole-openwrt-apk.pem",
+          "sha256": "fa220a28fd8662fc5f617f46594bafe2415b4f605136570dc3c446caeb7d1ef1",
+          "bytes": 178,
+          "role": "key",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/foxhole-openwrt-apk.pem"
+        }
+      ],
+      "memoryEvidence": {
+        "schema": 1,
+        "type": "conservative",
+        "description": "Conservative server admission policy: 128 MiB runtime budget plus the declared 32 MiB flash/RAM reserves and separately counted staging. BASE prerequisites must already be installed at their exact signed native identities; they are never installed or upgraded by this operation. These are admission settings, not measurements or a minimum-device-RAM claim.",
+        "runtimeMemoryBytes": 134217728,
+        "acceptedForRelease": true
+      },
+      "flashReserveBytes": 33554432,
+      "ramReserveBytes": 33554432
+    },
+    {
+      "schema": 1,
+      "kind": "server-install-entry-v1",
+      "architecture": "x86_64",
+      "target": "x86/64",
+      "openwrtRelease": "25.12.5",
+      "storage": "RAM",
+      "releaseTag": "v1.0.7",
+      "sourceCatalogSha256": "8e4ab7697358e2bfb45174b57ea3342a8a326e89f464f87de4c21cf6d078bb62",
+      "sourceBudgetSha256": "608c45169ff8940bded66f41cb5a1f891b23928cf152fffb22bbd692778d3c2e",
+      "server": {
+        "name": "hysteria-server-ram",
+        "version": "2.12.2-r5",
+        "binarySha256": "625fec2a5473503028cb7d6c66df109f26d8cb4e4cbd7d125c6415116a34cb2b",
+        "binaryBytes": 23318654,
+        "executableSha256": "a5fe32693b6e6ffa27f43f793b713654e918b799f24da5069ce5f4650c275e63",
+        "producerSha256": "60ed01ec46a9180e232a3d0728e4fcedb91abdb5165dc56e7bccecab8d1637bf",
+        "securityReceiptSha256": "db872fa2964b2f4ebce109fb49bc336cceac6a13756530550fbf219fc3dfbd21",
+        "runtimeMemoryBytes": 134217728,
+        "staticExecutable": true
+      },
+      "packages": [
+        {
+          "name": "libc",
+          "version": "1.2.5-r5",
+          "architecture": "x86_64",
+          "file": "apk-5c510785d3ac2e540a70d58f628bf70fa6b25732d3169e241b844c041a780197.apk",
+          "sha256": "5c510785d3ac2e540a70d58f628bf70fa6b25732d3169e241b844c041a780197",
+          "archiveBytes": 287101,
+          "installedBytes": 529463,
+          "nativeId": "e657494127b230b7dac934ec867d092856657657049d551c4aa07d41bc95b226",
+          "indexFile": "index-5b1f78e64094ac3c0338e3c8b1e731fd4cfe99ac41d2a84d1a2d90ea308ef9ca.adb",
+          "keyFiles": [
+            "key-27d61d827d64ccf2f46dce5f52aec6279404d4a00686dafb22f52f3b4ee675f8.pem"
+          ],
+          "depends": [
+            "libgcc1"
+          ],
+          "payload": [],
+          "preinstalledOnly": true
+        },
+        {
+          "name": "ca-bundle",
+          "version": "20260816-r1",
+          "architecture": "noarch",
+          "file": "apk-22f49453c235d2caefe6859bf797a96bfcd874b1f43df6ee45dc6a48a37e57d3.apk",
+          "sha256": "22f49453c235d2caefe6859bf797a96bfcd874b1f43df6ee45dc6a48a37e57d3",
+          "archiveBytes": 107337,
+          "installedBytes": 181656,
+          "nativeId": "c9da5dce8954b214e8690964565c6be3a549c71694ad9c288ee8d10abe8dd948",
+          "indexFile": "index-205b2d43632315e69509c59a427270fa6f197097cc53bc79c034fe1195e2d5ea.adb",
+          "keyFiles": [
+            "key-27d61d827d64ccf2f46dce5f52aec6279404d4a00686dafb22f52f3b4ee675f8.pem"
+          ],
+          "depends": [
+            "libc"
+          ],
+          "payload": [],
+          "preinstalledOnly": true
+        },
+        {
+          "name": "flock",
+          "version": "2.41.5-r1",
+          "architecture": "x86_64",
+          "file": "apk-2beb095dd74e47e6545af914d4a19d3f575fa1dd597882aa31624055050d82f3.apk",
+          "sha256": "2beb095dd74e47e6545af914d4a19d3f575fa1dd597882aa31624055050d82f3",
+          "archiveBytes": 11895,
+          "installedBytes": 28877,
+          "nativeId": "7ad9d1274e17813919e5ecb904ded9ac7fb8af69bb5a076e88290ed2fa8f1a7f",
+          "indexFile": "index-205b2d43632315e69509c59a427270fa6f197097cc53bc79c034fe1195e2d5ea.adb",
+          "keyFiles": [
+            "key-27d61d827d64ccf2f46dce5f52aec6279404d4a00686dafb22f52f3b4ee675f8.pem"
+          ],
+          "depends": [
+            "libc",
+            "librt"
+          ],
+          "payload": [],
+          "preinstalledOnly": true
+        },
+        {
+          "name": "uclient-fetch",
+          "version": "2026.06.07~daad21fa-r1",
+          "architecture": "x86_64",
+          "file": "apk-917a974d4f2369506ef0eaded81206b8db5bf9816828b8c890f611f0bc773679.apk",
+          "sha256": "917a974d4f2369506ef0eaded81206b8db5bf9816828b8c890f611f0bc773679",
+          "archiveBytes": 8723,
+          "installedBytes": 24720,
+          "nativeId": "09b98004e7c7ca6931ff6b3d63ec323e7fd2e0070f7c8b359ee99b5eb4bb40cc",
+          "indexFile": "index-205b2d43632315e69509c59a427270fa6f197097cc53bc79c034fe1195e2d5ea.adb",
+          "keyFiles": [
+            "key-27d61d827d64ccf2f46dce5f52aec6279404d4a00686dafb22f52f3b4ee675f8.pem"
+          ],
+          "depends": [
+            "libuclient20201210"
+          ],
+          "payload": [],
+          "preinstalledOnly": true
+        },
+        {
+          "name": "ucode",
+          "version": "2026.01.16~85922056-r2",
+          "architecture": "x86_64",
+          "file": "apk-233817ac3eac809667a5a40831c2cb232dbfe49b92ac3436d2640ea66411e060.apk",
+          "sha256": "233817ac3eac809667a5a40831c2cb232dbfe49b92ac3436d2640ea66411e060",
+          "archiveBytes": 7075,
+          "installedBytes": 24085,
+          "nativeId": "eefe906a1c74346430db8bdededc69759a0ef5b0b2b05d9403fc11e3d8700151",
+          "indexFile": "index-205b2d43632315e69509c59a427270fa6f197097cc53bc79c034fe1195e2d5ea.adb",
+          "keyFiles": [
+            "key-27d61d827d64ccf2f46dce5f52aec6279404d4a00686dafb22f52f3b4ee675f8.pem"
+          ],
+          "depends": [
+            "libucode20230711"
+          ],
+          "payload": [],
+          "preinstalledOnly": true
+        },
+        {
+          "name": "ucode-mod-fs",
+          "version": "2026.01.16~85922056-r2",
+          "architecture": "x86_64",
+          "file": "apk-4c03890b1ef345c8abf2807f910d5f195e1b91e822499ee7a372d4c3ef1c27eb.apk",
+          "sha256": "4c03890b1ef345c8abf2807f910d5f195e1b91e822499ee7a372d4c3ef1c27eb",
+          "archiveBytes": 12165,
+          "installedBytes": 36887,
+          "nativeId": "cbdca6657d8d4ddc5988251d2e8aaf72647084b7b92145380064747d83293652",
+          "indexFile": "index-205b2d43632315e69509c59a427270fa6f197097cc53bc79c034fe1195e2d5ea.adb",
+          "keyFiles": [
+            "key-27d61d827d64ccf2f46dce5f52aec6279404d4a00686dafb22f52f3b4ee675f8.pem"
+          ],
+          "depends": [
+            "ucode"
+          ],
+          "payload": [],
+          "preinstalledOnly": true
+        },
+        {
+          "name": "libgcc1",
+          "version": "14.3.0-r5",
+          "architecture": "x86_64",
+          "file": "apk-e3f17588dd89eab3cac20f88ffa8a7acaa4146e6c83e3a1192be6450fd231d01.apk",
+          "sha256": "e3f17588dd89eab3cac20f88ffa8a7acaa4146e6c83e3a1192be6450fd231d01",
+          "archiveBytes": 53293,
+          "installedBytes": 114723,
+          "nativeId": "4472a36e5793f3becfda78e4684ab9ce6b3f3315b13f1f1b4af5f02004fb3675",
+          "indexFile": "index-5b1f78e64094ac3c0338e3c8b1e731fd4cfe99ac41d2a84d1a2d90ea308ef9ca.adb",
+          "keyFiles": [
+            "key-27d61d827d64ccf2f46dce5f52aec6279404d4a00686dafb22f52f3b4ee675f8.pem"
+          ],
+          "depends": [],
+          "payload": [],
+          "preinstalledOnly": true
+        },
+        {
+          "name": "librt",
+          "version": "1.2.5-r5",
+          "architecture": "x86_64",
+          "file": "apk-1e17d37bc3d5c4ffb60f6f8ef172d2d5a29612746356b11c87099d1a0b606a05.apk",
+          "sha256": "1e17d37bc3d5c4ffb60f6f8ef172d2d5a29612746356b11c87099d1a0b606a05",
+          "archiveBytes": 646,
+          "installedBytes": 1,
+          "nativeId": "d6506657c98f648efc67de4edc3842b607e3b7924627f3ccf8ef46cca8ea153f",
+          "indexFile": "index-5b1f78e64094ac3c0338e3c8b1e731fd4cfe99ac41d2a84d1a2d90ea308ef9ca.adb",
+          "keyFiles": [
+            "key-27d61d827d64ccf2f46dce5f52aec6279404d4a00686dafb22f52f3b4ee675f8.pem"
+          ],
+          "depends": [
+            "libpthread"
+          ],
+          "payload": [],
+          "preinstalledOnly": true
+        },
+        {
+          "name": "libuclient20201210",
+          "version": "2026.06.07~daad21fa-r1",
+          "architecture": "x86_64",
+          "file": "apk-42dbdaa7484fe91f4599e0d2cadc4a1c4fb9a3f456b29adb6fd79ebe440d1c65.apk",
+          "sha256": "42dbdaa7484fe91f4599e0d2cadc4a1c4fb9a3f456b29adb6fd79ebe440d1c65",
+          "archiveBytes": 11853,
+          "installedBytes": 28697,
+          "nativeId": "9c5486fd7b3e92e6d60e60a6c74fc239554379ba40930279a0750f37dcd48307",
+          "indexFile": "index-205b2d43632315e69509c59a427270fa6f197097cc53bc79c034fe1195e2d5ea.adb",
+          "keyFiles": [
+            "key-27d61d827d64ccf2f46dce5f52aec6279404d4a00686dafb22f52f3b4ee675f8.pem"
+          ],
+          "depends": [
+            "libubox20260213"
+          ],
+          "payload": [],
+          "preinstalledOnly": true
+        },
+        {
+          "name": "libucode20230711",
+          "version": "2026.01.16~85922056-r2",
+          "architecture": "x86_64",
+          "file": "apk-5822de438b0a890dce65d8af7630af36658cea314f3d38d98efde9782b513c06.apk",
+          "sha256": "5822de438b0a890dce65d8af7630af36658cea314f3d38d98efde9782b513c06",
+          "archiveBytes": 76478,
+          "installedBytes": 160377,
+          "nativeId": "99c8d3d0c3d51304b9edb79aebb3b516639ee1e886c219c4866ced43b7e7ad84",
+          "indexFile": "index-205b2d43632315e69509c59a427270fa6f197097cc53bc79c034fe1195e2d5ea.adb",
+          "keyFiles": [
+            "key-27d61d827d64ccf2f46dce5f52aec6279404d4a00686dafb22f52f3b4ee675f8.pem"
+          ],
+          "depends": [
+            "libjson-c5"
+          ],
+          "payload": [],
+          "preinstalledOnly": true
+        },
+        {
+          "name": "libpthread",
+          "version": "1.2.5-r5",
+          "architecture": "x86_64",
+          "file": "apk-244a991e57e85b64847b74d5595cf5b94cf7962e250e6905373963ef838745b2.apk",
+          "sha256": "244a991e57e85b64847b74d5595cf5b94cf7962e250e6905373963ef838745b2",
+          "archiveBytes": 641,
+          "installedBytes": 1,
+          "nativeId": "0aa8658023ba3a9df26233b1b1e1a80b8ae69b5a17ce99709016f6c4ff3cfeee",
+          "indexFile": "index-5b1f78e64094ac3c0338e3c8b1e731fd4cfe99ac41d2a84d1a2d90ea308ef9ca.adb",
+          "keyFiles": [
+            "key-27d61d827d64ccf2f46dce5f52aec6279404d4a00686dafb22f52f3b4ee675f8.pem"
+          ],
+          "depends": [
+            "libgcc1"
+          ],
+          "payload": [],
+          "preinstalledOnly": true
+        },
+        {
+          "name": "libubox20260213",
+          "version": "2026.06.19~7dd12784-r1",
+          "architecture": "x86_64",
+          "file": "apk-43f1fa4ac8c674a5f7cb4df793f9b92d1ed3d207fe012872cd2d0966aa55beb8.apk",
+          "sha256": "43f1fa4ac8c674a5f7cb4df793f9b92d1ed3d207fe012872cd2d0966aa55beb8",
+          "archiveBytes": 29627,
+          "installedBytes": 57477,
+          "nativeId": "636c9f40a98436fb444496644c7166c558220016758ad0d0dac955743c059c0a",
+          "indexFile": "index-205b2d43632315e69509c59a427270fa6f197097cc53bc79c034fe1195e2d5ea.adb",
+          "keyFiles": [
+            "key-27d61d827d64ccf2f46dce5f52aec6279404d4a00686dafb22f52f3b4ee675f8.pem"
+          ],
+          "depends": [
+            "libc"
+          ],
+          "payload": [],
+          "preinstalledOnly": true
+        },
+        {
+          "name": "libjson-c5",
+          "version": "0.18-r1",
+          "architecture": "x86_64",
+          "file": "apk-e67219e48abd443ecda0904396d15117f6fcd88806ba094057885f1c0e923196.apk",
+          "sha256": "e67219e48abd443ecda0904396d15117f6fcd88806ba094057885f1c0e923196",
+          "archiveBytes": 32034,
+          "installedBytes": 73850,
+          "nativeId": "9b314d4a2b545c94f466253c8f6cef6d16d8f8fc5ce48688915b3181932a5a43",
+          "indexFile": "index-205b2d43632315e69509c59a427270fa6f197097cc53bc79c034fe1195e2d5ea.adb",
+          "keyFiles": [
+            "key-27d61d827d64ccf2f46dce5f52aec6279404d4a00686dafb22f52f3b4ee675f8.pem"
+          ],
+          "depends": [
+            "libc"
+          ],
+          "payload": [],
+          "preinstalledOnly": true
+        },
+        {
+          "name": "hysteria-server-ram",
+          "version": "2.12.2-r5",
+          "architecture": "x86_64",
+          "file": "apk-b7f5a17bdabba77d158a899fce1a22a8ed1dbb56beb282fde0a89622be119b56.apk",
+          "sha256": "b7f5a17bdabba77d158a899fce1a22a8ed1dbb56beb282fde0a89622be119b56",
+          "archiveBytes": 75713,
+          "installedBytes": 371019,
+          "nativeId": "f298df36463e51d1616605e2d3af8e287f9339c6195e3587e86a1ded6424083c",
+          "indexFile": "servers-x86.adb",
+          "keyFiles": [
+            "foxhole-openwrt-apk.pem"
+          ],
+          "depends": [
+            "ca-bundle",
+            "flock",
+            "libc",
+            "uclient-fetch",
+            "ucode",
+            "ucode-mod-fs"
+          ],
+          "payload": [
+            {
+              "path": "lib/apk/packages/hysteria-server-ram.list",
+              "bytes": 498,
+              "sha256": "07fa45c6d253af429b4b970f65c1268ec2f24f50b9287600cc0338e30c6bf994",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/bin/hysteria",
+              "bytes": 3103,
+              "sha256": "a5fe32693b6e6ffa27f43f793b713654e918b799f24da5069ce5f4650c275e63",
+              "mode": 493,
+              "target": null
+            },
+            {
+              "path": "usr/share/foxhole/hysteria-producer.json",
+              "bytes": 10574,
+              "sha256": "60ed01ec46a9180e232a3d0728e4fcedb91abdb5165dc56e7bccecab8d1637bf",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/foxhole/hysteria-server-download.txt",
+              "bytes": 185,
+              "sha256": "07a79026782c73d76cd25485ad93d6c2875032824d3ff9d152fe1fad5e152d53",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/GO-THIRD-PARTY-NOTICES.txt",
+              "bytes": 232646,
+              "sha256": "357bb425cac0ea358db9492f6ceb23ae4a7c467982dad90852f8254c5123d8cf",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/HYSTERIA-PATCH-SOURCE.json",
+              "bytes": 32759,
+              "sha256": "db872fa2964b2f4ebce109fb49bc336cceac6a13756530550fbf219fc3dfbd21",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/HYSTERIA-SOURCE-PATCH.patch",
+              "bytes": 40434,
+              "sha256": "9356841dfca7add5755c91bb5ddd8398588d04b6c23430bf2f01067e8b763bcd",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/LICENSE.md",
+              "bytes": 1052,
+              "sha256": "b279cfdac4db4b077f0660b5d8156d50a8bc7bd410036dc356499af43c4e84f5",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/app.LICENSE.md",
+              "bytes": 1052,
+              "sha256": "b279cfdac4db4b077f0660b5d8156d50a8bc7bd410036dc356499af43c4e84f5",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/core.LICENSE.md",
+              "bytes": 1052,
+              "sha256": "b279cfdac4db4b077f0660b5d8156d50a8bc7bd410036dc356499af43c4e84f5",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/extras.LICENSE.md",
+              "bytes": 1052,
+              "sha256": "b279cfdac4db4b077f0660b5d8156d50a8bc7bd410036dc356499af43c4e84f5",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/go-modules.json",
+              "bytes": 46612,
+              "sha256": "26410c102c35b20d29d624cc76861ab03d8c5b13125485b1ef93086c6c53c407",
+              "mode": 420,
+              "target": null
+            }
+          ],
+          "preinstalledOnly": false
+        }
+      ],
+      "assets": [
+        {
+          "file": "apk-5c510785d3ac2e540a70d58f628bf70fa6b25732d3169e241b844c041a780197.apk",
+          "sha256": "5c510785d3ac2e540a70d58f628bf70fa6b25732d3169e241b844c041a780197",
+          "bytes": 287101,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-5c510785d3ac2e540a70d58f628bf70fa6b25732d3169e241b844c041a780197.apk"
+        },
+        {
+          "file": "apk-22f49453c235d2caefe6859bf797a96bfcd874b1f43df6ee45dc6a48a37e57d3.apk",
+          "sha256": "22f49453c235d2caefe6859bf797a96bfcd874b1f43df6ee45dc6a48a37e57d3",
+          "bytes": 107337,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-22f49453c235d2caefe6859bf797a96bfcd874b1f43df6ee45dc6a48a37e57d3.apk"
+        },
+        {
+          "file": "apk-2beb095dd74e47e6545af914d4a19d3f575fa1dd597882aa31624055050d82f3.apk",
+          "sha256": "2beb095dd74e47e6545af914d4a19d3f575fa1dd597882aa31624055050d82f3",
+          "bytes": 11895,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-2beb095dd74e47e6545af914d4a19d3f575fa1dd597882aa31624055050d82f3.apk"
+        },
+        {
+          "file": "apk-917a974d4f2369506ef0eaded81206b8db5bf9816828b8c890f611f0bc773679.apk",
+          "sha256": "917a974d4f2369506ef0eaded81206b8db5bf9816828b8c890f611f0bc773679",
+          "bytes": 8723,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-917a974d4f2369506ef0eaded81206b8db5bf9816828b8c890f611f0bc773679.apk"
+        },
+        {
+          "file": "apk-233817ac3eac809667a5a40831c2cb232dbfe49b92ac3436d2640ea66411e060.apk",
+          "sha256": "233817ac3eac809667a5a40831c2cb232dbfe49b92ac3436d2640ea66411e060",
+          "bytes": 7075,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-233817ac3eac809667a5a40831c2cb232dbfe49b92ac3436d2640ea66411e060.apk"
+        },
+        {
+          "file": "apk-4c03890b1ef345c8abf2807f910d5f195e1b91e822499ee7a372d4c3ef1c27eb.apk",
+          "sha256": "4c03890b1ef345c8abf2807f910d5f195e1b91e822499ee7a372d4c3ef1c27eb",
+          "bytes": 12165,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-4c03890b1ef345c8abf2807f910d5f195e1b91e822499ee7a372d4c3ef1c27eb.apk"
+        },
+        {
+          "file": "apk-e3f17588dd89eab3cac20f88ffa8a7acaa4146e6c83e3a1192be6450fd231d01.apk",
+          "sha256": "e3f17588dd89eab3cac20f88ffa8a7acaa4146e6c83e3a1192be6450fd231d01",
+          "bytes": 53293,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-e3f17588dd89eab3cac20f88ffa8a7acaa4146e6c83e3a1192be6450fd231d01.apk"
+        },
+        {
+          "file": "apk-1e17d37bc3d5c4ffb60f6f8ef172d2d5a29612746356b11c87099d1a0b606a05.apk",
+          "sha256": "1e17d37bc3d5c4ffb60f6f8ef172d2d5a29612746356b11c87099d1a0b606a05",
+          "bytes": 646,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-1e17d37bc3d5c4ffb60f6f8ef172d2d5a29612746356b11c87099d1a0b606a05.apk"
+        },
+        {
+          "file": "apk-42dbdaa7484fe91f4599e0d2cadc4a1c4fb9a3f456b29adb6fd79ebe440d1c65.apk",
+          "sha256": "42dbdaa7484fe91f4599e0d2cadc4a1c4fb9a3f456b29adb6fd79ebe440d1c65",
+          "bytes": 11853,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-42dbdaa7484fe91f4599e0d2cadc4a1c4fb9a3f456b29adb6fd79ebe440d1c65.apk"
+        },
+        {
+          "file": "apk-5822de438b0a890dce65d8af7630af36658cea314f3d38d98efde9782b513c06.apk",
+          "sha256": "5822de438b0a890dce65d8af7630af36658cea314f3d38d98efde9782b513c06",
+          "bytes": 76478,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-5822de438b0a890dce65d8af7630af36658cea314f3d38d98efde9782b513c06.apk"
+        },
+        {
+          "file": "apk-244a991e57e85b64847b74d5595cf5b94cf7962e250e6905373963ef838745b2.apk",
+          "sha256": "244a991e57e85b64847b74d5595cf5b94cf7962e250e6905373963ef838745b2",
+          "bytes": 641,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-244a991e57e85b64847b74d5595cf5b94cf7962e250e6905373963ef838745b2.apk"
+        },
+        {
+          "file": "apk-43f1fa4ac8c674a5f7cb4df793f9b92d1ed3d207fe012872cd2d0966aa55beb8.apk",
+          "sha256": "43f1fa4ac8c674a5f7cb4df793f9b92d1ed3d207fe012872cd2d0966aa55beb8",
+          "bytes": 29627,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-43f1fa4ac8c674a5f7cb4df793f9b92d1ed3d207fe012872cd2d0966aa55beb8.apk"
+        },
+        {
+          "file": "apk-e67219e48abd443ecda0904396d15117f6fcd88806ba094057885f1c0e923196.apk",
+          "sha256": "e67219e48abd443ecda0904396d15117f6fcd88806ba094057885f1c0e923196",
+          "bytes": 32034,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-e67219e48abd443ecda0904396d15117f6fcd88806ba094057885f1c0e923196.apk"
+        },
+        {
+          "file": "apk-b7f5a17bdabba77d158a899fce1a22a8ed1dbb56beb282fde0a89622be119b56.apk",
+          "sha256": "b7f5a17bdabba77d158a899fce1a22a8ed1dbb56beb282fde0a89622be119b56",
+          "bytes": 75713,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-b7f5a17bdabba77d158a899fce1a22a8ed1dbb56beb282fde0a89622be119b56.apk"
+        },
+        {
+          "file": "index-5b1f78e64094ac3c0338e3c8b1e731fd4cfe99ac41d2a84d1a2d90ea308ef9ca.adb",
+          "sha256": "5b1f78e64094ac3c0338e3c8b1e731fd4cfe99ac41d2a84d1a2d90ea308ef9ca",
+          "bytes": 14980,
+          "role": "index",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/index-5b1f78e64094ac3c0338e3c8b1e731fd4cfe99ac41d2a84d1a2d90ea308ef9ca.adb"
+        },
+        {
+          "file": "index-205b2d43632315e69509c59a427270fa6f197097cc53bc79c034fe1195e2d5ea.adb",
+          "sha256": "205b2d43632315e69509c59a427270fa6f197097cc53bc79c034fe1195e2d5ea",
+          "bytes": 110851,
+          "role": "index",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/index-205b2d43632315e69509c59a427270fa6f197097cc53bc79c034fe1195e2d5ea.adb"
+        },
+        {
+          "file": "servers-x86.adb",
+          "sha256": "5e8a2e6419ba540b68744bdd2e3a9474bc493d8f82071ca9a48cef1c3b699a46",
+          "bytes": 806,
+          "role": "index",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/servers-x86.adb"
+        },
+        {
+          "file": "key-27d61d827d64ccf2f46dce5f52aec6279404d4a00686dafb22f52f3b4ee675f8.pem",
+          "sha256": "27d61d827d64ccf2f46dce5f52aec6279404d4a00686dafb22f52f3b4ee675f8",
+          "bytes": 178,
+          "role": "key",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/key-27d61d827d64ccf2f46dce5f52aec6279404d4a00686dafb22f52f3b4ee675f8.pem"
+        },
+        {
+          "file": "foxhole-openwrt-apk.pem",
+          "sha256": "fa220a28fd8662fc5f617f46594bafe2415b4f605136570dc3c446caeb7d1ef1",
+          "bytes": 178,
+          "role": "key",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/foxhole-openwrt-apk.pem"
+        },
+        {
+          "file": "hysteria-linux-amd64",
+          "sha256": "625fec2a5473503028cb7d6c66df109f26d8cb4e4cbd7d125c6415116a34cb2b",
+          "bytes": 23318654,
+          "role": "binary",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/hysteria-linux-amd64"
+        }
+      ],
+      "memoryEvidence": {
+        "schema": 1,
+        "type": "conservative",
+        "description": "Conservative server admission policy: 128 MiB runtime budget plus the declared 32 MiB flash/RAM reserves and separately counted staging. BASE prerequisites must already be installed at their exact signed native identities; they are never installed or upgraded by this operation. These are admission settings, not measurements or a minimum-device-RAM claim.",
+        "runtimeMemoryBytes": 134217728,
+        "acceptedForRelease": true
+      },
+      "flashReserveBytes": 33554432,
+      "ramReserveBytes": 33554432
+    },
+    {
+      "schema": 1,
+      "kind": "server-install-entry-v1",
+      "architecture": "x86_64",
+      "target": "x86/64",
+      "openwrtRelease": "25.12.5",
+      "storage": "FLASH",
+      "releaseTag": "v1.0.7",
+      "sourceCatalogSha256": "8e4ab7697358e2bfb45174b57ea3342a8a326e89f464f87de4c21cf6d078bb62",
+      "sourceBudgetSha256": "74b1a4b4253c57a31d9de2dc4717c0173701209fa2d7641a70ded12ba61f3cb6",
+      "server": {
+        "name": "hysteria",
+        "version": "2.12.2-r6",
+        "binarySha256": "625fec2a5473503028cb7d6c66df109f26d8cb4e4cbd7d125c6415116a34cb2b",
+        "binaryBytes": 23318654,
+        "executableSha256": "625fec2a5473503028cb7d6c66df109f26d8cb4e4cbd7d125c6415116a34cb2b",
+        "producerSha256": "60ed01ec46a9180e232a3d0728e4fcedb91abdb5165dc56e7bccecab8d1637bf",
+        "securityReceiptSha256": "db872fa2964b2f4ebce109fb49bc336cceac6a13756530550fbf219fc3dfbd21",
+        "runtimeMemoryBytes": 134217728,
+        "staticExecutable": true
+      },
+      "packages": [
+        {
+          "name": "libc",
+          "version": "1.2.5-r5",
+          "architecture": "x86_64",
+          "file": "apk-5c510785d3ac2e540a70d58f628bf70fa6b25732d3169e241b844c041a780197.apk",
+          "sha256": "5c510785d3ac2e540a70d58f628bf70fa6b25732d3169e241b844c041a780197",
+          "archiveBytes": 287101,
+          "installedBytes": 529463,
+          "nativeId": "e657494127b230b7dac934ec867d092856657657049d551c4aa07d41bc95b226",
+          "indexFile": "index-5b1f78e64094ac3c0338e3c8b1e731fd4cfe99ac41d2a84d1a2d90ea308ef9ca.adb",
+          "keyFiles": [
+            "key-27d61d827d64ccf2f46dce5f52aec6279404d4a00686dafb22f52f3b4ee675f8.pem"
+          ],
+          "depends": [
+            "libgcc1"
+          ],
+          "payload": [],
+          "preinstalledOnly": true
+        },
+        {
+          "name": "libgcc1",
+          "version": "14.3.0-r5",
+          "architecture": "x86_64",
+          "file": "apk-e3f17588dd89eab3cac20f88ffa8a7acaa4146e6c83e3a1192be6450fd231d01.apk",
+          "sha256": "e3f17588dd89eab3cac20f88ffa8a7acaa4146e6c83e3a1192be6450fd231d01",
+          "archiveBytes": 53293,
+          "installedBytes": 114723,
+          "nativeId": "4472a36e5793f3becfda78e4684ab9ce6b3f3315b13f1f1b4af5f02004fb3675",
+          "indexFile": "index-5b1f78e64094ac3c0338e3c8b1e731fd4cfe99ac41d2a84d1a2d90ea308ef9ca.adb",
+          "keyFiles": [
+            "key-27d61d827d64ccf2f46dce5f52aec6279404d4a00686dafb22f52f3b4ee675f8.pem"
+          ],
+          "depends": [],
+          "payload": [],
+          "preinstalledOnly": true
+        },
+        {
+          "name": "hysteria",
+          "version": "2.12.2-r6",
+          "architecture": "x86_64",
+          "file": "apk-e281dcf9bd3cda5ce4ab7c340c531f129ec2522eb890c8a928faf5232b63b124.apk",
+          "sha256": "e281dcf9bd3cda5ce4ab7c340c531f129ec2522eb890c8a928faf5232b63b124",
+          "archiveBytes": 8791061,
+          "installedBytes": 23686337,
+          "nativeId": "91773b2828d6ff67d6c630d21b3647459e6036018a781e118f0d95cd44c28f51",
+          "indexFile": "servers-x86.adb",
+          "keyFiles": [
+            "foxhole-openwrt-apk.pem"
+          ],
+          "depends": [
+            "libc"
+          ],
+          "payload": [
+            {
+              "path": "lib/apk/packages/hysteria.list",
+              "bytes": 450,
+              "sha256": "eb4beeffaca545038998214555f248fab156e3c4311d14ecaa0667714529f86f",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/bin/hysteria",
+              "bytes": 23318654,
+              "sha256": "625fec2a5473503028cb7d6c66df109f26d8cb4e4cbd7d125c6415116a34cb2b",
+              "mode": 493,
+              "target": null
+            },
+            {
+              "path": "usr/share/foxhole/hysteria-producer.json",
+              "bytes": 10574,
+              "sha256": "60ed01ec46a9180e232a3d0728e4fcedb91abdb5165dc56e7bccecab8d1637bf",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/GO-THIRD-PARTY-NOTICES.txt",
+              "bytes": 232646,
+              "sha256": "357bb425cac0ea358db9492f6ceb23ae4a7c467982dad90852f8254c5123d8cf",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/HYSTERIA-PATCH-SOURCE.json",
+              "bytes": 32759,
+              "sha256": "db872fa2964b2f4ebce109fb49bc336cceac6a13756530550fbf219fc3dfbd21",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/HYSTERIA-SOURCE-PATCH.patch",
+              "bytes": 40434,
+              "sha256": "9356841dfca7add5755c91bb5ddd8398588d04b6c23430bf2f01067e8b763bcd",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/LICENSE.md",
+              "bytes": 1052,
+              "sha256": "b279cfdac4db4b077f0660b5d8156d50a8bc7bd410036dc356499af43c4e84f5",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/app.LICENSE.md",
+              "bytes": 1052,
+              "sha256": "b279cfdac4db4b077f0660b5d8156d50a8bc7bd410036dc356499af43c4e84f5",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/core.LICENSE.md",
+              "bytes": 1052,
+              "sha256": "b279cfdac4db4b077f0660b5d8156d50a8bc7bd410036dc356499af43c4e84f5",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/extras.LICENSE.md",
+              "bytes": 1052,
+              "sha256": "b279cfdac4db4b077f0660b5d8156d50a8bc7bd410036dc356499af43c4e84f5",
+              "mode": 420,
+              "target": null
+            },
+            {
+              "path": "usr/share/licenses/hysteria/go-modules.json",
+              "bytes": 46612,
+              "sha256": "26410c102c35b20d29d624cc76861ab03d8c5b13125485b1ef93086c6c53c407",
+              "mode": 420,
+              "target": null
+            }
+          ],
+          "preinstalledOnly": false
+        }
+      ],
+      "assets": [
+        {
+          "file": "apk-5c510785d3ac2e540a70d58f628bf70fa6b25732d3169e241b844c041a780197.apk",
+          "sha256": "5c510785d3ac2e540a70d58f628bf70fa6b25732d3169e241b844c041a780197",
+          "bytes": 287101,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-5c510785d3ac2e540a70d58f628bf70fa6b25732d3169e241b844c041a780197.apk"
+        },
+        {
+          "file": "apk-e3f17588dd89eab3cac20f88ffa8a7acaa4146e6c83e3a1192be6450fd231d01.apk",
+          "sha256": "e3f17588dd89eab3cac20f88ffa8a7acaa4146e6c83e3a1192be6450fd231d01",
+          "bytes": 53293,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-e3f17588dd89eab3cac20f88ffa8a7acaa4146e6c83e3a1192be6450fd231d01.apk"
+        },
+        {
+          "file": "apk-e281dcf9bd3cda5ce4ab7c340c531f129ec2522eb890c8a928faf5232b63b124.apk",
+          "sha256": "e281dcf9bd3cda5ce4ab7c340c531f129ec2522eb890c8a928faf5232b63b124",
+          "bytes": 8791061,
+          "role": "package",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/apk-e281dcf9bd3cda5ce4ab7c340c531f129ec2522eb890c8a928faf5232b63b124.apk"
+        },
+        {
+          "file": "index-5b1f78e64094ac3c0338e3c8b1e731fd4cfe99ac41d2a84d1a2d90ea308ef9ca.adb",
+          "sha256": "5b1f78e64094ac3c0338e3c8b1e731fd4cfe99ac41d2a84d1a2d90ea308ef9ca",
+          "bytes": 14980,
+          "role": "index",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/index-5b1f78e64094ac3c0338e3c8b1e731fd4cfe99ac41d2a84d1a2d90ea308ef9ca.adb"
+        },
+        {
+          "file": "servers-x86.adb",
+          "sha256": "5e8a2e6419ba540b68744bdd2e3a9474bc493d8f82071ca9a48cef1c3b699a46",
+          "bytes": 806,
+          "role": "index",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/servers-x86.adb"
+        },
+        {
+          "file": "key-27d61d827d64ccf2f46dce5f52aec6279404d4a00686dafb22f52f3b4ee675f8.pem",
+          "sha256": "27d61d827d64ccf2f46dce5f52aec6279404d4a00686dafb22f52f3b4ee675f8",
+          "bytes": 178,
+          "role": "key",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/key-27d61d827d64ccf2f46dce5f52aec6279404d4a00686dafb22f52f3b4ee675f8.pem"
+        },
+        {
+          "file": "foxhole-openwrt-apk.pem",
+          "sha256": "fa220a28fd8662fc5f617f46594bafe2415b4f605136570dc3c446caeb7d1ef1",
+          "bytes": 178,
+          "role": "key",
+          "url": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v1.0.7/foxhole-openwrt-apk.pem"
+        }
+      ],
+      "memoryEvidence": {
+        "schema": 1,
+        "type": "conservative",
+        "description": "Conservative server admission policy: 128 MiB runtime budget plus the declared 32 MiB flash/RAM reserves and separately counted staging. BASE prerequisites must already be installed at their exact signed native identities; they are never installed or upgraded by this operation. These are admission settings, not measurements or a minimum-device-RAM claim.",
+        "runtimeMemoryBytes": 134217728,
+        "acceptedForRelease": true
+      },
+      "flashReserveBytes": 33554432,
+      "ramReserveBytes": 33554432
+    }
+  ]
+}

@@ -55,7 +55,7 @@ export function descriptor(value) {
  if(value.schema!=1||value.kind!='foxhole-ram-bootstrap-v1'||!model.version(value.version)||!model.version(value.baseVersion)||
   !model.sha(value.baseSha256)||value.signerPemSha256!=model.signer_sha256||value.caFileSha256!=null&&!model.sha(value.caFileSha256)||
   !url(value.artifact.url,false)||!model.integer(value.artifact.bytes)||value.artifact.bytes<1||value.artifact.bytes>33554432||
-  !model.sha(value.artifact.sha256)||!url(value.recoveryOrigin,true)||value.osRelease!='25.12.5'||
+  !model.sha(value.artifact.sha256)||!url(value.recoveryOrigin,true)||index(['25.12.5','25.12.6'],value.osRelease)<0||
   !(value.arch=='aarch64_cortex-a53'&&value.target=='mediatek/filogic'||value.arch=='x86_64'&&value.target=='x86/64'))fail();
  if(value.overlay!=null) {
   exact(value.overlay,['baseVersion','baseSha256','artifact']);exact(value.overlay.artifact,['url','bytes','sha256']);
@@ -77,7 +77,8 @@ function capture(operation,args,maximum,timeout,descriptor_raw) {
  let code=system(['/bin/sh',io+'/helper',output,''+maximum,''+timeout,operation,...args],timeout+5000);
  let clean=!fs.lstat(io+'/owner.json')&&!fs.lstat(io+'/stdout')&&!fs.lstat(io+'/stderr');
  let stdout=null,stderr=null,outputs=[];
- // Unknown ownership and refused/missing logs stay untouched and are never retried.
+ // Unknown ownership and refused/missing logs stay untouched and
+ // are never retried.
  if(clean&&fs.lstat(output)&&fs.lstat(output+'.err')) {
   for(let path in [output,output+'.err']) {
    let before=fs.lstat(path),text=raw(path,path==output?maximum:operation=='fetch'?16384:1048576,true);
@@ -131,7 +132,8 @@ export function prove(candidate,payload_sha) {
  if(!model.sha(payload_sha)||model.compare(candidate.version,(context.value.overlay||context.value).baseVersion)<=0)fail('DOWNGRADE_REJECTED');
  let overlay=recovery_overlay(context.value,candidate.version,candidate.sha256,candidate.bytes);
  let fetched=capture('fetch',[overlay.artifact.url,context.value.caFileSha256==null?'system':'pinned',candidate.version],candidate.bytes,65000,context.raw);
- // The pinned fetch helper rejects non-HTTPS hops before connection.
+ // The pinned fetch helper rejects non-HTTPS hops before
+ // connection.
  if(!fetched.clean||fetched.code!=0||fetched.stdout==null||fetched.stderr==null||match(fetched.stderr,/[Rr][Ee][Dd][Ii][Rr][Ee][Cc][Tt]|[Cc]ertificate|SSL error|[Tt][Ll][Ss] error/)||
   length(fetched.stdout)!=candidate.bytes||digest.sha256(fetched.stdout)!=candidate.sha256)fail('DOWNLOAD_FAILED');
  if(store.read(BOOT,maximum_descriptor)!=context.raw||identity(fs.lstat(BANK))!=context.bankIdentity)fail('STALE_PLAN');

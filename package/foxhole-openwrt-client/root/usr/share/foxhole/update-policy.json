@@ -1,12 +1,15 @@
 {
-  "schema": 1,
+  "schema": 2,
   "transactionAbi": 1,
   "stateAbi": 1,
-  "osRelease": "25.12.5",
+  "supportedOpenWrt": [
+    "25.12.5",
+    "25.12.6"
+  ],
   "targets": [
     "x86/64",
     "mediatek/filogic"
   ],
-  "releaseTag": "v1.0.6",
-  "packageVersion": "1.0.6-r1"
+  "releaseTag": "v1.0.8",
+  "packageVersion": "1.0.8-r2"
 }

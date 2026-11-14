@@ -60,7 +60,10 @@ function raw(path,maximum,empty) {
  admit(2*before.size);let value=fs.readfile(path,maximum+1);
  if(value==null||length(value)!=before.size||facts(before)!=facts(fs.lstat(path)))fail('PACKAGE_VERIFICATION_FAILED');return value;
 };
-function decode(path,maximum) {try{return json(raw(path,maximum,false));}catch(_){fail('PACKAGE_VERIFICATION_FAILED');}};
+function decode(path,maximum) {
+ let encoded=raw(path,maximum,false);
+ try{return json(encoded);}catch(_){fail('PACKAGE_VERIFICATION_FAILED');}
+};
 function read(path,maximum) {let value=store.read(path,maximum||524288);return value==null?null:json(value);};
 function write(path,value) {
  let text=sprintf('%J',value);if(length(text)>524288)fail('PACKAGE_VERIFICATION_FAILED');store.write(path,text);
@@ -94,8 +97,8 @@ function job_record() {return read(JOB);};
 function active(value) {return value!=null&&index(TERMINAL,value.state)<0;};
 function require_idle() {
  if(core_upload.busy())fail('BUSY');
- backup.guard();let job=job_record(),module_job=read('/etc/foxhole/engine-job.json');
- if(active(job)||job?.state=='RECOVERY_REQUIRED'||active(module_job)||module_job?.state=='RECOVERY_REQUIRED')fail('BUSY');
+ backup.guard();let job=job_record(),module_job=read('/etc/foxhole/engine-job.json'),server_job=read('/etc/foxhole/vpn-server-job.json',2097152);
+ if(active(job)||job?.state=='RECOVERY_REQUIRED'||active(module_job)||module_job?.state=='RECOVERY_REQUIRED'||active(server_job)||server_job?.state=='RECOVERY_REQUIRED')fail('BUSY');
 };
 function principal_current(principal) {
  if(type(principal)!='object'||!model.sha(principal.verifier)||!engine.update_principal_current(principal))fail('AUTHENTICATION_FAILED');
@@ -219,7 +222,7 @@ function stage_candidate(archive,manifest,id) {
  if(length(signed_root)!=1||!fs.chmod(directory+'/root',signed_root[0].acl.mode))fail('PACKAGE_VERIFICATION_FAILED');
  native_command('extract',[directory+'/keys',archive,directory+'/root'],4096);
  verify_payload(directory,document);
- let policy=model.policy(decode(directory+'/root/usr/share/foxhole/update-policy.json',8192),manifest.version,manifest.releaseTag);
+ let policy=model.policy(decode(directory+'/root/usr/share/foxhole/update-policy.json',8192),manifest.version,manifest.releaseTag,native.target().release);
  if(digest.sha256(raw(directory+'/root'+KEY,16384,false))!=model.signer_sha256)fail('PACKAGE_VERIFICATION_FAILED');
  let recovery=bootstrap.prove(manifest,digest.sha256(sprintf('%J',document)));
  if(digest.sha256(raw(archive,model.maximum_apk_bytes,false))!=manifest.sha256)fail('PACKAGE_VERIFICATION_FAILED');
@@ -507,8 +510,10 @@ function finish_atomic(job) {
   if(changed&&data_state().activeServerId!=null)fail('RECOVERY_REQUIRED');
   job.atomicPackagePhase=false;job.previousConnectionRestored=changed?false:null;save_job(job);return changed;
  }));
- // Stop may have been deferred after the selector had already reconnected.
- // Once the atomic phase ends, apply the current stopped/kill-switch policy.
+ // Stop may have been deferred after the selector had already
+ // reconnected.
+ // Once the atomic phase ends, apply the current
+ // stopped/kill-switch policy.
  if(stopped&&system(['/etc/init.d/foxhole-runtime','restart'],30000)!=0)fail('RECOVERY_REQUIRED');
 };
 function core_journal(job) {
@@ -703,8 +708,10 @@ export function device_finish(request,principal) {
  });
 };
 
-// Worker execution is below the shared validation/upload path. It never
-// executes downloaded package scripts and never writes the host APK database.
+// Worker execution is below the shared validation/upload path. It
+// never
+// executes downloaded package scripts and never writes the host
+// APK database.
 export function run(id) {
  if(!model.job_id(id))fail('INVALID_REQUEST');current();
  let job=transaction(()=>{let value=job_record();if(value?.deployment!='RAM_BASE'||value.jobId!=id||value.state!='QUEUED')fail('STALE_PLAN');

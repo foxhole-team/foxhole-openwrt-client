@@ -1,0 +1,12 @@
+#!/usr/bin/ucode
+import * as store from '/usr/share/foxhole/private-store.uc';
+import * as state from '/usr/share/foxhole/model.uc';
+import * as mode from '/usr/share/foxhole/server-mode.uc';
+import * as native from '/usr/share/foxhole/server-install-native.uc';
+import * as facts from '/usr/share/foxhole/protocol-facts.uc';
+let current = state.validate_state(json(store.read('/etc/foxhole/state.json',262144)));
+mode.require_enabled(current);
+let installed = native.installed();
+if (installed?.executable) print(installed.executable);
+else if (facts.server()) print('/usr/bin/hysteria');
+else die('vpn_server_unavailable');

@@ -1,4 +1,4 @@
-"""Admit exact non-imported advisory exceptions from physical evidence."""
+"""Verify patched closures or exact historical advisory exceptions."""
 from pathlib import Path
 import argparse
 import datetime
@@ -70,15 +70,22 @@ def stream(raw):
 
 
 def check_evidence(policy, evidence, shipping, scan, now):
-    require(type(policy.get("schema")) is int and policy["schema"] == 1,
+    require(type(policy.get("schema")) is int and policy["schema"] in (1, 2),
             "Security policy schema differs")
+    patched = policy["schema"] == 2
     require(now.tzinfo is not None, "UTC-aware observation time required")
     require(integer(policy.get("queryCount"), 1, 4096) and
             integer(policy.get("maxScanAgeHours"), 1, 24),
             "Bounded scan freshness and coordinate count required")
     entries = policy.get("exceptions")
-    require(isinstance(entries, list) and len(entries) == 2,
-            "Exactly reviewed Hysteria exceptions required")
+    if patched:
+        require(entries == [] and isinstance(entries, list),
+                "Patched security policy forbids exceptions")
+        require(policy.get("runtimeVersion") == "go1.26.11",
+                "Patched security policy requires Go1.26.11")
+    else:
+        require(isinstance(entries, list) and len(entries) == 2,
+                "Exactly reviewed Hysteria exceptions required")
     coordinates = {}
     advisory_documents = {}
     forbidden = set()
@@ -109,7 +116,7 @@ def check_evidence(policy, evidence, shipping, scan, now):
                 "Affected package scope differs from primary advisory")
         forbidden.update(paths)
         coordinates[coordinate] = entry["advisory"]
-    require(set(coordinates.values()) == {"GO-2026-5841", "GO-2026-5932"},
+    require(set(coordinates.values()) == (set() if patched else {"GO-2026-5841", "GO-2026-5932"}),
             "Unreviewed advisory exception")
     aliases = policy.get("advisoryAliasPairs", [])
     require(isinstance(aliases, list) and len(aliases) <= 1,
@@ -177,7 +184,8 @@ def check_evidence(policy, evidence, shipping, scan, now):
                     "Unqualified public vulnerability finding")
             findings.append(identifier)
             canonical_findings.append(canonical)
-    require(len(findings) == 2 + len(alias_map) and
+    expected_findings = 0 if patched else 2
+    require(len(findings) == expected_findings + len(alias_map) and
             set(findings) == set(coordinates.values()) | set(alias_map) and
             set(canonical_findings) == set(coordinates.values()),
             "Exact raw canonical and reviewed duplicate findings must be retained")
@@ -199,7 +207,14 @@ def check_evidence(policy, evidence, shipping, scan, now):
         checked(payload / "hysteria", target["binarySha256"], 536870912)
         require(producer.get("filesSha256", {}).get("go-modules.json") == policy["moduleManifestSha256"],
                 "Delivered dependency manifest differs")
-        checked(payload / "go-modules.json", policy["moduleManifestSha256"], 16777216)
+        module_bytes = checked(payload / "go-modules.json", policy["moduleManifestSha256"], 16777216)
+        if patched:
+            manifest_coordinates = {(row["Path"], row["Version"])
+                                    for row in stream(module_bytes)
+                                    if not row.get("Main") and row.get("Version")}
+            manifest_coordinates.add(("stdlib", policy["runtimeVersion"][2:]))
+            require(queried <= manifest_coordinates,
+                    "Scanned coordinate is outside delivered module manifest")
         info = producer.get("buildInfo", [])
         require(all("build\t" + item in info for item in
                     ("CGO_ENABLED=0", "GOOS=linux", "GOARCH=" + arch)),
@@ -222,6 +237,7 @@ def check_evidence(policy, evidence, shipping, scan, now):
         require(set(selected_files) == set(selected),
                 "Selected source file evidence differs")
         versions = {}
+        selected_coordinates = set()
         for name, package in selected.items():
             require(not package.get("Incomplete") and "Error" not in package,
                     "Incomplete selected package evidence")
@@ -229,6 +245,16 @@ def check_evidence(policy, evidence, shipping, scan, now):
                     "Selected package import closure is incomplete")
             module = package.get("Module", {})
             require("Replace" not in module, "Replacement changes compiled scope")
+            if patched and module and not module.get("Main"):
+                coordinate = (module.get("Path"), module.get("Version"))
+                require(all(isinstance(v, str) and v for v in coordinate),
+                        "Selected module coordinate is incomplete")
+                selected_coordinates.add(coordinate)
+                require(coordinate in queried,
+                        "Selected module has no successful OSV query")
+                require(any(line.startswith("dep\t" + coordinate[0] + "\t" + coordinate[1] + "\t")
+                            for line in info if isinstance(line, str)),
+                        "Selected module differs from actual binary build info")
             if module.get("Path") in {c[0] for c in coordinates}:
                 require(module["Path"] not in versions or
                         versions[module["Path"]] == module.get("Version"),
@@ -241,10 +267,14 @@ def check_evidence(policy, evidence, shipping, scan, now):
                     "Selected source hashes incomplete")
         require(versions == {module: version for module, version in coordinates},
                 "Selected package module version differs")
-    return {"schema": 1, "findings": len(findings), "qualifiedExceptions": 2,
-            "canonicalAdvisories": 2, "reviewedAliasDuplicates": len(alias_map),
+        if patched:
+            require(("stdlib", policy["runtimeVersion"][2:]) in queried and selected_coordinates,
+                    "Selected runtime and modules require successful OSV queries")
+    return {"schema": policy["schema"], "findings": len(findings), "qualifiedExceptions": expected_findings,
+            "canonicalAdvisories": expected_findings, "reviewedAliasDuplicates": len(alias_map),
             "blockingFindings": 0, "targets": ["amd64", "arm64"],
-            "scope": "Exact delivered non-imported packages only; raw findings retained"}
+            "scope": ("Exact patched delivered closures; no advisory exceptions" if patched else
+                      "Exact delivered non-imported packages only; raw findings retained")}
 
 
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
-// Pure source-adapted checks. Native APK, OverlayFS and service lifecycle need target qualification.
+// Pure source-adapted checks. Native APK, OverlayFS and service
+// lifecycle need target qualification.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -15,7 +16,7 @@ const builtins={die:()=>{throw Error('rejected');},type:value=>value==null?'null
  match:(value,pattern)=>value.match(pattern),keys:Object.keys,index:(value,item)=>value.indexOf(item),
  split:(value,pattern)=>value.split(pattern),join:(separator,value)=>value.join(separator),slice:(value,start,end)=>value.slice(start,end),
  sort:value=>value.sort(),filter:(value,predicate)=>value.filter(predicate),push:(value,item)=>value.push(item),trim:value=>value.trim(),
- sprintf:(_format,value)=>JSON.stringify(value)};
+ sprintf:(_format,value)=>JSON.stringify(value),substr:(value,start,count)=>value.substr(start,count)};
 const names=[...source.matchAll(/^export function (\w+)/gm)].map(row=>row[1]);
 const model=new Function(...Object.keys(builtins),`${adapt(source)}\nreturn {${names.join(',')}};`)(...Object.values(builtins));
 const stage='/tmp/foxhole-ram-stage-qualification';
@@ -131,4 +132,78 @@ test('all new Ucode files pass a source-adapted grammar check; native Ucode comp
  const inline=[...command.matchAll(/ucode -e '([^]*?)' --/g)].map(row=>row[1]);assert.ok(inline.length);
  for(const body of inline)assert.doesNotThrow(()=>new Function(adapt(body)));
  for(const body of [source,service,...inline])for(const row of body.matchAll(/\{\d+,(\d+)\}/g))assert.ok(+row[1]<=255);
+});
+
+function copyDatabaseFixture(failChmod=false){
+ const lower='/tmp/previous/root',upper='/tmp/candidate/switch/upper',directories=new Map(),writes=[],chmods=[];
+ const original={type:'file',uid:0,nlink:1,mode:0o100644,size:8};
+ const fs={glob:()=>[lower+'/lib/apk/db/installed'],lstat:path=>path.startsWith(lower)?original:{type:'directory',mode:directories.get(path)},
+  basename:path=>path.split('/').at(-1),chmod:(path,mode)=>{chmods.push(path);if(failChmod)return false;directories.set(path,mode);return true;}};
+ const copy=actualFunction('copy_database',{fs,fail:()=>{throw Error('rejected');},memory:()=>{},
+  mkdir:(path,mode)=>directories.set(path,mode&~0o077),raw:path=>path.endsWith('/world')?'world\n':'database',
+  write:(path,text,mode)=>writes.push({path,text,mode})});
+ return{copy,lower,upper,directories,writes,chmods};
+}
+test('isolated native DB directories keep requested mode under private operator umask077',()=>{
+ const h=copyDatabaseFixture();assert.equal(h.copy(h.lower,h.upper),8);
+ for(const part of ['/lib','/lib/apk','/lib/apk/db','/etc','/etc/apk'])assert.equal(h.directories.get(h.upper+part),0o755,part);
+ assert.ok(h.chmods.every(path=>path.startsWith(h.upper+'/')));
+ assert.deepEqual(h.writes.map(row=>row.text),['database','world\n']);
+});
+test('failed directory mode restoration rejects the stage before copying package DB data',()=>{
+ const h=copyDatabaseFixture(true);assert.throws(()=>h.copy(h.lower,h.upper),/rejected/);assert.deepEqual(h.writes,[]);
+});
+
+// OverlayFS xino=off reports the overlay device for directories
+// and upper device for files.
+function cacheCleanupFixture(mutate = () => {}, lowerPresent = false) {
+ const dir='/tmp/foxhole/ram-updates/candidates/candidate-'+ 'a'.repeat(32);
+ const cache=dir+'/root/.foxhole-apk-cache', upper=dir+'/switch/upper/.foxhole-apk-cache', archive=dir+'/base.apk';
+ const overlay={major:0,minor:37}, backing={major:0,minor:18};
+ const node=(type,inode,dev,size=0)=>({type,inode,dev,size,uid:0,gid:0,mode:type==='directory'?0o700:0o644,nlink:1,mtime:1,ctime:1});
+ const merged=node('directory',100,overlay),physical=node('directory',200,backing),input=node('file',300,backing,8);
+ physical.nlink=2; // Actual xino=off directory pair: merged nlink=1, owned upper nlink=2.
+ const nodes=new Map([[cache,merged],[upper,physical],[archive,input]]);
+ for(const [name,ino,bytes] of [['package.apk',400,8],['installed',401,633]]) {
+  nodes.set(cache+'/'+name,node('file',ino,backing,bytes));nodes.set(upper+'/'+name,node('file',ino,backing,bytes));
+ }
+ const deleted=[];mutate({nodes,cache,upper,archive,overlay,backing});
+ const parent=p=>p.slice(0,p.lastIndexOf('/')), children=p=>[...nodes.keys()].filter(n=>parent(n)===p);
+ const fs={lstat:p=>nodes.get(p)||null,dirname:parent,basename:p=>p.slice(p.lastIndexOf('/')+1),lsdir:p=>children(p).map(n=>n.slice(p.length+1)),
+  glob:p=>p.endsWith('/.*')?[]:children(p.slice(0,-2)),
+  unlink(p){deleted.push(p);if(nodes.get(p)?.inode===nodes.get(archive)?.inode)nodes.get(archive).nlink-=1;nodes.delete(p);if(p.startsWith(cache+'/'))nodes.delete(upper+p.slice(cache.length));return true;},
+  rmdir(p){if(children(p).length)return false;deleted.push(p);nodes.delete(p);if(p===cache){if(lowerPresent)nodes.set(upper,{...physical,type:'char',mode:0,size:0,nlink:2});else nodes.delete(upper);}return true;}};
+ const start=service.indexOf('function clear_native_cache('),end=service.indexOf('\nfunction process_role',start);
+ const text=service.slice(start,end);
+ const run=new Function(...Object.keys(builtins),'fs','same','facts','mount_rows','fail',adapt(text)+';return clear_native_cache;')(
+  ...Object.values(builtins),fs,(a,b)=>JSON.stringify(a)===JSON.stringify(b),JSON.stringify,()=>[],()=>{throw Error('rejected');});
+ return {run:()=>run(cache,merged,archive,input,4096,upper,physical,{present:lowerPresent}),deleted,nodes,cache,upper};
+}
+test('RAM cache cleanup accepts only the declared physical upper backing on xino=off OverlayFS',()=>{
+ const f=cacheCleanupFixture();f.run();assert.equal(f.nodes.has(f.cache),false);assert.equal(f.nodes.has(f.upper),false);assert.equal(f.deleted.length,3);
+});
+test('RAM cache cleanup validates all backing identities before deleting any file',()=>{
+ for(const change of [
+  f=>f.nodes.get(f.cache+'/installed').dev={major:0,minor:99},
+  f=>f.nodes.get(f.upper+'/installed').inode=999,
+  f=>f.nodes.get(f.upper+'/installed').dev={major:0,minor:99},
+  f=>f.nodes.get(f.cache+'/installed').nlink=2,
+  f=>f.nodes.get(f.upper+'/installed').uid=1000,
+  f=>f.nodes.get(f.cache+'/installed').mode=0o666,
+  f=>f.nodes.get(f.cache+'/installed').type='link',
+  f=>f.nodes.set(f.upper+'/unrepresented', {...f.nodes.get(f.upper+'/installed'),inode:888}),
+ ]) {const f=cacheCleanupFixture(change);assert.throws(f.run);assert.deepEqual(f.deleted,[]);}
+});
+
+test('RAM cache cleanup preserves the exact input archive when apk temporarily hardlinks it',()=>{
+ const f=cacheCleanupFixture(({nodes,cache,upper,archive})=>{
+  const input=nodes.get(archive);input.nlink=2;nodes.set(cache+'/package.apk',input);nodes.set(upper+'/package.apk',input);
+ });f.run();assert.equal(f.nodes.size,1);assert.equal([...f.nodes.values()][0].nlink,1);
+});
+test('RAM cache cleanup refuses unexplained input archive hardlinks before deletion',()=>{
+ const f=cacheCleanupFixture(({nodes,archive})=>nodes.get(archive).nlink=2);assert.throws(f.run);assert.deepEqual(f.deleted,[]);
+});
+
+test('inherited read-only cache is hidden only by a kernel whiteout after deleting the fully owned merged view',()=>{
+ const f=cacheCleanupFixture(()=>{},true);f.run();assert.equal(f.nodes.has(f.cache),false);assert.equal(f.nodes.get(f.upper).type,'char');assert.equal(f.nodes.get(f.upper).mode,0);
 });

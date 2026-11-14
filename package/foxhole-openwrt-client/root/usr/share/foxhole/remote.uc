@@ -37,7 +37,8 @@ export function uplink(statuses) {
 		if (best == null || metric < best) { best = metric; addresses = []; }
 		if (metric == best && index(addresses, address) < 0) push(addresses, address);
 	}
-	// Equal-priority uplinks with different addresses do not establish one direct endpoint.
+	// Equal-priority uplinks with different addresses do not
+	// establish one direct endpoint.
 	if (length(addresses) > 1) return { publicIpv4Available: null, address: null };
 	let address = length(addresses) == 1 ? addresses[0] : null;
 	return { publicIpv4Available: address != null, address };

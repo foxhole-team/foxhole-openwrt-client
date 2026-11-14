@@ -1,8 +1,33 @@
 export async function waitForMotion(...elements) {
   const animations = elements.flatMap((element) =>
-    element?.getAnimations?.() || []);
-  await Promise.allSettled(animations.map((animation) =>
-    animation.finished));
+    element?.getAnimations?.() || []).filter(animation =>
+    animation.effect?.getComputedTiming?.()?.endTime !== Number.POSITIVE_INFINITY);
+  if (!animations.length) return;
+  const deadlines = animations.map(animation => {
+    const end = animation.effect?.getComputedTiming?.()?.endTime;
+    return Number.isFinite(end) && animation.playbackRate !== 0
+      ? Math.max(0, end - Number(animation.currentTime || 0)) / Math.abs(animation.playbackRate || 1) + 50 : 250;
+  });
+  let timer;
+  try {
+    await Promise.race([Promise.allSettled(animations.map(animation => animation.finished)),
+      new Promise(resolve => { timer = setTimeout(resolve, Math.min(1000, Math.max(80, ...deadlines))); })]);
+  } finally { clearTimeout(timer); }
+}
+
+function rememberFocus() {
+  const node = globalThis.document?.activeElement;
+  let selector = null;
+  if (node?.id && /^[A-Za-z][A-Za-z0-9_-]*$/.test(node.id)) selector = `#${node.id}`;
+  else if (/^[a-z][a-z0-9-]{0,63}$/.test(node?.dataset?.action || ''))
+    selector = `[data-action="${node.dataset.action}"]`;
+  return { node, selector };
+}
+
+function restoreFocus(value, stage) {
+  const node = value?.node?.isConnected ? value.node
+    : value?.selector ? stage?.querySelector?.(value.selector) || globalThis.document?.querySelector?.(value.selector) : null;
+  node?.focus?.({ preventScroll: true });
 }
 
 export class ModalFlow {
@@ -27,12 +52,14 @@ export class ModalFlow {
 
   async open(name, data = {}, reset = false) {
     if (this.transitioning) return false;
+    if (this.current) this.current.scrollTop = this.stage.scrollTop || 0;
+    const opener = rememberFocus();
     if (reset) {
       this.dialog.style.removeProperty('--modal-session-height');
       this.views.length = 0;
       this.stage.replaceChildren();
     }
-    this.views.push({ name, data });
+    this.views.push({ name, data, opener });
     await this.paint(reset ? 'initial' : 'forward');
     return true;
   }
@@ -46,8 +73,9 @@ export class ModalFlow {
   async back() {
     if (this.transitioning) return false;
     if (this.views.length <= 1) return this.close();
-    this.views.pop();
+    const leaving = this.views.pop();
     await this.paint('back');
+    restoreFocus(leaving.opener, this.stage);
     return true;
   }
 
@@ -57,9 +85,10 @@ export class ModalFlow {
     const next = this.createPanel(view);
     this.stage.replaceChildren(next);
     this.prepare(view, next);
-    this.stage.scrollTop = 0;
+    this.stage.scrollTop = direction === 'back' ? view.scrollTop || 0 : 0;
     if (!this.dialog.open) {
       this.dialog.classList.add('is-opening');
+      this.dialog.addEventListener?.('animationend', () => this.dialog.classList.remove('is-opening'), { once: true });
       this.dialog.showModal();
     } else if (direction !== 'initial') {
       next.classList.add('is-entering');
@@ -75,6 +104,7 @@ export class ModalFlow {
     this.transitioning = true;
     this.dialog.classList.remove('is-opening');
     this.dialog.classList.add('is-closing');
+    const opener = this.views[0]?.opener;
     try {
       await waitForMotion(this.dialog);
       this.dialog.close();
@@ -82,6 +112,7 @@ export class ModalFlow {
       this.dialog.style.removeProperty('--modal-session-height');
       this.views.length = 0;
       await this.closed?.();
+      restoreFocus(opener, this.stage);
     } finally {
       this.dialog.classList.remove('is-closing');
       this.transitioning = false;

@@ -1,4 +1,5 @@
-# Use matching unstripped link inputs; installed runtime libraries stay unchanged.
+# Use matching unstripped link inputs; installed runtime libraries
+# stay unchanged.
 .PHONY: all
 all:
 	test -n "$(OUT)" -a -n "$(RECOVERY_HEADERS)" -a -n "$(RECOVERY_LINK_LIBS)"

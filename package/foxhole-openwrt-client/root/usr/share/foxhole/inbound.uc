@@ -1,5 +1,6 @@
 import * as model from './model.uc';
 import * as observation from './client-observation.uc';
+import * as network from './mobile-network.uc';
 
 const PRIVATE = [
 	'0.0.0.0/8', '10.0.0.0/8', '100.64.0.0/10', '127.0.0.0/8',
@@ -12,13 +13,16 @@ export function shared(base) { return base.listenerMode != 'per-client'; };
 
 export function limit(base) { return shared(base) ? 32 : 4; };
 
-export function config(base, state, client, connected, prefixes, stats) {
+export function config(base, state, client, connected, prefixes, stats, managementBindings) {
 	if (client.inbound != true ||
 	    !match(client.secret || '', /^[a-f0-9]{64}$/) ||
 	    type(client.port) != 'int' || client.port < 1 || client.port > 65535)
 		die('invalid_config');
 	let rules = [];
 	if (client.allowLan == true) {
+		if (managementBindings != null)
+			for (let address in network.management_addresses(managementBindings))
+				push(rules, 'direct(' + address + ', tcp/8443)');
 		for (let address in base.allowedLan || [])
 			push(rules, 'direct(' + model.normalize_address(address) + ')');
 	}
@@ -77,10 +81,10 @@ export function profile(base, client) {
 		uri, config: uri, inactive: false, warning: null };
 };
 
-export function shared_config(base, state, clients, connected, prefixes, stats) {
+export function shared_config(base, state, clients, connected, prefixes, stats, managementBindings) {
 	if (!length(clients) || length(clients) > limit(base)) die('invalid_config');
 	let seed = { ...clients[0], port: 443, allowLan: base.sharedAllowLan == true };
-	let result = config(base, state, seed, connected, prefixes, stats);
+	let result = config(base, state, seed, connected, prefixes, stats, managementBindings);
 	let users = { ...(base.legacyUsers || {}) };
 	for (let client in clients) users[client.id] = client.secret;
 	result.auth.userpass = users;

@@ -45,7 +45,8 @@ case "$limit" in ''|*[!0-9]*) exit 1 ;; esac
 [ "$limit" -gt 0 ] && [ "$limit" -le 1048576 ] || exit 1
 case "$timeout" in ''|*[!0-9]*) exit 1 ;; esac
 [ "$timeout" -ge 1000 ] && [ "$timeout" -le 20000 ] || exit 1
-# Every entry is fixed to signed BASE files or independent native RAM roots.
+# Every entry is fixed to signed BASE files or independent native
+# RAM roots.
 ucode -e 'import * as fs from "fs";
 function fail(){exit(1);};
 function dir(p){for(let v=p;;v=fs.dirname(v)){let s=fs.lstat(v);if(s?.type!="directory"||s.uid!=0||(s.mode&0o022)&&!(v=="/tmp"&&(s.mode&0o7777)==0o1777))fail();if(v=="/")break;}};

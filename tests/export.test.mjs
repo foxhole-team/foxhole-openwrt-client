@@ -33,8 +33,9 @@ test('public export includes only the explicit source allowlist', async (t) => {
   }
   const result = await exportPublic(item);
   assert.deepEqual((await readdir(item.destination)).sort(),
-    [...publicFiles, ...publicDirectories.filter(name => !['tests', 'tools'].includes(name))
-      .map(name => name.split('/')[0])].sort());
+    [...new Set([...publicFiles,
+      ...publicDirectories.filter(name => !['tests', 'tools'].includes(name))
+        .map(name => name.split('/')[0])])].sort());
   assert.equal(result.files.length, publicFiles.length + 9);
   assert.ok(result.files.every(path => !path.split('/').includes('AGENTS.md')));
   assert.throws(() => validatePublicFile('package/AGENTS.md', Buffer.from('Local only')),

@@ -1,4 +1,5 @@
-// Pure source-adapted checks. No downloads, native APK, mounts or services are run.
+// Pure source-adapted checks. No downloads, native APK, mounts or
+// services are run.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -241,7 +242,7 @@ test('rollback removes only actual own binds and restarts no VPN profile snapsho
  const rollback=actualFunction('rollback',{matches_mount:row=>events.push(['verify',row.target]),command:argv=>events.push(argv),
   replace:()=>{},model,fs:{},mounted:()=>[],same:(a,b)=>JSON.stringify(a)==JSON.stringify(b)});
  rollback(journal);assert.deepEqual(events.filter(row=>row[0]=='/bin/umount').map(row=>row[1]),['/two','/one']);assert.equal(journal.phase,'ROLLED_BACK');
- assert.doesNotMatch(loader,/write\('\/etc\/foxhole\/(state|auth|pairing)|activeServerId\s*=|\/etc\/init.d\/uhttpd|firewall.*reload/);
+ assert.doesNotMatch(rollback.toString(),/write\('\/etc\/foxhole\/(state|auth|pairing)|activeServerId\s*=/);
 });
 test('capture utility is byte-identical to the already qualified owned-PID/drainer utility',()=>{
  assert.equal(read('tools/ram-bootstrap-capture.uc'),read('package/foxhole-openwrt-client/root/usr/share/foxhole/engine-capture.uc'));

@@ -1,5 +1,6 @@
 #!/usr/bin/ucode
 import * as fs from 'fs';
+import * as server_mode from '/usr/share/foxhole/server-mode.uc';
 import * as digest from 'digest';
 import * as model from '/usr/share/foxhole/model.uc';
 import * as inbound from '/usr/share/foxhole/inbound.uc';
@@ -14,10 +15,45 @@ store.directory('/tmp/foxhole/countries');
 store.target('/tmp/foxhole/inbound.lock');
 let lock = fs.open('/tmp/foxhole/inbound.lock', 'a+', 0o600);
 if (!lock?.lock('x') || !store.file_metadata(fs.lstat('/tmp/foxhole/inbound.lock'))) exit(1);
+function publish_ports(ports) {
+ let entries = length(ports) ? ' elements = { ' + join(', ', ports) + ' };' : '';
+ let set = 'set foxhole_inbound_ports { type inet_service;' + entries + ' }\n';
+ let setPath = '/etc/nftables.d/31-foxhole-inbound.nft';
+ let parentInfo = fs.lstat('/etc/nftables.d');
+ if (parentInfo?.type != 'directory' || parentInfo.uid != 0 ||
+     (parentInfo.mode & 0o022) != 0) die('storage_error');
+ let setInfo = fs.lstat(setPath);
+ if (setInfo && (setInfo.type != 'file' || setInfo.uid != 0 ||
+     setInfo.nlink != 1 || (setInfo.mode & 0o022) != 0)) die('storage_error');
+ if (fs.readfile(setPath) != set) {
+  let temporary = setPath + '.new-' + hexenc(fs.readfile('/dev/urandom', 12));
+  let output = fs.open(temporary, 'wxe', 0o644);
+  if (!output || output.write(set) != length(set) || !output.flush()) die('storage_error');
+  output.close();
+  if (!fs.rename(temporary, setPath)) die('storage_error');
+ }
+ // fw4 preserves named sets; replacement must explicitly flush.
+ let batch = 'flush set inet fw4 foxhole_inbound_ports\n';
+ if (length(ports)) batch += 'add element inet fw4 foxhole_inbound_ports { ' +
+  join(', ', ports) + ' }\n';
+ store.write(directory + '/ports.nft', batch);
+ if (system(['/usr/sbin/nft', '-f', directory + '/ports.nft'], 5000) != 0)
+  die('firewall_failed');
+};
+let state = model.validate_state(json(store.read('/etc/foxhole/state.json', 262144)));
+if (!server_mode.enabled(state)) {
+ store.write(directory + '/clients', '');
+ let stopped = system(['/etc/init.d/foxhole-inbound-services', 'stop'], 15000);
+ publish_ports([]);
+ store.write(directory + '/status.json', sprintf('%J', {
+  viaVpn: false, ports: [], updated: time()
+ }));
+ if (stopped != 0) die('inbound_stop_failed');
+ exit(0);
+}
 let raw = store.read('/etc/foxhole/inbound.json', 65536);
 let base = raw ? json(raw) : null;
 if (!base) exit(0);
-let state = model.validate_state(json(store.read('/etc/foxhole/state.json', 262144)));
 let runtime = probe.runtime_snapshot()?.value;
 let connected = state.activeServerId != null && runtime?.connected &&
 	runtime.activeServerId == state.activeServerId &&
@@ -37,8 +73,11 @@ if (connected && selected?.engine == 'core') {
 }
 let clients = filter(state.clients, c => c.inbound == true);
 if (length(clients) > inbound.limit(base)) die('client_limit');
+let managementRaw = store.read('/tmp/foxhole/mobile-listeners.json', 4096);
+let managementBindings = managementRaw ? json(managementRaw) : [];
 let signature = digest.sha256(sprintf('%J', { base, clients,
 	connected, active: state.activeServerId,
+	management: managementBindings,
 	rules: state.settings.clientRules, countries: state.countries,
 	servers: state.servers, day: int(time() / 86400) }));
 function rebind_observations(state, signature, base, clients) {
@@ -128,35 +167,13 @@ for (let i = 0; i < length(listeners); i++) {
 	let stats = observation.stats_config(id == 'shared' ? 0 : i + 1, hexenc(random));
 	push(observations, { id, ...stats });
 	let value = id == 'shared' ?
-		inbound.shared_config(base, state, clients, connected, prefixes, stats) :
-		inbound.config(base, state, client, connected, prefixes, stats);
+		inbound.shared_config(base, state, clients, connected, prefixes, stats, managementBindings) :
+		inbound.config(base, state, client, connected, prefixes, stats, managementBindings);
 	let path = directory + '/' + id + '.json';
 	store.write(path, sprintf('%J', value));
 	push(ports, id == 'shared' ? 443 : client.port);
 }
-let entries = length(ports) ? ' elements = { ' + join(', ', ports) + ' };' : '';
-let set = 'set foxhole_inbound_ports { type inet_service;' + entries + ' }\n';
-let setPath = '/etc/nftables.d/31-foxhole-inbound.nft';
-let parentInfo = fs.lstat('/etc/nftables.d');
-if (parentInfo?.type != 'directory' || parentInfo.uid != 0 ||
-    (parentInfo.mode & 0o022) != 0) die('storage_error');
-let setInfo = fs.lstat(setPath);
-if (setInfo && (setInfo.type != 'file' || setInfo.uid != 0 ||
-    setInfo.nlink != 1 || (setInfo.mode & 0o022) != 0)) die('storage_error');
-if (fs.readfile(setPath) != set) {
-	let temporary = setPath + '.new-' + hexenc(fs.readfile('/dev/urandom', 12));
-	let output = fs.open(temporary, 'wxe', 0o644);
-	if (!output || output.write(set) != length(set) || !output.flush()) die('storage_error');
-	output.close();
-	if (!fs.rename(temporary, setPath)) die('storage_error');
-}
-// fw4 preserves named sets; replacement must explicitly flush.
-let batch = 'flush set inet fw4 foxhole_inbound_ports\n';
-if (length(ports)) batch += 'add element inet fw4 foxhole_inbound_ports { ' +
-	join(', ', ports) + ' }\n';
-store.write(directory + '/ports.nft', batch);
-if (system(['/usr/sbin/nft', '-f', directory + '/ports.nft'], 5000) != 0)
-	die('firewall_failed');
+publish_ports(ports);
 store.write(directory + '/clients', join('\n', listeners) + '\n');
 for (let name in fs.lsdir(directory) || []) {
 	if (match(name, /^(client-[a-f0-9]{12}|shared)\.json$/) &&

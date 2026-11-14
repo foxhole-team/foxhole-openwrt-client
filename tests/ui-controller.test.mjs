@@ -27,6 +27,36 @@ test('motion waits for every animation and tolerates cancellation', async () => 
   assert.equal(completed, true);
 });
 
+test('stalled motion cannot leave close waiting indefinitely', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let completed = false;
+  const waiting = waitForMotion({ getAnimations: () => [{ finished: new Promise(() => {}) }] })
+    .then(() => { completed = true; });
+  t.mock.timers.tick(1001);
+  for (let i = 0; i < 8; i++) await Promise.resolve();
+  assert.equal(completed, true);
+  await waiting;
+});
+
+test('Back restores the parent scroll and the control that opened contextual help', async t => {
+  const old = globalThis.document; let focused = 0;
+  const opener = { id: 'context-help', isConnected: true, focus() { focused++; } };
+  const restored = { isConnected: true, focus() { focused++; } };
+  globalThis.document = { activeElement: opener, querySelector: () => restored };
+  t.after(() => { globalThis.document = old; });
+  const dialog = { open: false, classList: classes(),
+    style: { removeProperty() {}, setProperty() {} }, offsetHeight: 448,
+    showModal() { this.open = true; }, close() { this.open = false; } };
+  const stage = { scrollTop: 0, replaceChildren() {}, querySelector: () => restored };
+  const flow = new ModalFlow({ dialog, stage, title: { focus() {} },
+    createPanel: () => ({ classList: classes() }), prepare() {} });
+  await flow.open('settings', {}, true); stage.scrollTop = 123;
+  await flow.open('help'); opener.isConnected = false;
+  await flow.back();
+  assert.equal(stage.scrollTop, 123);
+  assert.equal(focused, 1);
+});
+
 test('an open dialog can reset and close when CSS motion is absent', async () => {
   const dialog = {
     open: false, classList: classes(),

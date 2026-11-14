@@ -54,21 +54,50 @@ with tempfile.TemporaryDirectory() as temporary:
  if case=='expired':policy['exceptions'][0]['expires']='2026-10-12'
  if case=='missing-target':policy['targets'].pop()
  if case=='boolean-count':policy['queryCount']=True
+ if case.startswith('zero-'):
+  policy.update(schema=2,exceptions=[],runtimeVersion='go1.26.11',sourceReceiptSha256='6e3995f198b93654ea2b6cb5f780191ab22c10acc496447c419e7d44bd7cc7f0')
+  versions={'github.com/klauspost/compress':'v1.20.2','golang.org/x/crypto':'v0.59.0'}
+  queries=[{'package':{'ecosystem':'Go','name':name},'version':version} for name,version in versions.items()]+[{'package':{'ecosystem':'Go','name':'stdlib'},'version':'1.26.11'}]
+  response=[{} for q in queries]
+  for target in policy['targets']:
+   arch=target['architecture'];out=shipping/('linux-'+arch)
+   modules=out/'go-modules.json';modules.write_text(''.join(json.dumps({'Path':name,'Version':version})+'\\n' for name,version in versions.items()));policy['moduleManifestSha256']=sha(modules)
+   producer=json.loads((out/'hysteria-producer.json').read_text());producer['binaryRuntimeVersion']='go1.26.11';producer['filesSha256']['go-modules.json']=sha(modules);producer['testSuite']['sourceReceiptSha256']=policy['sourceReceiptSha256'];producer['buildInfo']=['build\\tCGO_ENABLED=0','build\\tGOOS=linux','build\\tGOARCH='+arch]+['dep\\t'+name+'\\t'+version+'\\th1:fixture' for name,version in versions.items()]
+   target['producerSha256']=write(out/'hysteria-producer.json',producer)
+   graph=evidence/(arch+'-packages.json');packages=[json.loads(line) for line in graph.read_text().splitlines()]
+   for package in packages:
+    if 'Module' in package:package['Module']['Version']=versions[package['Module']['Path']]
+   graph.write_text(''.join(json.dumps(x)+'\\n' for x in packages));target['graphSha256']=sha(graph)
+  if case=='zero-unscanned-module':queries.pop(0);response.pop(0)
+  if case=='zero-finding':response[0]={'vulns':[{'id':'GO-2099-9999'}]}
+  if case=='zero-extra-coordinate':queries.append({'package':{'ecosystem':'Go','name':'other/module'},'version':'v1.0.0'});response.append({})
+  if case=='zero-missing-target':policy['targets'].pop()
+  if case=='zero-wrong-source':policy['sourceReceiptSha256']='b'*64
+  if case=='zero-exception':policy['exceptions']=entries[:1]
+  policy['queryCount']=len(queries)
  policy['queryPayloadSha256']=write(scan/'query-payload.json',{'queries':queries})
  policy['responseSha256']=write(scan/'querybatch-response.json',{'results':response})
- request={'schema':1,'endpoint':'https://api.osv.dev/v1/querybatch','exitCode':0,'publicQueries':2,'queryPayloadSha256':policy['queryPayloadSha256'],'responseSha256':policy['responseSha256'],'httpMetadata':'200 https://api.osv.dev/v1/querybatch','finished':now.isoformat()}
- if case=='stale-scan':request['finished']=(now-datetime.timedelta(days=2)).isoformat()
+ request={'schema':1,'endpoint':'https://api.osv.dev/v1/querybatch','exitCode':0,'publicQueries':policy['queryCount'],'queryPayloadSha256':policy['queryPayloadSha256'],'responseSha256':policy['responseSha256'],'httpMetadata':'200 https://api.osv.dev/v1/querybatch','finished':now.isoformat()}
+ if case in ('stale-scan','zero-stale-scan'):request['finished']=(now-datetime.timedelta(days=2)).isoformat()
  if case=='future-scan':request['finished']=(now+datetime.timedelta(days=2)).isoformat()
  write(scan/'request-receipt.json',request)
  if case=='changed-advisory':write(scan/'GO-2026-5841.json',{'id':'GO-2026-5841','changed':True})
  if case=='symlink-graph':
   p=evidence/'amd64-packages.json';p.rename(evidence/'foreign.json');p.symlink_to(evidence/'foreign.json')
  result=s.check_evidence(policy,evidence,shipping,scan,now)
- assert result['findings']==(3 if case=='alias-qualified'else 2) and result['qualifiedExceptions']==2 and result['blockingFindings']==0
+ if case.startswith('zero-'):assert result['findings']==0 and result['qualifiedExceptions']==0 and result['blockingFindings']==0
+ else:assert result['findings']==(3 if case=='alias-qualified'else 2) and result['qualifiedExceptions']==2 and result['blockingFindings']==0
  if case=='alias-qualified':assert result['canonicalAdvisories']==2 and result['reviewedAliasDuplicates']==1
 `;
 
 const refused = {
+  'zero-finding': 'Unqualified public vulnerability finding',
+  'zero-unscanned-module': 'Selected module has no successful OSV query',
+  'zero-extra-coordinate': 'Scanned coordinate is outside delivered module manifest',
+  'zero-missing-target': 'Both reviewed Linux architectures required',
+  'zero-wrong-source': 'Delivered producer source/target/runtime differs',
+  'zero-exception': 'Patched security policy forbids exceptions',
+  'zero-stale-scan': 'Public scan is stale or in the future',
   'affected-package': 'Affected advisory package became reachable',
   'changed-binary': 'Security evidence digest differs',
   'changed-producer': 'Security evidence digest differs',
@@ -91,13 +120,13 @@ const refused = {
   'alias-duplicate-id': 'Unqualified public vulnerability finding'
 };
 
-for (const scenario of ['synthetic-qualified', 'alias-qualified', ...Object.keys(refused)]) {
+for (const scenario of ['synthetic-qualified', 'alias-qualified', 'zero-qualified', ...Object.keys(refused)]) {
   test('Hysteria security boundary: ' + scenario, () => {
     const result = spawnSync('python3', ['-B', '-c', code, root, scenario], {
       encoding: 'utf8', timeout: 10000
     });
     assert.ifError(result.error);
-    if (scenario === 'synthetic-qualified' || scenario === 'alias-qualified') assert.equal(result.status, 0, result.stderr);
+    if (scenario === 'synthetic-qualified' || scenario === 'alias-qualified' || scenario === 'zero-qualified') assert.equal(result.status, 0, result.stderr);
     else {
       assert.notEqual(result.status, 0);
       assert.match(result.stderr, /ValueError/);

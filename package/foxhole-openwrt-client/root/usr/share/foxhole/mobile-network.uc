@@ -79,6 +79,21 @@ export function socket_addresses(bindings) {
  return result;
 };
 
+export function management_addresses(bindings) {
+ if(type(bindings)!='array'||length(bindings)>16)fail();
+ return socket_addresses(bindings);
+};
+
+export function api_input_policy(bindings) {
+ let elements=firewall_elements(bindings),addresses=management_addresses(bindings);
+ return 'add table inet foxhole_mobile\ndelete table inet foxhole_mobile\ntable inet foxhole_mobile {\n'+
+  ' chain input { type filter hook input priority filter - 10; policy accept;\n'+
+  (length(addresses)?'  iifname "lo" ip daddr { '+join(', ',addresses)+' } tcp dport 8443 accept\n':'')+
+  (length(elements)?'  tcp dport 8443 iifname . ip daddr != { '+elements+' } counter drop\n':
+   '  tcp dport 8443 counter drop\n')+
+  '  meta nfproto ipv6 tcp dport 8443 counter drop\n }\n}\n';
+};
+
 export function firewall_set(bindings) {
  let elements=firewall_elements(bindings);
  return 'set foxhole_mobile_endpoints { type ifname . ipv4_addr;'+
@@ -138,7 +153,8 @@ export function api_accept_present(document) {
  return count==1;
 };
 
-// Reading a file may update atime without changing its identity or contents.
+// Reading a file may update atime without changing its identity
+// or contents.
 export function file_identity(info) {
  return sprintf('%J',[info?.type,info?.uid,info?.gid,info?.dev,info?.inode,
   info?.nlink,info?.size,info?.mode,info?.mtime,info?.ctime]);

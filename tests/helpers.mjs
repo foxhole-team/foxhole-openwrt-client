@@ -81,7 +81,16 @@ export async function hostHarness() {
       addEventListener: (event, callback) => listeners.set(event, callback),
       removeEventListener: (event) => listeners.delete(event)
     },
-    document: { getElementById: () => true, head: { appendChild() {} } },
+    document: {
+      title: 'LuCI', getElementById: () => true, querySelector: () => null,
+      head: { appendChild() {} },
+      createElement() {
+        const attributes = new Map();
+        return { getAttribute: name => attributes.get(name) ?? null,
+          setAttribute: (name, value) => attributes.set(name, value),
+          removeAttribute: name => attributes.delete(name), remove() {} };
+      }
+    },
     L: { resource: (path) => `/luci-static/resources/${path}` },
     E(tag, attributes = {}, children = []) {
       const node = { tag, attributes, children };

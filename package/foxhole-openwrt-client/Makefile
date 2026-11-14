@@ -1,8 +1,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=foxhole-openwrt-client
-PKG_VERSION:=1.0.6
-PKG_RELEASE:=1
+PKG_VERSION:=1.0.8
+PKG_RELEASE:=2
 PKG_LICENSE:=GPL-3.0-or-later GPL-2.0-only Zlib
 PKG_MAINTAINER:=FoxHole Team
 
@@ -117,11 +117,17 @@ define Package/foxhole-openwrt-client/install
 	$(INSTALL_BIN) ./root/etc/init.d/foxhole-inbound $(1)/etc/init.d/
 	$(INSTALL_BIN) ./root/etc/init.d/foxhole-inbound-services $(1)/etc/init.d/
 	$(INSTALL_BIN) ./root/usr/libexec/foxhole-inbound $(1)/usr/libexec/
+	$(INSTALL_BIN) ./root/usr/libexec/foxhole-server-enabled $(1)/usr/libexec/
+	$(INSTALL_BIN) ./root/usr/libexec/foxhole-vpn-server $(1)/usr/libexec/
+	$(INSTALL_BIN) ./root/usr/libexec/foxhole-vpn-server-job $(1)/usr/libexec/
+	$(INSTALL_BIN) ./root/usr/libexec/foxhole-server-path $(1)/usr/libexec/
+	$(INSTALL_BIN) ./root/usr/libexec/foxhole-server-run $(1)/usr/libexec/
 	$(INSTALL_BIN) ./root/usr/libexec/foxhole-inbound-revoke $(1)/usr/libexec/
 	$(INSTALL_BIN) ./root/usr/libexec/foxhole-inbound-loop $(1)/usr/libexec/
 	$(INSTALL_BIN) ./root/etc/init.d/foxhole-history $(1)/etc/init.d/
 	$(INSTALL_BIN) ./root/usr/libexec/foxhole-history $(1)/usr/libexec/
 	$(INSTALL_BIN) ./root/usr/libexec/foxhole-history-loop $(1)/usr/libexec/
+	$(INSTALL_BIN) ./root/usr/libexec/foxhole-journal $(1)/usr/libexec/
 	$(INSTALL_BIN) ./root/usr/libexec/foxhole-runtime \
 		$(1)/usr/libexec/foxhole-runtime
 	$(INSTALL_BIN) ./root/usr/libexec/foxhole-supervisor \
@@ -135,6 +141,7 @@ define Package/foxhole-openwrt-client/install
 		$(1)/usr/share/rpcd/ucode/foxhole.uc
 	$(INSTALL_DIR) $(1)/usr/share/foxhole
 	$(INSTALL_DATA) ./root/usr/share/foxhole/log-model.uc ./root/usr/share/foxhole/log-service.uc $(1)/usr/share/foxhole/
+	$(INSTALL_DATA) ./root/usr/share/foxhole/journal-model.uc ./root/usr/share/foxhole/journal-service.uc $(1)/usr/share/foxhole/
 	$(INSTALL_DATA) ./root/usr/share/foxhole/backup-model.uc ./root/usr/share/foxhole/backup-service.uc $(1)/usr/share/foxhole/
 	$(INSTALL_DATA) ./root/usr/share/foxhole/ram-update-model.uc ./root/usr/share/foxhole/ram-update-service.uc $(1)/usr/share/foxhole/
 	$(INSTALL_DATA) ./root/usr/share/foxhole/ram-switch-model.uc ./root/usr/share/foxhole/ram-switch-service.uc $(1)/usr/share/foxhole/
@@ -171,9 +178,15 @@ define Package/foxhole-openwrt-client/install
 	$(INSTALL_DATA) ./root/usr/share/foxhole/mobile-network.uc $(1)/usr/share/foxhole/
 	$(INSTALL_DATA) ./root/usr/share/foxhole/core-model.uc $(1)/usr/share/foxhole/
 	$(INSTALL_DATA) ./root/usr/share/foxhole/core-adapter.uc $(1)/usr/share/foxhole/
+	$(INSTALL_DATA) ./root/usr/share/foxhole/server-check.uc $(1)/usr/share/foxhole/
 	$(INSTALL_DATA) ./root/usr/share/foxhole/private-store.uc $(1)/usr/share/foxhole/
 	$(INSTALL_DATA) ./root/usr/share/foxhole/pin-policy.uc $(1)/usr/share/foxhole/
 	$(INSTALL_DATA) ./root/usr/share/foxhole/inbound.uc $(1)/usr/share/foxhole/
+	$(INSTALL_DATA) ./root/usr/share/foxhole/server-mode.uc $(1)/usr/share/foxhole/
+	$(INSTALL_DATA) ./root/usr/share/foxhole/server-install-model.uc $(1)/usr/share/foxhole/
+	$(INSTALL_DATA) ./root/usr/share/foxhole/server-install-native.uc $(1)/usr/share/foxhole/
+	$(INSTALL_DATA) ./root/usr/share/foxhole/server-install-service.uc $(1)/usr/share/foxhole/
+	$(INSTALL_DATA) ./root/usr/share/foxhole/server-install-catalog.json $(1)/usr/share/foxhole/
 	$(INSTALL_DATA) ./root/usr/share/foxhole/history.uc $(1)/usr/share/foxhole/
 	$(INSTALL_DATA) ./root/usr/share/foxhole/pairing.uc $(1)/usr/share/foxhole/
 	$(INSTALL_DATA) ./root/usr/share/foxhole/model.uc \

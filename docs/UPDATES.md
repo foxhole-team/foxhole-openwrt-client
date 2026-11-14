@@ -29,8 +29,22 @@ APK index and BASE with the pinned public APK key, performs an isolated native
 fetch round trip, validates the BASE layout and reads its signed embedded client
 catalog. Version ordering uses native APK comparison. An older version or a
 different body under the same version is refused. The signed metadata fixes
-OpenWrt25.12.5, x86/64 or mediatek/filogic, and the state/transaction ABI. Any
+OpenWrt 25.12.5 or 25.12.6, x86/64 or mediatek/filogic, and the state/transaction ABI. Any
 required unrelated dependency change is refused.
+
+BASE 1.0.8 uses update-policy schema2 with the exact `supportedOpenWrt` list
+`["25.12.5","25.12.6"]`. Schema1 remains a legacy singleton for 25.12.5;
+new readers admit both formats and compare the observed firmware release
+against the candidate's declared compatibility. Artifact descriptors and Core
+feeds still bind one exact firmware release; a 25.12.5 artifact cannot inherit
+25.12.6 compatibility from the package policy. Kernel/package identities and
+platform/architecture checks remain independent.
+
+Old BASE 1.0.6/1.0.7 candidate readers refuse schema2. This release does not add
+a migration bridge or masquerade its policy as a legacy artifact. A fresh
+installation uses the separately verified exact-firmware package closure.
+Supporting the policy format does not qualify a RAM recovery bank or any
+unpublished package/feed for another firmware release.
 
 Downloads reuse the existing uclient-fetch transport: fixed initial HTTPS
 official repository, normal certificate validation, bounded time and size, and

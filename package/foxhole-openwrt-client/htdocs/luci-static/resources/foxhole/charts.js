@@ -1,5 +1,5 @@
 import { countryCode as country, countryFlagPath }
-  from './frontend-model.js?v=1.0.6';
+  from './frontend-model.js?v=1.0.8-r2';
 
 const periods = { '24h': 86400000, '7d': 604800000, '30d': 2592000000 };
 const number = (value) => value == null || value === '' || !Number.isFinite(Number(value)) ? null : Number(value);
@@ -49,6 +49,7 @@ function snapshot(value) {
     cpu: number(value.cpu),
     ram: number(value.ram),
     memory: value.memory || null,
+    previewGap: number(value.previewGap),
     wan: iface('wan'),
     lan: iface('lan'),
     latency: {
@@ -63,6 +64,22 @@ function historyRevision(history) {
   if (!history.length) return '0';
   const stamp = (value) => number(value?.time ?? value?.t) ?? '';
   return `${history.length}:${stamp(history[0])}:${stamp(history.at(-1))}`;
+}
+
+function previewSamples(history, now) {
+  const recent = now - 900000;
+  const times = history.map(value => number(value?.time ?? value?.t))
+    .filter(time => time != null && time >= now - periods['30d'] && time <= now + 60000)
+    .sort((a, b) => a - b);
+  const observedGap = values => {
+    const gaps = values.slice(1).map((time, index) => time - values[index])
+      .filter(gap => gap > 0).sort((a, b) => a - b);
+    return gaps.length >= 2 ? gaps[Math.floor((gaps.length - 1) / 2)] * 1.75 : null;
+  };
+  const coarseGap = Math.max(360000, observedGap(times.filter(time => time < recent)) || 0);
+  const recentGap = Math.max(20000, observedGap(times.filter(time => time >= recent)) || coarseGap);
+  return history.map(value => ({ ...value,
+    previewGap: number(value?.time ?? value?.t) < recent ? coarseGap : recentGap }));
 }
 
 function normalizeSamples(values, now) {
@@ -123,8 +140,10 @@ export function continuousSamples(previous, current) {
 }
 
 export function segmentSeries(data, key, end) {
-  // History previews sample the long-term log sparsely. Infer that cadence from
-  // source timestamps, never from extrema selected later for painting.
+  // History previews sample the long-term log sparsely. Infer
+  // that cadence from
+  // source timestamps, never from extrema selected later for
+  // painting.
   const recent = end - 900000;
   const gaps = [];
   for (let i = 1; i < data.length; i += 1) {
@@ -140,11 +159,63 @@ export function segmentSeries(data, key, end) {
       previous = null; segment += 1;
       return { ...item, segment };
     }
-    const allowed = previous?.time < recent ? coarseGap : 20000;
+    const allowed = Math.max(previous?.time < recent ? coarseGap : 20000,
+      previous?.previewGap || 0, item.previewGap || 0);
     if (previous && (item.breakBefore || item.time <= previous.time || item.time - previous.time > allowed)) segment += 1;
     previous = item;
     return { ...item, segment };
   });
+}
+
+export function outageBaselineSeries(data, key, end) {
+  const segmented = segmentSeries(data, key, end);
+  if (!segmented.some(item => item[key] != null)) return [];
+  const result = [];
+  let previous = null;
+  for (const item of segmented) {
+    if (item[key] == null) {
+      if (previous) result.push({ ...item, [key]: 0, segment: 0, displayOnly: true });
+      continue;
+    }
+    if (previous && item.segment !== previous.segment && item.time > previous.time) {
+      const edge = Math.min(5000, (item.time - previous.time) / 3);
+      result.push({ time: previous.time + edge, [key]: 0, segment: 0, displayOnly: true });
+      result.push({ time: item.time - edge, [key]: 0, segment: 0, displayOnly: true });
+    }
+    result.push({ ...item, segment: 0 });
+    previous = item;
+  }
+  return result.sort((left, right) => left.time - right.time);
+}
+
+export function missingIntervals(data, keys, start, end) {
+  if (!data.length || end <= start) return [];
+  const perSeries = keys.map(key => {
+    const known = segmentSeries(data, key, end).filter(point => point[key] != null);
+    if (!known.length) return [{ start, end }];
+    const result = [];
+    if (known[0].time > start) result.push({ start, end: known[0].time });
+    for (let i = 1; i < known.length; i++)
+      if (known[i].segment !== known[i - 1].segment)
+        result.push({ start: known[i - 1].time, end: known[i].time });
+    const last = known.at(-1);
+    const allowance = Math.max(last.time < end - 900000 ? 360000 : 20000, last.previewGap || 0);
+    if (end - last.time > allowance) result.push({ start: last.time, end });
+    return result;
+  });
+  let shared = perSeries[0] || [];
+  for (const intervals of perSeries.slice(1)) {
+    const next = [];
+    let left = 0, right = 0;
+    while (left < shared.length && right < intervals.length) {
+      const a = shared[left], b = intervals[right];
+      const from = Math.max(a.start, b.start), to = Math.min(a.end, b.end);
+      if (to > from) next.push({ start: from, end: to });
+      if (a.end <= b.end) left++; else right++;
+    }
+    shared = next;
+  }
+  return shared;
 }
 
 export function decimateSeries(data, key, start, end, buckets) {
@@ -230,7 +301,7 @@ export class Charts {
     const point = snapshot(payload?.sample);
     if (historyChanged || maintain) {
       this.samples = normalizeSamples([
-        ...this.samples, ...(historyChanged ? history : []), point
+        ...this.samples, ...(historyChanged ? previewSamples(history, now) : []), point
       ], now);
       this.historyRevision = revision;
       this.maintenanceAt = now + 300000;
@@ -411,8 +482,9 @@ export class Charts {
     });
   }
 
-  updateMeta(id, points) {
-    const latest = points.at(-1) || this.latest();
+  updateMeta(id, points, now = Date.now()) {
+    const observed = points.at(-1) || this.latest();
+    const latest = observed && observed.time <= now + 60000 && now - observed.time <= 45000 ? observed : null;
     if (id === 'wrt') {
       setText(this.meta?.cpu, latest?.cpu == null
         ? '—%' : `${Math.round(latest.cpu)}%`);
@@ -436,12 +508,12 @@ export class Charts {
     const { start, duration } = chartDomain(this.period, end);
     const points = this.pointsBetween(start, end);
     if (canvas.closest('.is-collapsed')) {
-      this.updateMeta(id, points);
+      this.updateMeta(id, points, end);
       return;
     }
     if (!canvas.clientWidth) return;
     const ratio = window.devicePixelRatio || 1;
-    const width = Math.max(180, canvas.clientWidth);
+    const width = canvas.clientWidth;
     const height = Math.max(80, canvas.clientHeight);
     const pixelWidth = Math.round(width * ratio);
     const pixelHeight = Math.round(height * ratio);
@@ -454,10 +526,11 @@ export class Charts {
     const key = 'wan';
     const data = points.map((point, index) => ({
       time: point.time,
+      previewGap: point.previewGap,
       breakBefore: index > 0 && !continuousSamples(points[index - 1], point),
       a: id === 'wrt' ? point.cpu : id === 'wan-latency'
         ? point.latency?.wan : id === 'vpn-latency'
-          ? this.vpn.connected && point.latency?.serverId === this.vpn.serverId
+          ? point.latency?.serverId != null && point.latency?.serverId === this.vpn.serverId
             ? point.latency?.vpn : null
           : this.rate(points[index - 1], point, key, 'rx'),
       b: id === 'wrt' ? point.ram : latency ? null
@@ -498,7 +571,7 @@ export class Charts {
     const gray = document.documentElement.classList.contains('theme-charts-gray');
     const colors = gray ? styles.mono : styles.color;
     (latency ? ['a'] : ['a', 'b']).forEach((series, index) => {
-      const visible = decimateSeries(segmentSeries(data, series, end), series, start, end,
+      const visible = decimateSeries(outageBaselineSeries(data, series, end), series, start, end,
         Math.max(1, Math.ceil(plotWidth)));
       ctx.strokeStyle = colors[index];
       ctx.lineWidth = 1.15;
@@ -523,6 +596,6 @@ export class Charts {
     });
     const hasData = data.some((item) => item.a != null || item.b != null);
     canvas.closest('[data-chart-card]').classList.toggle('has-data', hasData);
-    this.updateMeta(id, points);
+    this.updateMeta(id, points, end);
   }
 }

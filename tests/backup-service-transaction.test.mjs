@@ -1,5 +1,7 @@
-// Execute the actual Ucode transaction source against in-memory filesystem,
-// UCI and authorization adapters. Native Ucode/flash durability is separate QA.
+// Execute the actual Ucode transaction source against in-memory
+// filesystem,
+// UCI and authorization adapters. Native Ucode/flash durability
+// is separate QA.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

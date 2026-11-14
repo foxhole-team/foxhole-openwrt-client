@@ -1,5 +1,6 @@
 #!/bin/sh
-# Prepare an isolated RAM BASE root. This never activates the prepared files.
+# Prepare an isolated RAM BASE root. This never activates the
+# prepared files.
 set -eu
 umask 077
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -50,7 +51,8 @@ native_command=$source_directory/ram-native-command.sh
 /bin/sh -n "$native_command"
 ucode -c -o /dev/null "$source_directory/ram-native-command.uc"
 
-# Only the new, direct child of the actual RAM filesystem may be created.
+# Only the new, direct child of the actual RAM filesystem may be
+# created.
 ucode -e '
  import * as fs from "fs";
  function fail(){die("Unsafe RAM staging input\n");}
@@ -301,7 +303,8 @@ ucode -c -o /dev/null "$stage/validate.uc"
 ucode "$stage/validate.uc" plan "$stage" "$bundle" "$keys" "$manifest_hash" "$universe" "$base" "$architecture" "$release"
 architecture=$(ucode "$stage/validate.uc" list "$stage" architecture)
 
-# Logs have fixed roles and are checked after each bounded native command.
+# Logs have fixed roles and are checked after each bounded native
+# command.
 # No file-size ulimit is inherited by native APK extraction.
 run_apk() {
  log=$1; shift
@@ -326,7 +329,8 @@ while read -r index_name index_path; do
  rm "$stage/index-dump.stdout" "$stage/index-dump.stderr"
 done < "$stage/indexes.list"
 
-# The database is new and empty; host metadata is never copied or mounted.
+# The database is new and empty; host metadata is never copied or
+# mounted.
 offline() {
  log=$1; shift
  case "${1-}" in

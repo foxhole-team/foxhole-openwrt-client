@@ -29,6 +29,9 @@ import * as update_service from '/usr/share/foxhole/update-service.uc';
 import * as update_model from '/usr/share/foxhole/update-model.uc';
 import * as backup_service from '/usr/share/foxhole/backup-service.uc';
 import * as protocol_facts from '/usr/share/foxhole/protocol-facts.uc';
+import * as server_install from '/usr/share/foxhole/server-install-service.uc';
+import * as server_mode from '/usr/share/foxhole/server-mode.uc';
+import * as server_check from '/usr/share/foxhole/server-check.uc';
 
 const STATE_PATH = '/etc/foxhole/state.json';
 const AUTH_PATH = '/etc/foxhole/auth.json';
@@ -65,6 +68,9 @@ const ERRORS = [
 	'invalid_address', 'invalid_mac', 'mac_not_found', 'invalid_site',
 	'site_path_unsupported', 'invalid_settings', 'duplicate_rule',
 	'not_found', 'storage_error', 'unavailable', 'pin_mismatch', 'client_limit',
+	'vpn_server_disabled', 'vpn_server_unavailable', 'vpn_server_confirmation_required',
+ 'vpn_server_invalid_plan', 'vpn_server_verification_failed', 'vpn_server_stale_plan', 'vpn_server_no_space',
+ 'vpn_server_dependency_conflict', 'vpn_server_busy', 'vpn_server_not_found', 'vpn_server_unauthorized', 'vpn_server_recovery_required',
 	'runtime_unavailable', 'invalid_pairing', 'pairing_conflict',
 	'pairing_limit', 'inbound_required', 'invalid_handoff', 'handoff_conflict', 'public_address_required', 'client_revoked', ...RUNTIME_ERRORS
 ];
@@ -97,6 +103,18 @@ function safe(fn) {
 		return fn();
 	} catch (error) {
 		let code = error_code(error);
+		if (code == 'storage_error') try {
+			let frames = [];
+			for (let frame in error?.stacktrace || []) {
+				let file = frame?.filename;
+				if (type(file) != 'string' || length(file) > 256 ||
+				    !match(file, /^\/usr\/share\/(foxhole\/|rpcd\/ucode\/)[A-Za-z0-9_.\/-]+\.uc$/)) continue;
+				push(frames, { file, line: frame.line, byte: frame.byte });
+				if (length(frames) >= 8) break;
+			}
+			store.directory('/tmp/foxhole');
+			store.write('/tmp/foxhole/rpc-error.json', sprintf('%J', { schema: 1, frames }));
+		} catch (_) {}
 		return code == 'pin_cooldown'
 			? { _foxhole_error: code, retryAfterSeconds: pin_retry_after }
 			: { _foxhole_error: code };
@@ -525,14 +543,16 @@ function admit_server(raw, engine) {
 	return core_adapter.admit(raw);
 };
 
-function test_server(raw, engine) {
+function test_server(raw, engine, reachability) {
 	let parsed = admit_server(raw, engine);
-	return {
+	let result = {
 		valid: true, scope: 'config', connected: false, code: 'validated',
 		name: parsed.name, endpoint: parsed.endpoint,
 		protocol: parsed.protocol || 'hysteria2',
 		configSha256: digest.sha256(engine == 'core' ? parsed.raw : trim(raw))
 	};
+	if (reachability == true) result.reachability = server_check.check(parsed);
+	return result;
 };
 
 function remote_uplink() {
@@ -550,6 +570,7 @@ function public_state(state) {
 	let runtime = runtime_status(state);
 	let result = model.public_state(state, runtime);
 	result.installedProtocols = protocol_facts.installed();
+ result.vpnServer = { schema: 1, enabled: server_mode.enabled(state) };
 	result.pairedDeviceCount = length(pairing.public_devices(pairing_record()));
 	let uplink = remote_uplink();
 	result.network = { schema: 1, source: 'default-uplink',
@@ -586,6 +607,7 @@ function settings_call(request) {
 			devices: args.devices || [],
 			sites: args.sites || []
 		}, address => resolve_mac(address));
+		checked.settings.vpnServerEnabled = server_mode.settings(state, args.settings);
 		checked.settings.standaloneAccess =
 			state.settings.standaloneAccess;
 		replace_state(state, expected, checked);
@@ -596,6 +618,38 @@ function settings_call(request) {
 	});
 	if (result.restart) restart_runtime(result.state);
 	return public_state(result.state);
+};
+
+function vpn_server_plan(request) {
+ session(request);
+ return server_install.plan(engine_principal(request));
+};
+function vpn_server_set(request) {
+ session(request);
+ engine_service.guard_mutation();
+ if (request.args.enabled == false) return server_install.disable(request.args,engine_principal(request));
+ if (request.args.enabled == true && !server_install.installed())
+  return server_install.apply(request.args,engine_principal(request));
+ let next = locked(() => {
+  session(request);
+  engine_service.guard_mutation();
+  let state = state_record();
+  let changed = server_mode.change(state, request.args,
+   request.args.enabled ? server_install.installed() : null);
+  write_json(STATE_PATH, changed, 0o600);
+  return changed;
+ });
+ if (request.args.enabled == true) server_install.remember_reuse(engine_principal(request));
+ // The generator shares the state lock at publication. OFF clears
+ // only
+ // volatile listeners/ports; profiles and identity stay in
+ // /etc/foxhole.
+ let ok = system(['/usr/libexec/foxhole-inbound', 'force'], 30000) == 0;
+ if (server_mode.enabled(next)) {
+  if (system(['/etc/init.d/foxhole-inbound', 'start'], 5000) != 0) ok = false;
+ } else if (system(['/etc/init.d/foxhole-inbound', 'stop'], 15000) != 0) ok = false;
+ if (!ok) fail('runtime_unavailable');
+ return public_state(next);
 };
 
 function save_server(request) {
@@ -796,6 +850,8 @@ function profile_app_metadata(paired, client_id, uri) {
 
 function save_client(request) {
 	session(request);
+ server_mode.require_enabled(state_record());
+ if (!server_install.installed()) fail('vpn_server_unavailable');
 	let args = request.args, expected = valid_revision(args.revision);
 	let name = model.client_name(args.name);
 	if (index(['smartphone', 'tablet', 'computer',
@@ -803,6 +859,7 @@ function save_client(request) {
 	return locked(() => {
 		session(request);
 		let state = state_record();
+  server_mode.require_enabled(state);
 		if (state.revision != expected) fail('revision_conflict');
 		let server = null;
 		if (args.serverId) {
@@ -816,6 +873,7 @@ function save_client(request) {
 			serverId: server ? server.id : null, provisioned: false
 		};
 		let base = read_json('/etc/foxhole/inbound.json', 65536);
+  if (!base) base = remote.prepare(remote_wan_address());
 		if (base) {
 			let used = map(filter(state.clients, c => c.inbound), c => c.port);
 			if (length(used) >= inbound.limit(base)) fail('client_limit');
@@ -836,11 +894,13 @@ function save_client(request) {
 
 function update_client(request) {
 	session(request);
+ server_mode.require_enabled(state_record());
 	let args = request.args, expected = valid_revision(args.revision);
 	let name = model.client_name(args.name);
 	return locked(() => {
 		session(request);
 		let state = state_record();
+  server_mode.require_enabled(state);
 		if (state.revision != expected) fail('revision_conflict');
 		for (let client in state.clients) {
 			if (client.id != args.id) continue;
@@ -855,6 +915,7 @@ function update_client(request) {
 
 function get_client(request) {
 	session(request);
+ server_mode.require_enabled(state_record());
 	let state = state_record();
 	for (let client in state.clients) {
 		if (client.id != request.args.id) continue;
@@ -871,6 +932,7 @@ function get_client(request) {
 
 function client_access(request) {
 	session(request);
+ server_mode.require_enabled(state_record());
 	if (inbound.shared(read_json('/etc/foxhole/inbound.json', 65536) || {}))
 		fail('client_rules_unsupported');
 	let args = request.args, expected = valid_revision(args.revision);
@@ -878,6 +940,7 @@ function client_access(request) {
 	return locked(() => {
 		session(request);
 		let state = state_record();
+  server_mode.require_enabled(state);
 		if (state.revision != expected && !(args.allowLan == false &&
 		    backup_service.revocation_revision_allowed(expected, state))) fail('revision_conflict');
 		for (let client in state.clients) {
@@ -1184,10 +1247,13 @@ function phone_capabilities(request) {
 			    index(protocols, name) >= 0) { protocols = []; break; }
 			push(protocols, name);
 		}
-	let legacy = fs.stat('/usr/bin/hysteria') != null;
-	let incoming = legacy && read_json('/etc/foxhole/inbound.json', 65536) != null;
-	if (legacy && !incoming) try { incoming = remote_wan_address() != null; } catch (_) {}
+	let legacy = protocol_facts.server() != null;
+ let available_server = server_install.installed() != null;
+ let server_enabled = server_mode.enabled(state_record());
+	let incoming = server_enabled && available_server && read_json('/etc/foxhole/inbound.json', 65536) != null;
+	if (server_enabled && available_server && !incoming) try { incoming = remote_wan_address() != null; } catch (_) {}
 	return { schema: 1, coreProtocols: protocols,
+  vpnServer: { schema: 1, enabled: server_enabled, available: available_server },
 		legacyProtocols: legacy ? ['hysteria2'] : [],
 		inboundProtocols: incoming ? ['hysteria2'] : [],
 		subscriptionSelection: true, phoneRegistration: true,
@@ -1210,6 +1276,10 @@ function phone_provision(request) {
 	if (!mac) fail('mac_not_found');
 	let result = locked(() => {
 		let paired = phone_session(request), state = state_record();
+  if (request.args.createRemote == true) {
+   server_mode.require_enabled(state);
+   if (!server_install.installed()) fail('vpn_server_unavailable');
+  }
 		let base = read_json('/etc/foxhole/inbound.json', 65536);
 		if (request.args.createRemote == true && !base)
 			base = remote.prepare(remote_wan_address());
@@ -1465,6 +1535,7 @@ function client_status(request) {
 		let rows = map(state.clients, item => ({ id: item.id, online: null }));
 		let unknown = () => ({ schema: 1, revision: state.revision,
 			clients: map(state.clients, item => ({ id: item.id, online: null })) });
+		if (!server_mode.enabled(state)) return unknown();
 		let directory = '/tmp/foxhole/inbound', record;
 		try { record = json(store.read(directory + '/observations.json', 8192) || 'null'); }
 		catch (_) { return unknown(); }
@@ -1563,11 +1634,54 @@ function engines_apply(request) {
 function engines_job(request) { return engine_service.job(request.args.jobId, engine_principal(request)); };
 
 function package_status(request) {
-	let auth = auth_record(true), deployment = update_service.deployment();
+	let auth = auth_record(true), deployment = update_service.deployment(), modules = null;
+	let currentState = state_record();
+	try { modules = update_service.installed_modules(); } catch (_) {}
+ let routerInfo = null, connection = null, board = null, architecture = null, lan = null, lanAddress = null;
+ let clean = (value, maximum) => {
+  if (type(value) != 'string' || length(value) < 1 || length(value) > maximum ||
+      match(value, /[<>]/)) return null;
+  for (let offset = 0; offset < length(value); offset++) {
+   let byte = ord(value,offset);
+   if (byte < 32 || byte == 127) return null;
+  }
+  return trim(value);
+ };
+ try { connection = ubus.connect(); board = connection?.call('system','board',{}); } catch (_) {}
+ try { if (connection) lan = connection.call('network.interface.lan','status',{}); } catch (_) {}
+ try { if (connection) connection.disconnect(); } catch (_) {}
+ try {
+  let info = fs.lstat('/etc/apk/arch');
+  if (info?.type == 'file' && info.uid == 0 && info.nlink == 1 && !(info.mode & 0o022) && info.size <= 128) {
+   let raw = trim(fs.readfile('/etc/apk/arch',129) || '');
+   if (index(['aarch64_cortex-a53','aarch64_generic','x86_64'],raw) >= 0) architecture = raw;
+  }
+ } catch (_) {}
+ let firmware = clean(board?.release?.description || board?.release?.version,160);
+ let hardware = clean(board?.model,120);
+ if (lan?.up == true) {
+  for (let family in ['ipv4-address','ipv6-address']) {
+   let addresses = lan[family];
+   if (type(addresses) != 'array' || length(addresses) > 16) continue;
+   for (let row in addresses) {
+    let value = clean(row?.address,45);
+    if (value == null || !match(value,/^[0-9a-fA-F:.]{3,45}$/)) continue;
+    let bytes = iptoarr(value);
+    if (length(bytes || []) != 4 && length(bytes || []) != 16) continue;
+    lanAddress = arrtoip(bytes); break;
+   }
+   if (lanAddress != null) break;
+  }
+ }
+ if (firmware || hardware || architecture || lanAddress) {
+  routerInfo = {schema:1,firmwareVersion:firmware,model:hardware,architecture};
+  if (lanAddress != null) routerInfo.lanAddress = lanAddress;
+ }
 	return { schema: 1, product: 'foxhole', installed: true,
 		backupSupported: true,
 		pinConfigured: auth?.changed == true, resetSupported: true, packageUpdates: true,
-		version: deployment.version, storage: deployment.storage,
+		version: deployment.version, storage: deployment.storage, installedModules: modules, routerInfo,
+		homeServerEnabled: server_mode.enabled(currentState),
 		licenseRequired: license_required(auth), licenseVersion: LICENSE_VERSION };
 };
 
@@ -1629,7 +1743,11 @@ function call(name, request, fn) {
 };
 
 const methods = {
-	'diagnostics.logs': { args: { token: '' }, call: request => call('diagnostics.logs', request, request => { session(request); return logs.status(); }) },
+ 'vpnServer.job': { args: { token: '', jobId: '' }, call: request => call('vpnServer.job', request, request => server_install.job(request.args.jobId,engine_principal(request))) },
+ 'vpnServer.plan': { args: { token: '' }, call: request => call('vpnServer.plan', request, vpn_server_plan) },
+ 'vpnServer.set': { args: { token: '', revision: 0, enabled: false, confirmed: false, planSha256: '', removeComponent: false }, call: request => call('vpnServer.set', request, vpn_server_set) },
+	'diagnostics.logs': { args: { token: '' }, call: request => call('diagnostics.logs', request, request => { session(request); return logs.status(update_service.deployment().storage); }) },
+	'diagnostics.journal': { args: { token: '', beforeSequence: 0 }, call: request => call('diagnostics.journal', request, request => { session(request); return logs.journal_status(update_service.deployment().storage, request.args.beforeSequence); }) },
 	'backup.export': { args: { token: '' }, call: request => call('backup.export', request, request => backup_request(request, 'export')) },
 	'backup.validate': { args: { token: '', document: {}, expectedRevision: 0 }, call: request => call('backup.validate', request, request => backup_request(request, 'validate')) },
 	'backup.apply': { args: { token: '', document: {}, expectedRevision: 0, confirmed: false, requestId: '' }, call: request => call('backup.apply', request, request => backup_request(request, 'apply')) },
@@ -1689,10 +1807,12 @@ const methods = {
 		request => { session(request); return telemetry(); }) },
 	settings: { args: { token: '', revision: 0, settings: {}, countries: [],
 		devices: [], sites: [] }, call: request => call('settings', request, settings_call) },
-	'server.test': { args: { token: '', config: '', engine: '' }, call: request =>
+	'server.test': { args: { token: '', config: '', engine: '', reachability: false }, call: request =>
 		call('server.test', request, request => {
 			session(request);
-			return test_server(request.args.config, request.args.engine);
+			let result = test_server(request.args.config, request.args.engine, request.args.reachability);
+			session(request);
+			return result;
 		}) },
 	'server.save': { args: { token: '', revision: 0, config: '', id: '', name: '', engine: '', subscription: {} },
 		call: request => call('server.save', request, save_server) },
@@ -1722,8 +1842,10 @@ const methods = {
 		call('device.list', request, list_devices) }
 };
 
-// A live worker keeps the engine lock. Authentication, Stop and revocation
-// remain registered while normal product calls are guarded by its journal.
+// A live worker keeps the engine lock. Authentication, Stop and
+// revocation
+// remain registered while normal product calls are guarded by its
+// journal.
 try {backup_service.recover();}catch(_){}
 
 return { foxhole: methods, 'foxhole.admin': {

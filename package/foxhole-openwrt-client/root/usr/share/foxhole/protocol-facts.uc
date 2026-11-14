@@ -58,7 +58,8 @@ function wrapper_profile(raw) {
  }
  let format = TEMPLATES[digest.sha256(join('\n',normalized))];
  if (!format || pin_count != 1 || url_count != 1) return null;
- return { pin, path: format == 'flat' ? CACHE + '/hysteria' : CACHE + '/' + pin + '/hysteria', format };
+ let version = match(raw, /releases\/download\/app%2Fv([0-9]+\.[0-9]+\.[0-9]+)\/hysteria-linux-arm64/);
+ return { pin, path: format == 'flat' ? CACHE + '/hysteria' : CACHE + '/' + pin + '/hysteria', format, version: version?.[1] };
 };
 function hysteria_ram() {
  let paths = ['/', '/usr', '/usr/bin'];
@@ -77,7 +78,7 @@ function hysteria_ram() {
  if (parsed.format == 'pinned') push(cache_paths,CACHE + '/' + parsed.pin);
  let cache_parents = parent_key(cache_paths), binary = file_info(parsed.path,134217728,true);
  let binary_key = identity(binary) + cache_parents + key;
- if (cache_memo?.key == binary_key) return true;
+ if (cache_memo?.key == binary_key) return cache_memo.value;
  let file = fs.open(parsed.path,'re'), header = null;
  try { if (file) header = file.read(20); }
  catch (_) { if (file) file.close(); fail(); }
@@ -87,8 +88,14 @@ function hysteria_ram() {
      ord(substr(header,18,1)) + 256 * ord(substr(header,19,1)) != 183) fail();
  if (registry.hash_file(parsed.path) != parsed.pin || identity(file_info(parsed.path,134217728,true)) != identity(binary) ||
      parent_key(cache_paths) != cache_parents || identity(file_info(WRAPPER,8192,false)) + parent_key(paths) != key) fail();
- cache_memo = { key: binary_key };
- return true;
+ let value = { schema: 1, protocol: 'hysteria2',
+  kind: 'verified-legacy-server', version: parsed.version,
+  binarySha256: parsed.pin, binaryBytes: binary.size, executable: parsed.path };
+ cache_memo = { key: binary_key, value };
+ return value;
+};
+export function server() {
+ try { return hysteria_ram() || null; } catch (_) { return null; }
 };
 export function installed() {
  let known = engines.protocols(), positive = {};

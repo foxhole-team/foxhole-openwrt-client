@@ -192,11 +192,16 @@ function rollback(journal) {
   if(row.type=='file'&&(info.size!=0||facts(info)!=row.facts))fail();
   if(row.type=='directory'?!fs.rmdir(row.path):!fs.unlink(row.path))fail();
  }
- if(journal.starting)command(['/etc/init.d/rpcd','start'],3000);
+ if(journal.starting) {
+  command(['/etc/init.d/rpcd','start'],3000);
+  command(['/etc/init.d/uhttpd','restart'],5000);
+  command(['/etc/init.d/firewall','reload'],5000);
+ }
  journal.phase='ROLLED_BACK';replace(model.stage+'/journal.json',journal,131072);
 };
 function initialize_destination(path,document) {
- // APK extraction/add does not apply the signed empty-name node to an existing destination.
+ // APK extraction/add does not apply the signed empty-name node to
+ // an existing destination.
  parents(path);let before=fs.lstat(path),mode=model.destination_mode(document,before.mode&0o7777);
  if(before.type!='directory'||before.uid!=0||before.gid!=0)fail();
  if((before.mode&0o7777)!=mode&&!fs.chmod(path,mode))fail();
@@ -211,7 +216,8 @@ function fetch_artifact(artifact,expected,role) {
   if(!model.retryable_download(result.stderr,result.code,attempt))fail();
   replace(model.stage+'/download-last.json',{schema:1,role,attempt,exitCode:result.code,partialBytes:result.bytes,
    stderrPath:result.path+'.err',stderrSha256:digest.sha256(result.stderr)},4096);
-  // Failed partial payloads are regenerable; keep the bounded error log and retry receipt.
+  // Failed partial payloads are regenerable; keep the bounded error
+  // log and retry receipt.
   if(!fs.unlink(result.path)||sleep(15000)!=true)fail();
  }
  fail();
@@ -227,7 +233,8 @@ function bank_load(expected,journal) {
  let container=model.stage+'/payload/'+model.prefix;
  let bank=model.descriptor(expected),manifest=decode(container+'/bank.json',1048576);
  let inventory=model.bank(manifest,bank);model.join_inventory(signed,inventory);
- // Check all native payload paths, including ancestors and bank.json, before narrowing the export.
+ // Check all native payload paths, including ancestors and
+ // bank.json, before narrowing the export.
  exact_tree(model.stage+'/payload',signed);
  if(manifest.stageDbSha256!=inventory['root/lib/apk/db/installed'].sha256)fail();
  if(!fs.rename(container+'/root',model.stage+'/root')||!fs.rename(container+'/adapters',model.stage+'/adapters'))fail();
@@ -298,7 +305,8 @@ function clean_overlay_cache(created,input) {
    if(length(pending)+length(directories)+length(files)>128)fail();
   }
  }
- // Validate the complete tree before deleting anything. A foreign link is never adopted.
+ // Validate the complete tree before deleting anything. A foreign
+ // link is never adopted.
  if(original().nlink!=links+1)fail();
  for(let row in files) {
   let value=fs.lstat(row.path);
@@ -356,7 +364,10 @@ function overlay_load(expected,bank,journal) {
 function start(journal) {
  journal.starting=true;replace(model.stage+'/journal.json',journal,131072);
  command(['/etc/init.d/rpcd','restart'],5000);
- // These units read existing authoritative desired state; bootstrap never sets activeServerId.
+ command(['/etc/init.d/uhttpd','restart'],5000);
+ command(['/etc/init.d/firewall','reload'],5000);
+ // Services read the existing authoritative desired state.
+ // Bootstrap never changes activeServerId.
  for(let unit in ['foxhole-runtime','foxhole-mobile','foxhole-history','foxhole-inbound'])command(['/etc/init.d/'+unit,'start'],5000);
 };
 function boot() {
@@ -425,7 +436,8 @@ function install(source,descriptor_path,pem_path,ca_path,fetch_path,prepared_sta
  let output=fs.popen('/bin/df -Pk /etc/foxhole','r');if(!output)fail();let report=output.read('all'),code=output.close();
  if(code!=0||type(report)!='string'||length(report)>16384)fail();let lines=split(trim(report),'\n'),fields=split(trim(lines[length(lines)-1]),/[ \t]+/);
  if(length(fields)<6||!match(fields[3],/^[0-9]+$/)||+fields[3]*1024<total+524288)fail();
- // Enrollment verifies persistent backing; the checker is never copied into the boot seed.
+ // Enrollment verifies persistent backing; the checker is never
+ // copied into the boot seed.
  command(['/usr/bin/ucode',source+'/ram-bootstrap-prerequisites.uc',fetch_path,fetch_sha256],120000);
  owner_namespace(true);
  if(fs.lstat(model.trust)||fs.lstat(PRIVATE+'/boot.json')||fs.lstat('/etc/init.d/foxhole-ram-bootstrap')||fs.lstat('/etc/rc.d/S99foxhole-ram-bootstrap'))fail();

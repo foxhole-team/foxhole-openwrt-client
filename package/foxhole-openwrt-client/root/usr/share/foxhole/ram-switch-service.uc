@@ -95,7 +95,8 @@ function native(operation,args,maximum) {
  memory(2*maximum);let nonce=random(),io='/tmp/foxhole/engine-command-'+nonce+'.io',output=RUNTIME+'/switch-io-'+nonce;
  mkdir(io,0o700);write(io+'/helper',native_generation.helper);write(io+'/utility.uc',native_generation.utility);
  let code=system(['/bin/sh',io+'/helper',output,''+maximum,'10000',operation,...args],13000);
- // Failed captures are left private and bounded for review; never read a refused/missing log through another path.
+ // Failed captures are left private and bounded for review; never
+ // read a refused/missing log through another path.
  if(!fs.lstat(output)||!fs.lstat(output+'.err'))fail();
  let stdout=raw(output,maximum,true);raw(output+'.err',1048576,true);
  if(fs.lstat(io+'/owner.json')||fs.lstat(io+'/stdout')||fs.lstat(io+'/stderr')||code!=0)fail();
@@ -193,44 +194,91 @@ function copy_database(previous,upper) {
  if(length(paths)>16||!length(paths))fail();let total=0;
  for(let path in paths) {let info=fs.lstat(path);if(info?.type!='file'||info.uid!=0||info.nlink!=1||(info.mode&0o022)||info.size>4194304)fail();total+=info.size;}
  if(total>8388608)fail();memory(2*total);
- for(let part in ['/lib','/lib/apk','/lib/apk/db','/etc','/etc/apk'])mkdir(upper+part,0o755);
+ for(let part in ['/lib','/lib/apk','/lib/apk/db','/etc','/etc/apk']) {
+  mkdir(upper+part,0o755);
+  if(!fs.chmod(upper+part,0o755))fail();
+ }
  for(let path in paths) {let info=fs.lstat(path);write(upper+'/lib/apk/db/'+fs.basename(path),raw(path,4194304,true),info.mode&0o777);}
  let world=raw(previous+'/etc/apk/world',65536,false);write(upper+'/etc/apk/world',world,0o644);return total;
 };
-function clear_native_cache(path,created,archive,input,maximum) {
- let root=fs.lstat(path),source=fs.lstat(archive),items=[],links=0,total=0,seen=0;
+function native_cache_snapshot(root) {
+ let path=root+'/.foxhole-apk-cache',directory=fs.lstat(path);
+ if(directory==null)return {present:false};
+ parents(path);
+ if(directory.type!='directory'||directory.uid!=0||index([0o700,0o755],directory.mode&0o7777)<0)fail();
+ let names=sort(fs.lsdir(path)||[]);
+ if(length(names)>1||length(names)==1&&names[0]!='installed')fail();
+ let installed=fs.lstat(path+'/installed');
+ if(installed==null)return {present:true,directoryFacts:facts(directory),installedFacts:null};
+ if(installed.type!='file'||installed.uid!=0||installed.nlink!=1||index([0o600,0o644],installed.mode&0o7777)<0||installed.size>65536)fail();
+ let body=raw(path+'/installed',65536,true);
+ return {present:true,directoryFacts:facts(directory),installedFacts:facts(installed),installedSHA256:digest.sha256(body),installedBytes:length(body)};
+};
+function assert_native_cache(root,snapshot) {
+ if(!same(native_cache_snapshot(root),snapshot))fail();
+};
+function prepare_native_cache(previous,upper,snapshot) {
+ assert_native_cache(previous,snapshot);
+ let path=upper+'/.foxhole-apk-cache';mkdir(path,0o700);
+ if(snapshot.installedFacts!=null)write(path+'/installed',raw(previous+'/.foxhole-apk-cache/installed',65536,true),0o600);
+ if((fs.lstat(path).mode&0o7777)!=0o700)fail();
+ assert_native_cache(previous,snapshot);
+};
+function clear_native_cache(path,created,archive,input,maximum,upper,upper_created,lower_snapshot) {
+ let root=fs.lstat(path),physical=fs.lstat(upper),source=fs.lstat(archive),items=[],links=0,total=0,seen=0;
  if(root?.type!='directory'||root.uid!=0||root.inode!=created.inode||!same(root.dev,created.dev)||(root.mode&0o022)||
+  physical?.type!='directory'||physical.uid!=0||physical.inode!=upper_created?.inode||!same(physical.dev,upper_created?.dev)||(physical.mode&0o022)||
+  substr(path,-length('/root/.foxhole-apk-cache'))!='/root/.foxhole-apk-cache'||
+  upper!=substr(path,0,length(path)-length('/root/.foxhole-apk-cache'))+'/switch/upper/.foxhole-apk-cache'||
   source?.type!='file'||source.uid!=0||source.inode!=input.inode||!same(source.dev,input.dev)||source.size!=input.size||(source.mode&0o022))fail();
+ for(let row in mount_rows())if(row.target==path||index(row.target,path+'/')==0||row.target==upper||index(row.target,upper+'/')==0)fail();
+ function backing(at,info) {
+  let target=upper+substr(at,length(path)),actual=fs.lstat(target);
+  if(actual?.type!=info?.type||actual.uid!=0||actual.gid!=info.gid||actual.mode!=info.mode||info.type=='file'&&actual.nlink!=info.nlink||
+   !same(actual.dev,upper_created.dev)||!same(info.dev,created.dev)&&!same(info.dev,actual.dev)||
+   info.type=='file'&&(actual.inode!=info.inode||actual.size!=info.size||actual.mtime!=info.mtime||actual.ctime!=info.ctime))fail();
+  return {path:target,info:actual};
+ }
  function collect(at,depth) {
   let info=fs.lstat(at);if(depth>8||++seen>256||info?.uid!=0||(info.mode&0o022))fail();
+  let own=backing(at,info);
   if(info.type=='directory') {
-   if(!same(info.dev,created.dev))fail();
-   for(let child in [...(fs.glob(at+'/*')||[]),...(fs.glob(at+'/.*')||[])]) {
-    if(match(child,/\/\.\.?$/))continue;
-    if(fs.dirname(child)!=at||length(fs.basename(child))>255)fail();collect(child,depth+1);
+   let names=sort(fs.lsdir(at)||[]),physical_names=sort(fs.lsdir(own.path)||[]);
+   if(!same(names,physical_names))fail();
+   for(let name in names) {
+    if(name=='.'||name=='..'||index(name,'/')>=0||length(name)>255)fail();collect(at+'/'+name,depth+1);
    }
   } else if(info.type=='file') {
    total+=info.size;if(total>maximum)fail();
    let linked=info.inode==input.inode&&same(info.dev,input.dev);
-   if(linked)links++;else if(info.nlink!=1||!same(info.dev,created.dev))fail();
+   if(linked)links++;else if(info.nlink!=1)fail();
   } else fail();
-  push(items,{path:at,info});
+  push(items,{path:at,info,upper:own});
  }
  collect(path,0);
  if(source.nlink!=links+1)fail();
- // Validate the whole fresh tree before unlinking anything. Failed native captures never enter here.
+ // Every merged entry must be the exact owned upper entry;
+ // OverlayFS st_dev differs by inode type.
+ // Validate the complete tree before unlinking anything; never
+ // delete through the lower view.
  for(let row in items) {
   let info=fs.lstat(row.path),linked=info?.inode==input.inode&&same(info?.dev,input.dev);
   if(info?.type!=row.info.type||info.uid!=0||info.inode!=row.info.inode||!same(info.dev,row.info.dev)||(info.mode&0o022))fail();
+  let own=backing(row.path,info);
+  if(own.info.inode!=row.upper.info.inode||!same(own.info.dev,row.upper.info.dev))fail();
   if(info.type=='directory') {if(!fs.rmdir(row.path))fail();}
   else {
    if(linked) {if(info.nlink!=links+1||info.size!=input.size)fail();links--;}
-   else if(facts(info)!=facts(row.info))fail();
+   else if(facts(info)!=facts(row.info)||facts(own.info)!=facts(row.upper.info))fail();
    if(!fs.unlink(row.path))fail();
   }
  }
- if(fs.lstat(path)||fs.lstat(archive)?.nlink!=1)fail();
+ let leftover=fs.lstat(upper);
+ let whiteout=lower_snapshot?.present==true&&leftover?.type=='char'&&leftover.uid==0&&leftover.gid==0&&
+  leftover.mode==0&&leftover.size==0&&same(leftover.dev,upper_created.dev);
+ if(fs.lstat(path)||leftover&&!whiteout||fs.lstat(archive)?.nlink!=1)fail();
 };
+
 function process_role(command_text,rpc) {
  let args=split(command_text,'\x00');
  if(rpc)return index(args,'/sbin/rpcd')>=0||index(args,'/usr/sbin/rpcd')>=0;
@@ -259,7 +307,8 @@ function stop_services(journal,path) {
  journal.phase='QUIESCED';replace(path,journal,131072);
 };
 function start_services(journal) {
- // Runtime always rereads CURRENT desired state; a later Stop is never reverted.
+ // Runtime always rereads CURRENT desired state; a later Stop is
+ // never reverted.
  if(journal.rpcStopped)command(['/etc/init.d/rpcd','start'],3000);
  if(journal.quiesceStarted)for(let name in ['foxhole-runtime','foxhole-mobile','foxhole-history','foxhole-inbound'])
   command(['/etc/init.d/'+name,'start'],3000);
@@ -344,14 +393,16 @@ function preparation(job,journal,path) {
  journal.oldWorld=raw(previous.root+'/etc/apk/world',65536,false);journal.phase='PREPARING';replace(path,journal,131072);
  bind(previous.root,journal.lower);journal.lowerMounted=true;replace(path,journal,131072);
  copy_database(previous.root,work+'/upper');
+ let cache_snapshot=native_cache_snapshot(previous.root);prepare_native_cache(previous.root,work+'/upper',cache_snapshot);
  if(!fs.rename(receipt.root,work+'/verified-base'))fail();mkdir(receipt.root,0o700);
  command(['/bin/mount','-t','overlay','overlay','-o','lowerdir='+journal.lower+',upperdir='+work+'/upper,workdir='+work+'/work',receipt.root],3000);
  journal.overlayMounted=true;replace(path,journal,131072);ram_backing(mount_rows(),receipt.root,0);
  let cache=receipt.root+'/.foxhole-apk-cache',input_archive=fs.lstat(receipt.archive);
- mkdir(cache,0o700);let cache_created=fs.lstat(cache);
+ let cache_created=fs.lstat(cache),cache_upper=work+'/upper/.foxhole-apk-cache',cache_upper_created=fs.lstat(cache_upper);
  let args=[receipt.root,architecture,directory+'/keys',receipt.archive];
  native('simulate',args,1048576);guard(job,false);native('install',args,1048576);
- clear_native_cache(cache,cache_created,receipt.archive,input_archive,2*receipt.bytes+4194304);
+ clear_native_cache(cache,cache_created,receipt.archive,input_archive,2*receipt.bytes+4194304,cache_upper,cache_upper_created,cache_snapshot);
+ assert_native_cache(previous.root,cache_snapshot);
  if(digest.sha256(raw(receipt.archive,8388608,false))!=receipt.sha256)fail();
  let after=json(native('query',[receipt.root,architecture],1048576));
  journal.retainedPackages=model.package_fence(before,after,previous.version,receipt.version);
@@ -393,7 +444,8 @@ export function run(id) {
  try {
   let prepared=preparation(job,journal,journal_path);guard(job,false);
   bootstrap.before_quiesce(journal.bootstrap);
-  // This helper runs under the caller's engine lock. It never acquires it or writes the API job.
+  // This helper runs under the caller's engine lock. It never
+  // acquires it or writes the API job.
   stop_services(journal,journal_path);guard(job,false);
   if(!same(decode(MARKER,4096),journal.previousMarker))fail();
   for(let row in journal.previousLedger.mounts)verify_mount(row,true);
@@ -403,7 +455,8 @@ export function run(id) {
   for(let row in journal.newLedger.mounts) {
    if(length(filter(mount_rows(),item=>item.target==row.target)))fail();
    absent_target(row.target,fs.lstat(row.source),journal.created,journal_path,journal);
-   // Record immediately after the successful bind, before the remount can fail.
+   // Record immediately after the successful bind, before the
+   // remount can fail.
    command(['/bin/mount','--bind',row.source,row.target],2000);push(journal.mounted,row);replace(journal_path,journal,131072);
    command(['/bin/mount','-o','remount,bind,ro',row.target],2000);verify_mount(row,true);
   }

@@ -2,7 +2,8 @@
 import * as fs from 'fs';
 import * as registry from './engine-registry.uc';
 import * as model from './log-model.uc';
-let cached = null, cached_at = 0;
+import * as journal from './journal-service.uc';
+let cached = null, cached_at = 0, cached_storage = null;
 const COLLECTOR_MEMORY_FLOOR_KIB = 32768;
 function available_memory() {
  let value = match(fs.readfile('/proc/meminfo', 8192) || '', /(^|\n)MemAvailable:[ \t]+([0-9]+) kB/);
@@ -25,13 +26,14 @@ function source(argv, maximum, parse) {
  try { return { available: true, events: parse(registry.capture(argv, maximum, 1000)) }; }
  catch (_) { return { available: false, events: [] }; }
 };
-export function status() {
+export function status(storage) {
  let now = time();
- if (cached && now >= cached_at && now - cached_at < 3 &&
+ let collect = storage == 'FLASH';
+ if (collect && cached_storage == storage && cached && now >= cached_at && now - cached_at < 3 &&
      collectors_admitted(available_memory()) && collectors_admitted(cached.memAvailableKiB)) return cached;
- let packages = source(['/sbin/logread', '-l', '128', '-e', 'foxhole'], 65536, model.package_events);
- let kernel = source(['/bin/dmesg'], 262144, model.kernel_events);
- let core = model.core_status(read_json('/tmp/foxhole/core-state.json'));
+ let packages = collect ? source(['/sbin/logread', '-l', '128', '-e', 'foxhole'], 65536, model.package_events) : { available: false, events: [] };
+ let kernel = collect ? source(['/bin/dmesg'], 262144, model.kernel_events) : { available: false, events: [] };
+ let core = collect ? model.core_status(read_json('/tmp/foxhole/core-state.json')) : { available: false };
  core.events = filter(packages.events, row => row.engine == 'core');
  core.eventsAvailable = packages.available;
  let memory = available_memory();
@@ -40,5 +42,10 @@ export function status() {
   uptimeSeconds: uptime ? +uptime[1] : null, runtime: model.runtime_status(read_json('/tmp/foxhole/runtime.json')),
   package: packages, core, kernel };
  cached_at = now;
+ cached_storage = storage;
  return cached;
+};
+
+export function journal_status(storage, before) {
+ return journal.status(status(storage), storage, before);
 };

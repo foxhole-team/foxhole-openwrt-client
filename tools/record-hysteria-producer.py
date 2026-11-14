@@ -76,18 +76,26 @@ def main():
     parser.add_argument("--test-suite", type=Path, required=True,
                         help="Actual fresh complete suite receipt for the corrected source")
     parser.add_argument("--compiler-qualification", type=Path, required=True,
-                        help="Bound actual compiler and reused ordinary chain-control metadata")
+                        help="Exact fenced source-built Go1.26.11 compiler metadata")
     args = parser.parse_args()
     compiler_raw = args.compiler_qualification.read_bytes()
     if args.compiler_qualification.is_symlink() or not 0 < len(compiler_raw) <= 131072:
         raise ValueError("Bounded compiler qualification input required")
     compiler = provenance.compiler_qualification(json.loads(compiler_raw))
+    go_binary = Path(args.go).resolve(strict=True)
+    if (go_binary.stat().st_size != compiler["binGoBytes"] or
+            digest(go_binary) != compiler["binGoSha256"]):
+        raise ValueError("Actual Go executable differs from qualified compiler")
     suite_raw = args.test_suite.read_bytes()
     if args.test_suite.is_symlink() or len(suite_raw) > 131072:
         raise ValueError("Bounded regular actual test suite receipt required")
     suite = json.loads(suite_raw)
     if (type(suite.get("actualSuiteExitCode")) is not int or suite["actualSuiteExitCode"] != 0 or
-            suite.get("sourceModified") is not True or suite.get("oldCasesRetained") != 0):
+            suite.get("sourceModified") is not True or suite.get("oldCasesRetained") != 0 or
+            suite.get("compilerVersion") != provenance.RUNTIME_VERSION or
+            suite.get("currentCompilerTestsExecuted") is not True or
+            any(type(suite.get(name)) is not int or suite[name] != 0
+                for name in ("caseFail", "caseSkip", "packageFail"))):
         raise ValueError("Actual complete corrected-source suite required")
     test_suite = provenance.test_suite({
         "schema": 1, "sourceReceiptSha256": suite.get("sourceReceiptSha256"),
@@ -111,8 +119,8 @@ def main():
     legal.write_text(notices(args.go, args.source))
     license_hashes[legal.name] = digest(legal)
     build_output = subprocess.check_output([args.go, "version", "-m", str(args.binary)], text=True).splitlines()
-    if not build_output or not build_output[0].endswith(": go1.26.10"):
-        raise ValueError("Actual binary Go1.26.10 runtime identity required")
+    if not build_output or not build_output[0].endswith(": " + provenance.RUNTIME_VERSION):
+        raise ValueError("Actual binary Go1.26.11 runtime identity required")
     build = build_output[1:]
     if (not any(line.strip() == "build\tGOOS=linux" for line in build) or
             not any(line.strip() == "build\tGOARCH=" + args.architecture for line in build)):
@@ -123,14 +131,14 @@ def main():
               "target": "linux-" + args.architecture, "sourceSha256": args.source_sha256,
               "sourceCommit": args.source_commit, "binarySha256": digest(args.binary),
               "binaryBytes": args.binary.stat().st_size, "buildInfo": [line.strip() for line in build],
-              "binaryRuntimeVersion": "go1.26.10",
+              "binaryRuntimeVersion": provenance.RUNTIME_VERSION,
               "toolchain": subprocess.check_output([args.go, "version"], text=True).strip(),
               "features": ["incoming-hysteria2", "legacy-outgoing-hysteria2"],
               "sourcePatch": source_patch, "testSuite": test_suite, "filesSha256": {**license_hashes, **patch_hashes}}
     record["sourceTestScope"] = {
-        "kind": "retained-exact-source-tests", "compilerVersion": "go1.26.9",
-        "currentCompilerTestsExecuted": False,
-        "freshCompleteReceiptSha256": "f66db45fa33d2895c9ca8945ef6c668d0db8910748a063bbed638788004a506e"}
+        "kind": "fresh-current-compiler-tests", "compilerVersion": provenance.RUNTIME_VERSION,
+        "currentCompilerTestsExecuted": True,
+        "freshCompleteReceiptSha256": test_suite["freshCompleteReceiptSha256"]}
     record["currentCompilerQualification"] = compiler
     provenance.verify(record, args.output.parent)
     args.output.write_text(json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n")

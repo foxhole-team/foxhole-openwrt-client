@@ -9,7 +9,7 @@ import { root } from './helpers.mjs';
 const mocks = {
   uname: 'case "$1" in -s) echo Linux;; -m) echo x86_64;; esac',
   mktemp: 'mkdir "$MOCK_ROOT/scratch"; echo "$MOCK_ROOT/scratch"',
-  curl: 'exit 0',
+  curl: 'printf "%s\\n" "$*" >> "$MOCK_ROOT/curl.args"',
   sha256sum: 'cat >/dev/null',
   zstd: 'exit 0',
   git: 'exit 0',
@@ -26,6 +26,7 @@ const mocks = {
   make: `
     if [ "$1" = defconfig ]; then
       cp .config "$MOCK_ROOT/requested.config"
+      printf '%s\n' "$*" > "$MOCK_ROOT/defconfig.args"
       echo CONFIG_PACKAGE_kmod-tun=m >> .config
       exit 0
     fi
@@ -39,11 +40,11 @@ const mocks = {
     mkdir -p bin/packages
     case "$*" in
       *hysteria/compile*)
-        touch bin/packages/hysteria-2.12.2-r5.apk ;;
+        touch bin/packages/hysteria-2.12.2-r6.apk ;;
       *hysteria-ram/compile*)
         touch bin/packages/hysteria-ram-2.12.2-r2.apk ;;
       *hysteria-server-ram/compile*)
-        touch bin/packages/hysteria-server-ram-2.12.2-r2.apk ;;
+        touch bin/packages/hysteria-server-ram-2.12.2-r5.apk ;;
       *foxcore-cli/compile*)
         touch bin/packages/foxcore-cli-1.0.2-r1.apk ;;
       *foxcore-cli-ram/compile*)
@@ -54,7 +55,7 @@ const mocks = {
   `
 };
 
-async function fixture(t, buildStatus, cleanupFails = false, args = [], metadata = 'PKG_VERSION:=1.2.3\nPKG_RELEASE:=4\n') {
+async function fixture(t, buildStatus, cleanupFails = false, args = [], metadata = 'PKG_VERSION:=1.2.3\nPKG_RELEASE:=4\n', qualified = true) {
   const directory = await mkdtemp(join(tmpdir(), 'foxhole-sdk-test-'));
   t.after(async () => {
     spawnSync('/bin/chmod', ['-R', 'u+w', directory]);
@@ -79,7 +80,12 @@ exec /bin/chmod "$@"
     await writeFile(join(source, name), await readFile(join(root, name)));
   if (metadata !== null) await writeFile(join(source, 'package/foxhole-openwrt-client/Makefile'), metadata);
   const output = join(directory, 'output');
-  const result = spawnSync('/bin/sh', [join(source, 'tools/build-openwrt.sh'), ...args, output], {
+  const compiler = qualified && !args.includes('--server-input') ? [
+    '--go-input', '/synthetic/go/bin/go',
+    '--go-qualification', '/synthetic/compiler.json',
+    '--test-suite', '/synthetic/fresh-suite.json'
+  ] : [];
+  const result = spawnSync('/bin/sh', [join(source, 'tools/build-openwrt.sh'), ...compiler, ...args, output], {
     cwd: root, encoding: 'utf8', timeout: 10000,
     env: { ...process.env, PATH: bin + ':' + process.env.PATH,
       MOCK_ROOT: directory, MOCK_BUILD_STATUS: String(buildStatus) }
@@ -92,7 +98,7 @@ test('SDK build exports APKs and removes read-only Go module directories', async
   const { directory, output, result } = await fixture(t, 0);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /Unsigned APK bundle:/);
-  for (const file of ['hysteria-2.12.2-r5.apk',
+  for (const file of ['hysteria-2.12.2-r6.apk',
     'foxhole-openwrt-client-1.2.3-r4.apk', 'sdk.config', 'feeds.buildinfo']) {
     await readFile(join(output, file));
   }
@@ -100,6 +106,10 @@ test('SDK build exports APKs and removes read-only Go module directories', async
   const config = await readFile(join(output, 'sdk.config'), 'utf8');
   assert.doesNotMatch(config, /CONFIG_ALL=y|CONFIG_PACKAGE_kmod-unrelated/);
   assert.match(config, /^CONFIG_PACKAGE_kmod-tun=m$/m);
+  assert.doesNotMatch(await readFile(join(directory, 'curl.args'), 'utf8'), /go1\.26/);
+  const compile = await readFile(join(directory, 'compile.args'), 'utf8');
+  assert.match(compile, /HYSTERIA_COMPILER_QUALIFICATION=\/synthetic\/compiler\.json/);
+  assert.match(compile, /HYSTERIA_TEST_SUITE_INPUT=\/synthetic\/fresh-suite\.json/);
   await assert.rejects(readFile(join(directory, 'scratch')), { code: 'ENOENT' });
 });
 
@@ -118,7 +128,7 @@ for (const buildStatus of [0, 37]) {
 }
 
 test('Core SDK mode selects both exact RAM producers without legacy RAM', async t => {
-  const { output, result } = await fixture(t, 0, false, [
+  const { directory, output, result } = await fixture(t, 0, false, [
     '--core-input', '/synthetic/core', '--core-source-sha256', 'a'.repeat(64),
     '--core-download-url', 'https://example.invalid/core.bin', '--core-ram-reserve-bytes', '1048576',
     '--server-input', '/synthetic/server', '--server-download-url', 'https://example.invalid/server.bin',
@@ -129,9 +139,28 @@ test('Core SDK mode selects both exact RAM producers without legacy RAM', async 
   assert.match(config, /^CONFIG_PACKAGE_foxcore-cli-ram=m$/m);
   assert.match(config, /^CONFIG_PACKAGE_hysteria-server-ram=m$/m);
   assert.doesNotMatch(config, /^CONFIG_PACKAGE_hysteria-ram=m$/m);
+  const defconfig = await readFile(join(directory, 'defconfig.args'), 'utf8');
+  assert.match(defconfig, /HYSTERIA_PACKAGE_INPUT=\/synthetic\/server/);
+  assert.match(defconfig, /FOXHOLE_GO=/);
   await readFile(join(output, 'foxcore-cli-ram-1.0.2-r2.apk'));
-  await readFile(join(output, 'hysteria-server-ram-2.12.2-r2.apk'));
+  await readFile(join(output, 'hysteria-server-ram-2.12.2-r5.apk'));
   await assert.rejects(readFile(join(output, 'hysteria-ram-2.12.2-r2.apk')), { code: 'ENOENT' });
+});
+
+test('source SDK build refuses absent compiler proof before setup', async t => {
+  const { directory, result } = await fixture(t, 0, false, [],
+    'PKG_VERSION:=1.2.3\nPKG_RELEASE:=4\n', false);
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /qualified Go1\.26\.11 and fresh tests/);
+  await assert.rejects(readFile(join(directory, 'scratch')), { code: 'ENOENT' });
+});
+
+test('source SDK build refuses relative compiler input before setup', async t => {
+  const { directory, result } = await fixture(t, 0, false,
+    ['--go-input', 'relative/go']);
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /absolute paths/);
+  await assert.rejects(readFile(join(directory, 'scratch')), { code: 'ENOENT' });
 });
 
 test('Server RAM without a verified native producer fails before SDK setup', async t => {

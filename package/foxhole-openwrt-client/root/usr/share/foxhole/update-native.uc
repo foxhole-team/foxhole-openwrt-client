@@ -9,6 +9,7 @@ import * as registry from './engine-registry.uc';
 import * as store from './private-store.uc';
 import * as network from './mobile-network.uc';
 import * as core_updates from './core-update-model.uc';
+import * as ram_updates from './ram-update-model.uc';
 
 const ORIGIN = 'https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/';
 const KEY = '/usr/share/foxhole/foxhole-openwrt-apk.pem';
@@ -25,20 +26,20 @@ export function public_raw(path, maximum) {
 	if (raw == null || length(raw) != a.size || sprintf('%J',[a.dev,a.inode,a.size,a.mode,a.mtime,a.ctime]) != sprintf('%J',[b?.dev,b?.inode,b?.size,b?.mode,b?.mtime,b?.ctime])) guard.fail('PACKAGE_VERIFICATION_FAILED');
 	return raw;
 };
-export function policy(path, version) {
-	let value = decode(public_raw(path, 8192));
-	if (value.schema != 1 || value.transactionAbi != 1 || value.stateAbi != 1 || value.packageVersion != version ||
-	    value.osRelease != '25.12.5' || !match(value.releaseTag || '', /^v[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}$/) ||
-	    sprintf('%J', value.targets) != sprintf('%J', ['x86/64','mediatek/filogic'])) guard.fail('UNSUPPORTED_TARGET');
-	return value;
-};
+// ucode resolves module-local functions in declaration order.
 export function target() {
 	let raw = public_raw('/etc/openwrt_release', 8192);
 	let release = match(raw, /(^|\n)DISTRIB_RELEASE='([^']+)'/), board = match(raw, /(^|\n)DISTRIB_TARGET='([^']+)'/);
 	let architecture = registry.architecture();
-	if ((release ? release[2] : null) != '25.12.5' || !(((board ? board[2] : null) == 'x86/64' && architecture == 'x86_64') ||
+	if (index(['25.12.5','25.12.6'],release ? release[2] : null) < 0 || !(((board ? board[2] : null) == 'x86/64' && architecture == 'x86_64') ||
 	    ((board ? board[2] : null) == 'mediatek/filogic' && architecture == 'aarch64_cortex-a53'))) guard.fail('UNSUPPORTED_TARGET');
 	return { release:release[2], target:board[2], architecture };
+};
+export function policy(path, version) {
+ let value = decode(public_raw(path, 8192));
+ try { ram_updates.policy(value,version,value.releaseTag,target().release); }
+ catch (_) { guard.fail('UNSUPPORTED_TARGET'); }
+ return value;
 };
 export function prepare_keys(directory) {
 	store.directory(directory); store.directory(directory + '/keys');
@@ -57,7 +58,8 @@ export function fetch(url, maximum) {
 };
 function release_memory() {
 	let raw = fs.readfile('/proc/meminfo',65536), found = match(raw || '',/\n?MemAvailable:[ \t]+([0-9]+) kB/);
-	// Retain the FLASH process reserve and the existing fourfold input allowance.
+	// Retain the FLASH process reserve and the existing fourfold
+	// input allowance.
 	if (!found || +found[1]*1024 < 33554432 + 4*RELEASE_METADATA_BYTES) guard.fail('NO_SPACE');
 };
 export function latest(directory) {

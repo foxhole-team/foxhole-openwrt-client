@@ -5,7 +5,8 @@ let previous = json(fs.readfile('/workspace/tests/fixtures/engine-catalog-v1.0.3
 let current;
 if (ARGV[0]) current = json(fs.readfile(ARGV[0], 262144));
 else {
- // Synthetic release-only transition; actual repack qualification supplies its real catalog.
+ // Synthetic release-only transition; actual repack qualification
+ // supplies its real catalog.
  current = json(sprintf('%J', previous));
  for (let entry in current.entries) if (entry.storage == 'RAM') {
   entry.packageVersion = '1.0.2-r2';

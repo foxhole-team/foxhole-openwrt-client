@@ -75,7 +75,8 @@ function elf(path,persistent_file,required) {
  return live;
 };
 function require_file(path,inspect,required){if(checked[path]){if(required&&checked[path].isElf!=true)fail('ELF required '+path);return;}if(inspect)elf(path,true,required);else backing(path);};
-// This primitive is hashed directly before it is used to stream larger dependencies.
+// This primitive is hashed directly before it is used to stream
+// larger dependencies.
 let sha_live=paths.resolve('/usr/bin/sha256sum',current),sha_boot=paths.resolve('/usr/bin/sha256sum',persistent);
 paths.same_file(sha_live,sha_boot,digest.sha256(raw(sha_live.row.physical,2097152)),digest.sha256(raw(sha_boot.row.physical,2097152)));
 for(let path in ['/usr/bin/ucode','/usr/lib/ucode/fs.so','/usr/lib/ucode/digest.so','/usr/bin/apk','/usr/bin/sha256sum',

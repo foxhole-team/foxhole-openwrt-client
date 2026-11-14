@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+[ "$#" = 4 ] && [ "$1" = server ] && [ "$2" = -c ] && [ "$4" = --disable-update-check ] || exit 1
+case "$3" in /tmp/foxhole/inbound/shared.json|/tmp/foxhole/inbound/client-????????????.json) ;; *) exit 1 ;; esac
+binary=$(/usr/libexec/foxhole-server-path)
+case "$binary" in /usr/bin/hysteria|/tmp/foxhole-hysteria/*/hysteria|/tmp/foxhole-hysteria/hysteria|/tmp/foxhole/server-generations/*/hysteria|/etc/foxhole/server-generations/*/root/usr/bin/hysteria) ;; *) exit 1 ;; esac
+exec "$binary" "$@"

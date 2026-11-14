@@ -64,7 +64,8 @@ stop_service() {
 	if /usr/libexec/foxhole-mobile-network clear >/dev/null 2>&1; then
 		return 0
 	fi
-	# rc.common kills uhttpd after this hook. Keep a deny policy until then.
+	# rc.common kills uhttpd after this hook. Keep a deny policy until
+	# then.
 	/usr/sbin/nft -f - <<'FOXHOLE_MOBILE_DENY' || return 1
 add table inet foxhole_mobile
 delete table inet foxhole_mobile

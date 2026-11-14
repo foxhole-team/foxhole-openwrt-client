@@ -73,13 +73,22 @@ test('recovery admission precedes publish/stop and descriptor commit/restore pre
  assert.doesNotMatch(helper,/\/bin\/uclient-fetch|root-tmpfs=true|no-check-certificate|curl|ulimit -f/);
 });
 function cacheFixture(hardlink=false){
- const path='/tmp/candidate/root/.foxhole-apk-cache',archive='/tmp/candidate/base.apk',dev={major:0,minor:1};let inode=40;
+ const path='/tmp/candidate/root/.foxhole-apk-cache',upper='/tmp/candidate/switch/upper/.foxhole-apk-cache';
+ const archive='/tmp/candidate/base.apk',dev={major:0,minor:1};let inode=40;
  const nodes=new Map([[archive,{type:'file',uid:0,gid:0,mode:0o600,size:100,inode:10,dev,mtime:1,ctime:1}]]);
- const fs={dirname,basename:p=>p.split('/').at(-1),lstat:p=>{const v=nodes.get(p);if(!v)return null;return {...v,nlink:v.type=='file'?[...nodes.values()].filter(n=>n.type=='file'&&n.inode==v.inode).length:2};},
- glob:pattern=>[...nodes.keys()].filter(p=>dirname(p)==pattern.slice(0,-(pattern.endsWith('/.*')?3:2))&&(pattern.endsWith('/.*')?p.split('/').at(-1).startsWith('.'):!p.split('/').at(-1).startsWith('.'))),unlink:p=>nodes.delete(p),rmdir:p=>![...nodes.keys()].some(n=>dirname(n)==p)&&nodes.delete(p)};
- const clear=new Function('fs','same','facts','fail','length','push','match',`return function clear_native_cache(path,created,archive,input,maximum) ${functionBody(switching,'clear_native_cache').replace(/for\(let (\w+) in /g,'for(let $1 of ')}`)(fs,(a,b)=>JSON.stringify(a)==JSON.stringify(b),v=>JSON.stringify(v),()=>{throw new Error('refused');},v=>v.length,(a,v)=>a.push(v),(v,r)=>v.match(r));
+ const logical=p=>p.startsWith(upper)?path+p.slice(upper.length):p;
+ const children=p=>[...nodes.keys()].filter(n=>dirname(n)==logical(p));
+ const fs={dirname,basename:p=>p.split('/').at(-1),
+  lstat:p=>{const v=nodes.get(logical(p));if(!v)return null;return {...v,nlink:v.type=='file'?[...nodes.values()].filter(n=>n.type=='file'&&n.inode==v.inode).length:2};},
+  lsdir:p=>children(p).map(n=>n.split('/').at(-1)),
+  unlink:p=>nodes.delete(logical(p)),rmdir:p=>!children(p).length&&nodes.delete(logical(p))};
+ const body=functionBody(switching,'clear_native_cache').replace(/for\(let (\w+) in /g,'for(let $1 of ');
+ const clear=new Function('fs','same','facts','fail','length','push','match','index','sort','substr','mount_rows',
+  `return function clear_native_cache(path,created,archive,input,maximum,upper,upper_created,lower_snapshot) ${body}`)(
+  fs,(a,b)=>JSON.stringify(a)==JSON.stringify(b),v=>JSON.stringify(v),()=>{throw Error('refused');},
+  v=>v.length,(a,v)=>a.push(v),(v,r)=>v.match(r),(a,v)=>a.indexOf(v),a=>a.sort(),(s,a,n)=>s.substr(a,n),()=>[]);
  const create=()=>{nodes.set(path,{type:'directory',uid:0,gid:0,mode:0o700,inode:++inode,dev});const created=fs.lstat(path),input=fs.lstat(archive);nodes.set(path+'/base.apk',hardlink?{...nodes.get(archive)}:{...nodes.get(archive),inode:++inode});return {created,input};};
- return {path,archive,nodes,fs,create,run:v=>clear(path,v.created,archive,v.input,1024)};
+ return {path,archive,nodes,fs,create,run:v=>clear(path,v.created,archive,v.input,1024,upper,fs.lstat(upper),{present:false})};
 }
 test('fresh cache cleanup supports repeat generations and restores source hardlink count',()=>{
  for(const linked of [false,true]){const f=cacheFixture(linked);for(let i=0;i<2;i++){f.run(f.create());assert.equal(f.fs.lstat(f.path),null);assert.equal(f.fs.lstat(f.archive).nlink,1);}}

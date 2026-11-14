@@ -234,7 +234,7 @@ export function defaults() {
 		settings: {
 				language: 'ru', standaloneAccess: true,
 				localRules: false, localScope: 'all',
-				clientRules: false, killSwitch: false,
+				clientRules: false, killSwitch: false, vpnServerEnabled: false,
 				darkStyle: false, darkCharts: true,
 				plainHeadings: false, hideRouterStatus: false,
 				theme: 'dark',
@@ -425,7 +425,7 @@ export function validate_settings(payload, resolve_mac) {
 		fail('invalid_settings');
 	for (let key in ['standaloneAccess', 'localRules', 'clientRules',
 		'killSwitch', 'darkStyle', 'darkCharts', 'plainHeadings',
-		'hideRouterStatus'])
+		'hideRouterStatus', 'vpnServerEnabled'])
 		if (type(settings[key]) != 'bool') fail('invalid_settings');
 	if (type(payload.countries) != 'array' || length(payload.countries) > 249 ||
 	    type(payload.devices) != 'array' || length(payload.devices) > 512 ||

@@ -4,7 +4,7 @@
 
 Profils VPN, règles de routage et interface simple pour les routeurs OpenWrt.
 Les connexions VPN sortantes utilisent [FoxHole Core](https://github.com/foxhole-team/foxhole-core).
-Chaque protocole choisi utilise un module client distinct dans une installation compacte. Le serveur Hysteria entrant est fourni séparément et n’est pas inclus dans le paquet client publié v1.0.1.
+Chaque protocole choisi utilise un module client distinct dans une installation compacte. La version 1.0.8 ajoute un paquet facultatif et vérifié séparément pour le serveur Hysteria2 entrant. L’accès distant exige une adresse WAN publique et statique ainsi qu’un port UDP accessible depuis l’extérieur.
 
 </div>
 
@@ -19,7 +19,7 @@ Chaque protocole choisi utilise un module client distinct dans une installation 
 
 <div align="center">
 
-[English](../README.md) · [Русский](README.ru.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [Español](README.es.md) · [日本語](README.ja.md) · [简体中文](README.zh.md) · [العربية](README.ar.md)
+[🇬🇧 English](../README.md) · [🇷🇺 Русский](README.ru.md) · [🇩🇪 Deutsch](README.de.md) · [🇫🇷 **Français**](README.fr.md) · [🇪🇸 Español](README.es.md) · [🇯🇵 日本語](README.ja.md) · [🇨🇳 简体中文](README.zh.md) · [🇸🇦 العربية](README.ar.md)
 
 </div>
 
@@ -30,21 +30,48 @@ Chaque protocole choisi utilise un module client distinct dans une installation 
   <img src="https://img.shields.io/badge/status-beta-yellow?style=flat-square" alt="Status: beta">
 </p>
 
+<a id="ecosystem"></a>
+<a id="-écosystème-foxhole"></a>
+
+<div align="center">
+  <strong>FoxHole ecosystem</strong><br>
+  <a href="https://github.com/foxhole-team/foxhole-guard">FoxHole Guard</a> ·
+  <a href="https://github.com/foxhole-team/foxhole-vpn">FoxHole VPN</a> ·
+  <a href="https://github.com/foxhole-team/foxhole-core">FoxHole Core</a> ·
+  <a href="https://github.com/foxhole-team/foxhole-openwrt-client"><strong>FoxHole OpenWRT</strong></a> ·
+  <a href="https://github.com/foxhole-team/foxhole-db">FoxHole DB</a>
+
+<details>
+<summary>Rôles des projets</summary>
+
+| Projet | Rôle |
+| --- | --- |
+| [FoxHole Guard](https://github.com/foxhole-team/foxhole-guard) | Android : VPN, Tor/I2P, règles de trafic et surveillance locale |
+| [FoxHole VPN](https://github.com/foxhole-team/foxhole-vpn) | Android : client VPN simple et gestion OpenWrt appairée |
+| [FoxHole Core](https://github.com/foxhole-team/foxhole-core) | Cœur réseau Rust commun ; fonctions selon la compilation |
+| [**FoxHole OpenWrt**](https://github.com/foxhole-team/foxhole-openwrt-client) | VPN de routeur et gestion du réseau local |
+| [FoxHole DB](https://github.com/foxhole-team/foxhole-db) | Règles signées et données de référence |
+
+</details>
+
+</div>
+
 <p align="center"><a href="#quickstart">Démarrer</a> · <a href="#features">Fonctions</a> · <a href="#details">Détails</a> · <a href="#whats-new">Nouveautés</a></p>
 
 <a id="whats-new"></a>
 
-> **🆕 Nouveautés - 1.0.6 Beta**
+> **🆕 Nouveautés - 1.0.8 Beta**
 >
-> - Mise à jour indépendante des modules Core signés sans réinstaller le paquet OpenWrt.
-> - Relais des mises à jour Core vérifiées par les applications Android associées lorsque le routeur ne peut pas joindre GitHub.
-> - Mises à jour automatiques activées lors de la première configuration web/Android, avec option de désactivation et conservation des réglages existants.
-> - Restauration et gestion de Stop améliorées, avec conservation des profils et associations.
+> - Ajout de la prise en charge d’OpenWrt 25.12.6
+> - Optimisation de l’interface
+> - Ajout d’un paquet serveur Hysteria2 facultatif et vérifié séparément (adresse IP publique statique requise)
+> - Mise à jour de l’aide, de la vérification des mises à jour et de la rubrique À propos
+> - Journal réservé au FLASH, avec conservation circulaire jusqu’à 30 jours et volume limité
+> - Amélioration de la gestion du routeur via VPN et de la réinstallation du paquet en RAM
 >
-> Applications Android : FoxHole VPN 1.0.5 et Guard 1.0.6 prennent en charge Android 7 et améliorent le style des notifications.
-> FoxHole VPN ajoute le routage des sites web ; Guard améliore les filtres de routage des adresses web.
+> Applications associées : FoxHole VPN 1.0.6 et Guard 1.0.7 corrigent l’installation et la configuration initiales du routeur. Guard met aussi à jour les transports Tor Lyrebird et conjure-client
 >
-> L’activation permanente du bootstrap reste désactivée. La récupération après un démarrage à froid n’est pas validée ; le problème de vérification du chemin des bibliothèques ELF reste à résoudre.
+> L’activation permanente du bootstrap reste désactivée. La récupération après un démarrage à froid n’est pas validée ; le problème de vérification du chemin des bibliothèques ELF reste à résoudre
 
 <a id="features"></a>
 
@@ -60,12 +87,14 @@ Modules VPN FoxHole actuellement disponibles pour le routeur :
 
 ## 📋 Prérequis
 
-- OpenWrt 25.12.5 avec le gestionnaire de paquets apk et l’accès root. Les téléchargements directs nécessitent Internet sur le routeur ; un `--bundle` local ne demande qu’un LAN de confiance.
+- OpenWrt 25.12.5 ou 25.12.6 avec le gestionnaire de paquets apk et l’accès root. Les téléchargements directs nécessitent Internet sur le routeur ; un `--bundle` local ne demande qu’un LAN de confiance.
 - Des paquets publiés pour le micrologiciel, la cible, l’architecture et les protocoles exacts. La politique actuelle des paquets et mises à jour admet `x86/64` et `mediatek/filogic` ; une compilation SDK ou un nom d’architecture ARM ne valide pas tous les modèles de routeur.
 - Assez de mémoire flash et de RAM pour le budget complet et vérifié des paquets. Avant toute modification, l’installateur contrôle les dépendances, l’ABI du noyau et l’espace temporaire.
 - Accès depuis un réseau local de confiance. Pour la découverte et la première configuration Android, connectez le téléphone au Wi-Fi du routeur.
 
-Dans cette bêta publique, les modules VPN sortants utilisent FoxHole Core 1.0.2. La prise en charge dans les sources et un binaire compilé pour une autre
+La [version v1.0.6](https://github.com/foxhole-team/foxhole-openwrt-client/releases/tag/v1.0.6) comprend BASE 1.0.6-r1 et les modules clients FoxHole Core 1.0.4. Les mises à jour Core compatibles peuvent être installées séparément. Leur disponibilité et leur compatibilité dépendent de la version, du firmware et de la cible.
+
+La prise en charge dans les sources et un binaire compilé pour une autre
 architecture ne suffisent pas à établir la compatibilité du routeur. Seuls les
 paquets figurant dans un catalogue de publication authentifié peuvent être installés.
 Le serveur entrant conserve deux constats examinés concernant des dépendances
@@ -112,13 +141,12 @@ Chaque module doit être publié pour le micrologiciel et la cible. Dans un cata
 | Stockage | Comportement |
 | --- | --- |
 | `--flash` | Le moteur reste en mémoire flash après un redémarrage. Mode par défaut. |
-| `--ram` | Le moteur utilise la RAM et télécharge son binaire épinglé après un redémarrage. Les paramètres restent en mémoire flash. |
+| `--ram` | Le binaire du moteur est chargé en RAM et récupéré à nouveau si nécessaire après un redémarrage. Les paramètres restent en mémoire flash. |
 | `--auto` | Choisit la mémoire flash si le budget complet tient, sinon un ensemble de modules RAM disponible. |
 
-Retirez `--apply` pour vérifier le lot sélectionné sans l’installer. Les paquets
-du noyau ne sont jamais mis à niveau pour rendre compatible un lot qui ne l’est pas.
-Pour les catalogues compacts, `--server` ajoute le serveur Hysteria entrant au
-budget de ressources. Il reste désactivé jusqu’à la configuration de l’accès distant.
+Le mode de stockage `--ram` est distinct du bootstrap RAM natif expérimental. L’enrôlement persistant reste désactivé, la récupération après démarrage à froid n’est pas qualifiée et l’admission du chemin personnalisé des bibliothèques ELF reste non résolue. Voir les [limites du bootstrap RAM](RAM-BOOTSTRAP.md).
+
+Retirez `--apply` pour vérifier le lot sans l’installer. Les paquets du noyau ne sont jamais mis à niveau pour adapter un lot incompatible. Pour les catalogues compacts, `--server` n’est disponible que si le catalogue choisi contient un paquet compatible et vérifié pour le serveur Hysteria entrant ; il est alors ajouté au budget de ressources. Le serveur reste désactivé jusqu’à la configuration de l’accès distant.
 
 <p align="center">
   <img src="../media/dashboard.png" width="100%" alt="FoxHole OpenWrt Client dashboard">
@@ -143,12 +171,8 @@ Le désappairage retire l’accès d’administration. Supprimez séparément le
 distant pour révoquer ses identifiants VPN. La suppression d’un ancien profil
 partagé retire uniquement son enregistrement ; elle ne peut pas révoquer les identifiants détenus par un fournisseur VPN externe.
 
-Le paquet client publié v1.0.1 n’inclut pas le serveur Hysteria entrant. Les clients VPN distants nécessitent un paquet serveur vérifié séparément ; `--server` n’est disponible que si le catalogue le contient. Une adresse WAN publique et un port UDP accessible de l’extérieur sont aussi nécessaires.
+La création de clients VPN distants exige un paquet vérifié séparément pour le serveur Hysteria entrant, installable avec `--server` uniquement s’il figure dans le catalogue de la version choisie. Une adresse WAN publique et un port UDP accessible de l’extérieur sont également nécessaires. **Créer un profil VPN** ajoute alors un client distant ; sélectionner un client existant ouvre son profil.
 
-L’accès distant nécessite le serveur Hysteria sélectionné avec `--server`. Sur un
-routeur disposant d’une adresse WAN publique, **Créer un profil VPN** ajoute un
-client distant. Sélectionner un client ouvre son profil existant.
-Le point d’écoute UDP doit également être accessible depuis l’extérieur du réseau domestique.
 Le basculement VPN automatique sur le réseau domestique reste désactivé jusqu’à
 la validation réelle du routage, y compris les contrôles de fermeture en cas d’échec et de propriété du tunnel.
 
@@ -185,7 +209,7 @@ de le supprimer. Seuls les paquets publiés pour la cible exacte de votre routeu
 
 Dans **Paramètres → Mise à jour FoxHole** de l’interface web ou de l’application associée, la recherche et l’installation utilisent la même transaction authentifiée. Elle met à jour le panneau/runtime FoxHole et les modules de protocoles clients installés et sélectionnés, en conservant leur mode FLASH/RAM. Les nouveaux protocoles sont installés séparément. Profils et association sont conservés ; ni le micrologiciel OpenWrt ni les autres paquets système ne sont mis à jour.
 
-Les installations directes par CLI/backend laissent les mises à jour automatiques désactivées par défaut. Lors d’une nouvelle configuration depuis le téléphone, la case distincte et visible est cochée ; décochez-la pour refuser. La politique est enregistrée après installation et association. Associer un routeur existant conserve sa politique ; elle peut ensuite être modifiée dans les paramètres.
+Les installations directes CLI/backend laissent les mises à jour automatiques désactivées par défaut. Lors d’une nouvelle configuration web ou Android, une case visible et distincte est cochée ; décochez-la pour refuser. Les politiques existantes du routeur, y compris un refus, sont préservées lors de l’association et de l’ouverture de la configuration. Vous pouvez modifier la politique ultérieurement dans les paramètres.
 
 Si elle est activée, le routeur vérifie chaque jour et installe les mises à jour vérifiées des paquets FoxHole. Dissocier le téléphone ne désactive pas cette politique. Les anciens paquets dépourvus de cet outil nécessitent une migration vérifiée séparément. Voir les [mises à jour logicielles](UPDATES.md).
 
@@ -196,20 +220,9 @@ vérifie que les paramètres DHCP restent inchangés. Avant de supprimer des paq
 pendant que le routage est actif, suivez les instructions de [retour arrière/suppression](ROLLBACK.md).
 Utilisez des paquets de publication vérifiés. Les anciens installateurs et téléchargements réservés à ARM ne sont pas utilisés. FoxHole Core prend en charge Hysteria2. Les profils legacy conservent le moteur Hysteria distinct, sans migration automatique vers Core. Arrêtez manuellement une connexion Hysteria legacy active avant la mise à jour.
 
-[Commandes](CLI.md) · [Architecture](ARCHITECTURE.md) ·
-[Compilation et publication](RELEASE.md) · [Sécurité](../SECURITY.md)
-
-<a id="ecosystem"></a>
-
-## 🔗 Écosystème FoxHole
-
-| Projet | Rôle |
-| --- | --- |
-| [FoxHole Guard](https://github.com/foxhole-team/foxhole-guard) | Android : VPN, Tor/I2P, règles de trafic et surveillance locale |
-| [FoxHole VPN](https://github.com/foxhole-team/foxhole-vpn) | Android : client VPN simple et gestion OpenWrt appairée |
-| [FoxHole Core](https://github.com/foxhole-team/foxhole-core) | Cœur réseau Rust commun ; fonctions selon la compilation |
-| [**FoxHole OpenWrt**](https://github.com/foxhole-team/foxhole-openwrt-client) | VPN de routeur et gestion du réseau local |
-| [FoxHole DB](https://github.com/foxhole-team/foxhole-db) | Règles signées et données de référence |
+- **Instructions:** [CLI](CLI.md) · [Updates](UPDATES.md) · [Rollback](ROLLBACK.md)
+- **Architecture:** [Architecture](ARCHITECTURE.md) · [Mobile networks](MOBILE-NETWORKS.md) · [Backup](BACKUP-ARCHITECTURE.md) · [Profile origin](PROFILE-ORIGIN.md)
+- **Maintenance:** [Release](RELEASE.md) · [Bundle transport](BUNDLE-TRANSPORT.md) · [RAM install](RAM-INSTALL.md) · [Bootstrap](RAM-BOOTSTRAP.md) · [Prerequisites](RAM-PREREQUISITES.md) · [RAM updates](RAM-UPDATE-CONTROLLER.md) · [Engine origin](engine-release-origin.md) · [Security](../SECURITY.md)
 
 ## 🤝 Contribuer
 

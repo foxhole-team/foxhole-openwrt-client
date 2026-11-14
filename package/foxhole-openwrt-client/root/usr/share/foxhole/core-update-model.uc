@@ -58,7 +58,7 @@ function admit_feed(value, context, previous, body_sha256, fresh) {
  if(type(compatibility.stateAbi)!='int' || compatibility.stateAbi!=1 ||
   type(compatibility.transactionAbi)!='int' || compatibility.transactionAbi!=1 ||
   type(compatibility.routerContractVersion)!='int' || compatibility.routerContractVersion!=1 ||
-  compatibility.osRelease!='25.12.5' ||
+  index(['25.12.5','25.12.6'],compatibility.osRelease)<0 ||
   sprintf('%J',compatibility.targets)!=
    sprintf('%J',['x86/64','mediatek/filogic']) ||
   type(compatibility.minimumBaseVersion)!='string' ||

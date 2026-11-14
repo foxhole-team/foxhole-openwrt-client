@@ -6,6 +6,36 @@ export class ModelError extends Error {
   }
 }
 
+export function packageMetadata(value) {
+  if (!value || value.schema !== 1 || value.product !== 'foxhole' || value.installed !== true ||
+      !['RAM', 'FLASH'].includes(value.storage) || !(value.version === null ||
+      typeof value.version === 'string' && /^[0-9][0-9A-Za-z_.~+-]{0,159}$/.test(value.version)))
+    throw new ModelError('unavailable');
+  let installedModules = null;
+  if (value.installedModules != null) {
+    if (!Array.isArray(value.installedModules) || value.installedModules.length > 3)
+      throw new ModelError('unavailable');
+    const seen = new Set();
+    installedModules = value.installedModules.map(row => {
+      if (!row || !['vless', 'hysteria2', 'wireguard'].includes(row.id) || seen.has(row.id) ||
+          !['RAM', 'FLASH'].includes(row.storage) ||
+          ![row.version, row.packageVersion].every(v => typeof v === 'string' && /^[0-9][0-9A-Za-z_.~+-]{0,159}$/.test(v)))
+        throw new ModelError('unavailable');
+      seen.add(row.id);
+      return { id: row.id, version: row.version, packageVersion: row.packageVersion, storage: row.storage };
+    });
+  }
+  const router = value.routerInfo;
+  const routerInfo = router == null ? null : router.schema === 1 ? {
+    model: typeof router.model === 'string' ? router.model : null,
+    firmwareVersion: typeof router.firmwareVersion === 'string' ? router.firmwareVersion : null,
+    lanAddress: typeof router.lanAddress === 'string' && /^[0-9a-fA-F:.]{3,45}$/.test(router.lanAddress)
+      ? router.lanAddress : null
+  } : null;
+  const homeServerEnabled = typeof value.homeServerEnabled === 'boolean' ? value.homeServerEnabled : null;
+  return { storage: value.storage, version: value.version, installedModules, routerInfo, homeServerEnabled };
+}
+
 export const countryCodes = Object.freeze(
   'AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW'.split(' ')
 );
@@ -30,6 +60,7 @@ export const defaultSettings = Object.freeze({
   localRules: false,
   localScope: 'all',
   clientRules: false,
+  vpnServerEnabled: false,
   killSwitch: false,
   darkStyle: false,
   darkCharts: true,
@@ -104,6 +135,7 @@ export function normalizeSettings(value = {}) {
     localScope: input.localScope === 'selected' ? 'selected' : 'all',
     localRules: input.localRules === true,
     clientRules: input.clientRules === true,
+    vpnServerEnabled: input.vpnServerEnabled === true,
     killSwitch: input.killSwitch === true,
     darkStyle: false,
     darkCharts: input.darkCharts === true,
@@ -333,4 +365,13 @@ export function normalizeSitePattern(value) {
   if (!host || !validHostMask(host))
     throw new ModelError('invalid_site');
   return host;
+}
+
+export function modalFooterActions(actions) {
+  const visible = actions.filter(item => item.action !== 'open-help');
+  if (!visible.some(item => item.action === 'modal-back') ||
+      !visible.some(item => item.action === 'modal-close')) return visible;
+  return [...visible.filter(item => !['modal-back', 'modal-close'].includes(item.action)),
+    ...visible.filter(item => item.action === 'modal-back'),
+    ...visible.filter(item => item.action === 'modal-close')];
 }

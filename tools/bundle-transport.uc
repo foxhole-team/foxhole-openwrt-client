@@ -43,7 +43,8 @@ function settings(root) {
  if (verifier.pipe.write(text) != length(text)) reject();
  finish_hash(verifier, sums['bundle-transport.json']);
  let parsed = json(text), value = model.descriptor(parsed, sums, member_digest);
- // Producer canonical bytes also exclude duplicate or escaped JSON object keys.
+ // Producer canonical bytes also exclude duplicate or escaped JSON
+ // object keys.
  if (text != model.canonical_descriptor(parsed)) reject();
  return value;
 };
@@ -115,7 +116,8 @@ function extract(root, value) {
 };
 let root = stage(ARGV[1]), value = settings(root);
 if (ARGV[0] == 'budget') {
- // This additional conservative transport allowance is not a measured RSS claim.
+ // This additional conservative transport allowance is not a
+ // measured RSS claim.
  printf('%d\n', value.archive.bytes + 16777216 + fs.lstat(root + '/bundle-transport.json').size);
 } else if (ARGV[0] == 'bytes') printf('%d\n', value.archive.bytes);
 else if (ARGV[0] == 'extract') extract(root, value);

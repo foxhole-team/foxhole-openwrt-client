@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=hysteria-server-ram
 PKG_VERSION:=2.12.2
-PKG_RELEASE:=4
+PKG_RELEASE:=5
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=FoxHole Team
 PKG_BUILD_DIR:=$(BUILD_DIR)/hysteria-server-ram-$(PKG_VERSION)
@@ -49,4 +49,7 @@ define Package/hysteria-server-ram/install
 		$(PKG_BUILD_DIR)/HYSTERIA-SOURCE-PATCH.patch $(PKG_BUILD_DIR)/HYSTERIA-PATCH-SOURCE.json $(1)/usr/share/licenses/hysteria/
 endef
 
+# The server manager owns activation; APK payloads have no
+# lifecycle hooks.
+override APK_SCRIPTS_hysteria-server-ram:=
 $(eval $(call BuildPackage,hysteria-server-ram))

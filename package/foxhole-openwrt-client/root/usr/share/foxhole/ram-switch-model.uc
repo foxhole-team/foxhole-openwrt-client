@@ -46,7 +46,8 @@ export function ledger(value, marker) {
   } else if(row.role!='retained-adapter'||!retained_target(row.target)||row.type!='file')fail();
   seen[row.target]=true;
  }
- // Nested public binds would hide a generation or create a mount stack.
+ // Nested public binds would hide a generation or create a mount
+ // stack.
  for(let a in value.mounts)for(let b in value.mounts)
   if(a.target!=b.target&&index(b.target,a.target+'/')==0)fail();
  return value;
@@ -94,7 +95,8 @@ export function world_fence(before,after) {
  if(sprintf('%J',retained(before))!=sprintf('%J',retained(after)))fail();return true;
 };
 export function rollback_actions(unmounted,mounted) {
- // Only successful syscalls enter these ledgers; absent targets are never invented.
+ // Only successful syscalls enter these ledgers; absent targets
+ // are never invented.
  let remove=[],restore=[];
  for(let i=length(mounted)-1;i>=0;i--)push(remove,mounted[i]);
  for(let i=length(unmounted)-1;i>=0;i--)push(restore,unmounted[i]);

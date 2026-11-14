@@ -121,3 +121,25 @@ test('mobile API rule literal is byte-identical to the canonical packaged fw4 in
   const canonical = await readFile(new URL('../package/foxhole-openwrt-client/root/usr/share/nftables.d/chain-pre/input/30-foxhole-mobile.nft', import.meta.url), 'utf8');
   assert.equal(context.api_accept_rule(), canonical);
 });
+
+test('home VPN management targets contain only bounded owned private listeners', () => {
+  const bindings = [{ device: 'br-lan', address: '192.168.8.1' },
+    { device: 'br-other', address: '192.168.8.1' }];
+  assert.deepEqual(JSON.parse(JSON.stringify(context.management_addresses(bindings))), ['192.168.8.1']);
+  for (const bad of [[{ device: 'br-lan', address: '1.1.1.1' }],
+    [{ device: 'br-lan', address: '192.168.8.0/24' }],
+    [{ device: '*', address: '192.168.8.1' }],
+    Array.from({ length: 17 }, (_, i) => ({ device: 'br-lan', address: `10.0.0.${i + 1}` }))])
+    assert.throws(() => context.management_addresses(bad), /lan_unavailable/);
+});
+
+test('early mobile filter admits proxy loopback only at the owned IPv4 API endpoint', () => {
+  const policy = context.api_input_policy([{ device: 'br-lan', address: '192.168.8.1' }]);
+  assert.match(policy, /iifname "lo" ip daddr \{ 192\.168\.8\.1 \} tcp dport 8443 accept/);
+  assert.match(policy, /tcp dport 8443 iifname \. ip daddr != \{ "br-lan" \. 192\.168\.8\.1 \} counter drop/);
+  assert.match(policy, /meta nfproto ipv6 tcp dport 8443 counter drop/);
+  assert.doesNotMatch(policy, /iifname "lo" accept|192\.168\.0\.0\/16|0\.0\.0\.0\/0/);
+  const cleared = context.api_input_policy([]);
+  assert.doesNotMatch(cleared, /tcp dport 8443 accept|iifname "lo"/);
+  assert.match(cleared, /tcp dport 8443 counter drop/);
+});

@@ -38,10 +38,11 @@ class HysteriaPrebuiltMakeTests(unittest.TestCase):
         # Expose actual recipe values and its actual Prepare operation; no
         # prebuilt/source selection logic is reimplemented in this fixture.
         (self.sdk/'include/package.mk').write_text(
-            'define BuildPackage\n.PHONY: probe prepare-probe\nprobe:\n'
+            'define BuildPackage\nAPK_SCRIPTS_$(1):=sdk-default-hooks\n.PHONY: probe prepare-probe\nprobe:\n'
             "\t@printf '%s\\n' 'DEPENDS=$$(PKG_BUILD_DEPENDS)' "
             "'COMPILE_EMPTY=$$(if $$(strip $$(value Build/Compile)),0,1)' "
-            "'GO_HELPER=$$(GO_HELPER_SEEN)' 'TOOLCHAIN=$$(HYSTERIA_TOOLCHAIN)' 'RSTRIP=$$(RSTRIP)'\n"
+            "'GO_HELPER=$$(GO_HELPER_SEEN)' 'TOOLCHAIN=$$(HYSTERIA_TOOLCHAIN)' 'RSTRIP=$$(RSTRIP)' "
+            "'SOURCE=$$(PKG_SOURCE)' 'BUILD_DIR=$$(PKG_BUILD_DIR)' 'SCRIPTS=$$(APK_SCRIPTS_hysteria)'\n"
             'prepare-probe:\n\t$$(Build/Prepare)\nendef\n')
         self.go_log = self.root/'go-invocations.txt'
         self.spy = self.root/'go-spy.py'
@@ -91,12 +92,21 @@ class HysteriaPrebuiltMakeTests(unittest.TestCase):
         self.assertEqual(values['COMPILE_EMPTY'], '1')
         self.assertFalse(self.go_log.exists())
 
+    def test_prebuilt_does_not_schedule_a_source_download_or_use_the_sdk_build_root(self):
+        values = self.metadata(self.run_make(prebuilt=True))
+        self.assertEqual(values['SOURCE'], '')
+        self.assertEqual(values['BUILD_DIR'], str(self.sdk/'build/hysteria-app-v2.12.2'))
+
     def test_invalid_prebuilt_still_runs_the_real_validator_before_copy(self):
         result = self.run_make('prepare-probe', prebuilt=True, spy=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('Regular server producer inputs required', result.stderr)
         self.assertFalse((self.sdk/'build/hysteria-app-v2.12.2').exists())
         self.assertFalse(self.go_log.exists())
+
+    def test_server_payload_cannot_inherit_sdk_activation_hooks(self):
+        values = self.metadata(self.run_make(prebuilt=True))
+        self.assertEqual(values['SCRIPTS'], '')
 
     def test_normal_source_build_still_requires_the_go_helper(self):
         result = self.run_make()
@@ -109,6 +119,7 @@ class HysteriaPrebuiltMakeTests(unittest.TestCase):
         self.assertEqual(values['DEPENDS'], 'golang/host')
         self.assertEqual(values['GO_HELPER'], '1')
         self.assertEqual(values['COMPILE_EMPTY'], '0')
+        self.assertEqual(values['SOURCE'], 'hysteria-2.12.2.tar.gz')
         values = self.metadata(self.run_make(spy=True))
         self.assertEqual(values['DEPENDS'], '')
         self.assertEqual(values['GO_HELPER'], '1')

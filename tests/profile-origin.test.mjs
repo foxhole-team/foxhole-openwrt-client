@@ -15,6 +15,7 @@ function harness({ paired = pair, inbound = true, revoke = false } = {}) {
   const calls = [];
   const context = vm.createContext({
     digest: { sha256: sha },
+    server_mode: { require_enabled: () => {} },
     type: value => value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value,
     match: (value, regex) => String(value).match(regex),
     ord: (value, index) => Buffer.from(value, 'utf8')[index],

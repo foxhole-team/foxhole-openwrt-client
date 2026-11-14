@@ -88,7 +88,8 @@ ucode "$utility" ready "$stage" stderr "$owner" "$stderr_pid"
 /bin/sh "$0" --owned-child "$stage" timer "$owner" "$deadline" &
 timer_pid=$!
 ucode "$utility" ready "$stage" timer "$owner" "$timer_pid"
-# Only the sinks are bounded; APK payload writes inherit no FSIZE limit.
+# Only the sinks are bounded; APK payload writes inherit no FSIZE
+# limit.
 /bin/sh "$0" --owned-child "$stage" native "$owner" "$@" &
 native_pid=$!
 ucode "$utility" ready "$stage" native "$owner" "$native_pid"

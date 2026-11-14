@@ -1,0 +1,8 @@
+#!/usr/bin/ucode
+import * as model from '/usr/share/foxhole/model.uc';
+import * as store from '/usr/share/foxhole/private-store.uc';
+import * as server_mode from '/usr/share/foxhole/server-mode.uc';
+try {
+ let state = model.validate_state(json(store.read('/etc/foxhole/state.json', 262144)));
+ exit(server_mode.enabled(state) ? 0 : 1);
+} catch (_) { exit(1); }

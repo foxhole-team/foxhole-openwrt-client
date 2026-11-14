@@ -46,7 +46,7 @@ function fixture(initialMemory) {
   const service = new Function(...Object.keys(bindings), 'fs', 'registry', 'model', 'time', 'filter', 'json',
     code + ';return {status};')(...Object.values(bindings), fs, registry, model, () => now,
     (values, predicate) => values.filter(predicate), JSON.parse);
-  return { status: service.status, captures, memory: value => { memory = value; },
+  return { status: (storage = 'FLASH') => service.status(storage), captures, memory: value => { memory = value; },
     time: value => { now = value; }, phase: value => { phase = value; } };
 }
 
@@ -75,6 +75,17 @@ test('admitted collectors keep the existing two commands and three-second cache'
   assert.equal(value.captures.length, 2);
   value.time(103);
   assert.notEqual(value.status(), first);
+  assert.equal(value.captures.length, 4);
+});
+
+test('RAM deployment does not reuse a FLASH collector cache', () => {
+  const value = fixture(40000);
+  value.status('FLASH');
+  const ram = value.status('RAM');
+  assert.equal(value.captures.length, 2);
+  assert.equal(ram.package.available, false);
+  assert.equal(ram.core.available, false);
+  assert.equal(value.status('FLASH').package.available, true);
   assert.equal(value.captures.length, 4);
 });
 

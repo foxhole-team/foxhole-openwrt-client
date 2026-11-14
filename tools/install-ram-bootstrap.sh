@@ -1,5 +1,6 @@
 #!/bin/sh
-# Install only a bounded bootstrap and public trust. No download or activation here.
+# Install only a bounded bootstrap and public trust. No download
+# or activation here.
 set -eu
 umask 077
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -26,7 +27,8 @@ case "$directory" in /*) ;; *) echo 'Use an absolute installer path' >&2; exit 2
 for tool in /usr/bin/apk /usr/bin/ucode /usr/bin/sha256sum; do [ -x "$tool" ] || exit 1; done
 /bin/sh -n "$directory/ram-bootstrap-command.sh"
 /bin/sh -n "$directory/ram-bootstrap.init"
-# Compile entry scripts; imported source models retain their module context.
+# Compile entry scripts; imported source models retain their
+# module context.
 for file in ram-bootstrap-admit.uc ram-bootstrap-capture.uc ram-bootstrap.uc ram-bootstrap-prerequisites.uc; do
  /usr/bin/ucode -c -o /dev/null "$directory/$file"
 done

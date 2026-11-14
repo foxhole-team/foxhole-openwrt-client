@@ -68,6 +68,8 @@ function busy(job) { return active(job) || job?.state == 'RECOVERY_REQUIRED'; };
 function boot() { return trim(fs.readfile('/proc/sys/kernel/random/boot_id', 128) || ''); };
 export function guard_mutation() {
 	backup_service.guard();
+ let server_job = read('/etc/foxhole/vpn-server-job.json',2097152);
+ if (server_job && index(['SUCCEEDED','FAILED'],server_job.state) < 0) fail('BUSY');
 	let cohort=read('/tmp/foxhole/core-uploads/current.json',524288);
 	if(cohort?.schema==1&&index(['RECEIVING','VERIFYING','WAITING'],cohort.phase)>=0&&
 		cohort.bootId==boot()&&now()<=cohort.expiresAtUptimeMs&&

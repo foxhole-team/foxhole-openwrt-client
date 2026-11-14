@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { updateStatus, updatePlan, updateJob, UpdatePanel, availabilityLabel } from '../package/foxhole-openwrt-client/htdocs/luci-static/resources/foxhole/update-panel.js';
+import { updateStatus, updatePlan, updateJob, UpdatePanel, availabilityLabel, updateBadgeKey } from '../package/foxhole-openwrt-client/htdocs/luci-static/resources/foxhole/update-panel.js';
 
 const H = 'a'.repeat(64), B = 'b'.repeat(64);
 function status() {
@@ -24,6 +24,16 @@ function job() {
     operation: 'APPLY', automatic: false, state: 'QUEUED', step: 'PREPARING', progressPercent: 0,
     revision: 3, failureReason: null, previousConnectionRestored: null };
 }
+
+test('menu badge distinguishes a verified update from verified current and never trusts Core-only evidence', () => {
+  assert.equal(updateBadgeKey(status()), 'updates.badge_available');
+  const current = { ...status(), availability: 'CURRENT', availableVersion: status().currentVersion };
+  assert.equal(updateBadgeKey(current), 'updates.badge_latest');
+  for (const value of [{ ...current, lastCheckedAtUnixMs: null }, { ...current, busy: true },
+    { ...current, availability: 'CHECK_FAILED' },
+    { ...current, availability: 'NOT_CHECKED', coreAvailability: 'CURRENT', coreCohortSha256: H }])
+    assert.equal(updateBadgeKey(value), null);
+});
 test('unchecked update availability adds no redundant status copy and never becomes CURRENT', () => {
   const value = { ...status(), availability: 'NOT_CHECKED', availableVersion: null };
   assert.equal(availabilityLabel(updateStatus(value), () => assert.fail('No unchecked label requested')), '');
@@ -111,4 +121,18 @@ test('unsupported equivalence and failed-check cause are strict across producers
     v => { v.availability = 'CHECK_FAILED'; v.failureReason = null; }]) {
     const value = status(); mutate(value); assert.throws(() => updateStatus(value));
   }
+});
+
+test('unavailable update status always offers a read-only retry without enabling update', t => {
+  const previous=globalThis.document;
+  const root={children:[],replaceChildren(){this.children=[];},append(...nodes){this.children.push(...nodes);}};
+  globalThis.document={querySelector:selector=>selector==='[data-update-detail]'?root:null};
+  t.after(()=>{globalThis.document=previous;});
+  const panel=new UpdatePanel({call:()=>assert.fail('Render must not issue a write'),text:k=>k,
+    element:(tag,cls,text)=>({tag,className:cls,textContent:text,dataset:{}}),scope:()=>1});
+  panel.render();
+  const buttons=root.children.filter(node=>node.tag==='button');
+  assert.equal(buttons.length,1);
+  assert.equal(buttons[0].dataset.action,'update-status');
+  assert.equal(buttons[0].disabled,false);
 });

@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+[ "$#" = 0 ] || exit 2
+if [ -e /tmp/foxhole-ram-active.json ] || [ -L /tmp/foxhole-ram-active.json ]; then
+ exit 0
+fi
+exec /usr/bin/ucode -e '
+import * as logs from "/usr/share/foxhole/log-service.uc";
+import * as updates from "/usr/share/foxhole/update-service.uc";
+logs.journal_status(updates.deployment().storage, 0);
+'

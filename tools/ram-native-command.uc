@@ -1,4 +1,5 @@
-// RAM-stage variant of engine-capture.uc: path/limits and command admission only.
+// RAM-stage variant of engine-capture.uc: path/limits and command
+// admission only.
 'use strict';
 import * as fs from 'fs';
 import * as digest from 'digest';

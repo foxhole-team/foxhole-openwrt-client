@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { packageRoot, panelRoot, read } from './helpers.mjs';
 
-// Full original Android author text, with only the router product-name adapter.
+// Full original Android author text, with only the router
+// product-name adapter.
 const original = {
   en: 'a7050b99ff0953919a62e31742a7d038cbd8d3c01c1156875b3a5789ffbaa8d5',
   ru: '354619423e2aba1d979d7e5bce5dfdd7bb4b65b3eb10ee8fbb26d944fb4d84bc',

@@ -44,7 +44,7 @@ function current_state() {
 function policy() { return model.policy(read(POLICY,8192)); };
 function active(job) { return job != null && index(TERMINAL,job.state) < 0; };
 function blocked(job) { return active(job) || job?.state == 'RECOVERY_REQUIRED'; };
-function engine_busy() { let job=read('/etc/foxhole/engine-job.json'); return blocked(job); };
+function engine_busy() { let job=read('/etc/foxhole/engine-job.json'),server=read('/etc/foxhole/vpn-server-job.json',2097152); return blocked(job)||blocked(server); };
 function reason(error) {
 	let text = type(error)=='string'?error:error?.message;
 	let value = substr(text||'',0,7)=='update_' ? uc(substr(text,7)) :
@@ -122,8 +122,15 @@ function ram_selected() {
  let value=read(JOB);return value?.deployment=='RAM_BASE'&&blocked(value);
 };
 export function ram_deployment() { return ram_selected(); };
+export function installed_modules() {
+ return map(native.selected_modules(registry.read()), value => ({id:value.id,
+  version:value.version,packageVersion:value.packageVersion,storage:value.storage}));
+};
 export function deployment() {
- return ram_selected()?ram.deployment():{storage:'FLASH',version:null};
+ if(ram_selected())return ram.deployment();
+ let version=null;
+ try { version=current_version(); } catch (_) {}
+ return {storage:'FLASH',version};
 };
 export function status(principal) {
  if(ram_selected())return ram.status(principal);

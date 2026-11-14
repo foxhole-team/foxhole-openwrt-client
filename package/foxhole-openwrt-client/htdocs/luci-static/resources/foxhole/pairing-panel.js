@@ -86,15 +86,15 @@ export class PairingPanel {
     if (!this.devices?.length || this.loading || this.failed) return;
     const table = this.element('table', 'pairing-table');
     const head = this.element('thead'), header = this.element('tr');
-    for (const key of ['device', 'client', 'version', 'authorized', 'revoke']) {
-      const cell = this.element('th', key === 'revoke' ? 'visually-hidden' : '', this.text(`pairing.${key}`));
+    for (const key of ['device', 'client', 'version', 'authorized', 'actions']) {
+      const cell = this.element('th', '', this.text(`pairing.${key}`));
       cell.scope = 'col'; header.append(cell);
     }
     head.append(header); table.append(head);
     const body = this.element('tbody');
     for (const device of this.devices) {
       const row = this.element('tr');
-      for (const value of [device.name, device.client === 'guard' ? 'Guard' : device.client === 'vpn' ? 'VPN'
+      for (const value of [device.name, device.client === 'guard' ? 'FoxHole Guard' : device.client === 'vpn' ? 'FoxHole VPN'
         : this.text('pairing.unknown'), device.clientVersion || '—', authorizationDate(device.created, this.language())])
         row.append(this.element('td', '', value));
       const action = this.element('td'), button = this.element('button', 'icon-button compact-icon is-danger');

@@ -96,7 +96,8 @@ function security() {
  let result={};
  for(let path in ['/etc/foxhole/auth.json','/etc/foxhole/pairing.json','/etc/foxhole/mobile.json'])
   result[path]=sha(store.read(path,path=='/etc/foxhole/mobile.json'?65536:32768));
- // Identity files are never journaled or restored, only their stable metadata.
+ // Identity files are never journaled or restored, only their
+ // stable metadata.
  for(let path in ['/etc/foxhole/mobile.crt','/etc/foxhole/mobile.key',
   '/etc/foxhole/mobile-identity/cert.pem','/etc/foxhole/mobile-identity/key.pem',
   '/etc/foxhole/remote-identity/cert.pem','/etc/foxhole/remote-identity/key.pem']) {
@@ -144,8 +145,8 @@ function pending() {
  let value=read_journal();return value!=null&&index(TERMINAL,value.phase)<0;
 };
 function package_jobs_idle() {
- for(let path in ['/etc/foxhole/engine-job.json','/etc/foxhole/update-job.json']) {
-  let value=private_json(path,524288);
+ for(let path in ['/etc/foxhole/engine-job.json','/etc/foxhole/update-job.json','/etc/foxhole/vpn-server-job.json']) {
+  let value=private_json(path,path=='/etc/foxhole/vpn-server-job.json'?2097152:524288);
   if(value!=null&&index(['SUCCEEDED','FAILED'],value.state)<0)fail('backup_busy');
  }
 };
@@ -198,8 +199,10 @@ function recover_locked() {
  try {
   let live=state(),raw_hash=sha(file_raw('state'));
   if(index(['PREPARED','APPLYING'],value.phase)>=0) {
-   // The durable commit-attempt marker precedes any state replacement.
-   // Preserve independent Stop/revocation changes and undo only our files.
+   // The durable commit-attempt marker precedes any state
+   // replacement.
+   // Preserve independent Stop/revocation changes and undo only our
+   // files.
    rollback_product_files(value);value.phase='CANCELLED';
   } else if(raw_hash==value.files.state.after||live.activeServerId==null&&
    live.revision>value.afterRevision&&backup.without_stop(live)==value.afterWithoutStop&&products_after(value)) {
@@ -224,7 +227,8 @@ function stage_panel(directory,before,settings) {
   }
   if(!cursor.commit('foxhole'))fail();cursor.unload('foxhole');
  } catch(error) {try {cursor.unload('foxhole');}catch(_){}die(error);}
- // UCI may choose public config permissions even inside the private journal.
+ // UCI may choose public config permissions even inside the
+ // private journal.
  let path=directory+'/config/foxhole',s=fs.lstat(path);
  if(s?.type!='file'||s.uid!=0||s.nlink!=1||(s.mode&0o022)||s.size<1||s.size>65536)fail();
  if(!fs.chmod(path,0o600))fail();return store.read(path,65536);
@@ -365,8 +369,10 @@ export function worker_context(id) {
 export function run_backup(id,context) {
  try { return restore_backup(null,null,true,id,context); }
  catch(error) {
-  // An expired principal can fail before the worker's mutation block.
-  // Cancel only this job, never a newer owner's pending restoration.
+  // An expired principal can fail before the worker's mutation
+  // block.
+  // Cancel only this job, never a newer owner's pending
+  // restoration.
   try { if(read_journal()?.id==id)recover(); }catch(_){}
   die(error);
  }

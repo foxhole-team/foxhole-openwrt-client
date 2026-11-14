@@ -1,4 +1,5 @@
 let engine_service = { guard_mutation: () => {}, stop_intent: () => {} };
+import * as server_mode from '/workspace/package/foxhole-openwrt-client/root/usr/share/foxhole/server-mode.uc';
 import * as mobile from '/workspace/package/foxhole-openwrt-client/root/usr/share/foxhole/mobile.uc';
 import * as model from '/workspace/package/foxhole-openwrt-client/root/usr/share/foxhole/model.uc';
 
@@ -52,6 +53,7 @@ function qr_svg(_) {
 
 function reset() {
 	state = model.defaults();
+ state.settings.vpnServerEnabled = true;
 	state.revision = 3;
 	state.servers = [{ id: 'server-000000000001', name: 'Example',
 		endpoint: 'example.com:443',

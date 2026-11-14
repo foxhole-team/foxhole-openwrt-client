@@ -5,16 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="color-scheme" content="dark light">
   <meta name="theme-color" content="#000000">
-  <meta name="application-name" content="FoxHole OpenWRT Client">
+  <meta name="application-name" content="FoxHole OpenWRT">
+  <meta name="apple-mobile-web-app-title" content="FoxHole OpenWRT">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
-  <title>FoxHole OpenWRT Client</title>
+  <title>FoxHole OpenWRT</title>
   <base href="/luci-static/resources/foxhole/">
-  <link rel="icon" href="./assets/foxhole.png" type="image/png">
-  <link rel="preload" href="./assets/foxhole.png?v=1.0.6" as="image" type="image/png">
+  <link rel="icon" href="./assets/foxhole-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="./assets/foxhole-180.png" sizes="180x180">
+  <link rel="manifest" href="./manifest.json?v=1.0.8-r2">
+  <link rel="preload" href="./assets/foxhole.png?v=1.0.8-r2" as="image" type="image/png">
   <link rel="preload" href="./assets/JetBrainsMono-Regular.ttf" as="font" type="font/ttf" crossorigin>
   <link rel="preload" href="./assets/JetBrainsMono-Medium.ttf" as="font" type="font/ttf" crossorigin>
   <link rel="preload" href="./assets/Tiny5-Regular.ttf" as="font" type="font/ttf" crossorigin>
-  <link rel="stylesheet" href="./app.css?v=1.0.6">
+  <link rel="stylesheet" href="./app.css?v=1.0.8-r2">
 </head>
 <body>
   <svg class="svg-sprite" aria-hidden="true">
@@ -134,6 +139,7 @@
     <symbol id="icon-download" viewBox="0 0 24 24">
       <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2M7 11l5 5 5-5M12 4v12"/>
     </symbol>
+    <symbol id="icon-memory" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1"/><path d="M8 9v6M12 9v6M16 9v6M7 3v3M12 3v3M17 3v3M7 18v3M12 18v3M17 18v3"/></symbol>
     <symbol id="icon-floppy" viewBox="0 0 24 24">
       <path d="M5 3h12l4 4v14H3V3h2ZM7 3v6h10V3M7 21v-8h10v8M14 5v2"/>
     </symbol>
@@ -154,8 +160,8 @@
 
   <section id="pin-gate" class="pin-gate" data-view="pin" aria-labelledby="pin-prompt">
     <div class="pin-card">
-      <img class="pin-logo" src="./assets/foxhole.png?v=1.0.6" width="512" height="512" alt="FoxHole OpenWRT Client">
-      <strong class="pin-brand">FoxHole OpenWRT Client</strong>
+      <img class="pin-logo" src="./assets/foxhole.png?v=1.0.8-r2" width="512" height="512" alt="FoxHole OpenWRT">
+      <strong class="pin-brand">FoxHole OpenWRT</strong>
       <p id="pin-prompt" class="muted pin-prompt" data-i18n="auth.pin_prompt"></p>
       <form id="pin-form" data-pin-form autocomplete="off">
         <div class="pin-entry" role="group" aria-labelledby="pin-prompt">
@@ -179,9 +185,9 @@
 
   <div id="app-shell" class="app-shell" data-view="dashboard" hidden>
     <header id="topbar" class="topbar" data-topbar>
-      <a class="brand" href="#dashboard" data-action="scroll-top" aria-label="FoxHole OpenWRT Client">
-        <img src="./assets/foxhole.png?v=1.0.6" width="512" height="512" alt="">
-        <span>FoxHole OpenWRT Client</span>
+      <a class="brand" href="#dashboard" data-action="scroll-top" aria-label="FoxHole OpenWRT">
+        <img src="./assets/foxhole.png?v=1.0.8-r2" width="512" height="512" alt="">
+        <span>FoxHole OpenWRT</span>
       </a>
       <nav class="topbar-actions" data-i18n-aria-label="nav.primary">
         <button class="icon-button paired-phone-button" type="button" data-action="open-pairings" data-paired-phone-button data-i18n-title="pairing.title" data-i18n-aria-label="pairing.title">
@@ -200,6 +206,9 @@
           <svg aria-hidden="true"><use href="#icon-router"/></svg>
           <span class="visually-hidden" data-i18n="action.open_luci"></span>
         </a>
+        <button class="icon-button" type="button" data-action="open-help" data-main-help-entry data-i18n-title="help.title" data-i18n-aria-label="help.title">
+          <svg aria-hidden="true"><use href="#icon-info"/></svg>
+        </button>
         <button id="settings-button" class="icon-button" type="button" data-action="open-settings" data-i18n-title="action.settings">
           <svg aria-hidden="true"><use href="#icon-settings"/></svg>
           <span class="visually-hidden" data-i18n="action.settings"></span>
@@ -210,8 +219,10 @@
     <main id="dashboard" class="content">
       <section class="intro" data-router-status aria-labelledby="status-heading">
         <h1 id="status-heading" class="pixel-heading">
-          <span class="heading-icon" aria-hidden="true"><svg><use href="#icon-activity"/></svg></span>
-          <span data-i18n="dashboard.status"></span>
+          <button class="section-heading-toggle" type="button" data-status-heading data-action="toggle-section" data-section-id="status" aria-expanded="true" aria-controls="status-section-body">
+            <span class="heading-icon" aria-hidden="true"><svg><use href="#icon-activity"/></svg></span>
+            <span data-i18n="dashboard.status"></span>
+          </button>
         </h1>
         <div class="section-heading-actions">
           <label class="period-control" data-period-control>
@@ -313,14 +324,14 @@
 
       <section class="entity-section" aria-labelledby="servers-heading">
         <div class="section-heading">
-          <h2 id="servers-heading" class="pixel-heading">
+          <h2 id="servers-heading" class="pixel-heading section-title">
+            <button class="section-heading-toggle" type="button" data-action="toggle-section" data-section-toggle="servers" aria-expanded="true" aria-controls="servers-section-body" aria-labelledby="servers-heading-text servers-collapse-label">
             <span class="heading-icon" aria-hidden="true"><svg><use href="#icon-server"/></svg></span>
-            <span data-i18n="servers.title"></span>
+            <span id="servers-heading-text" data-i18n="servers.title"></span>
+            <span id="servers-collapse-label" class="visually-hidden" data-collapse-label data-i18n="action.collapse"></span>
+            <span class="section-collapse-button" aria-hidden="true"><svg><use href="#icon-chevron"/></svg></span>
+            </button>
           </h2>
-          <button class="section-collapse-button" type="button" data-action="toggle-section" data-section-toggle="servers" aria-expanded="true" aria-controls="servers-section-body" data-i18n-title="action.collapse">
-            <svg aria-hidden="true"><use href="#icon-chevron"/></svg>
-            <span class="visually-hidden" data-i18n="action.collapse"></span>
-          </button>
         </div>
         <div id="servers-section-body" class="section-collapse-body" data-section-body="servers">
           <div id="server-list" class="entity-list section-collapse-inner" data-server-list aria-live="polite">
@@ -332,16 +343,16 @@
         </div>
       </section>
 
-      <section class="entity-section" aria-labelledby="clients-heading">
+      <section class="entity-section" aria-labelledby="clients-heading" data-vpn-server-section hidden>
         <div class="section-heading">
-          <h2 id="clients-heading" class="pixel-heading">
+          <h2 id="clients-heading" class="pixel-heading section-title">
+            <button class="section-heading-toggle" type="button" data-action="toggle-section" data-section-toggle="clients" aria-expanded="true" aria-controls="clients-section-body" aria-labelledby="clients-heading-text clients-collapse-label">
             <span class="heading-icon" aria-hidden="true"><svg><use href="#icon-mobile"/></svg></span>
-            <span data-i18n="clients.title"></span>
+            <span id="clients-heading-text" data-i18n="clients.title"></span>
+            <span id="clients-collapse-label" class="visually-hidden" data-collapse-label data-i18n="action.collapse"></span>
+            <span class="section-collapse-button" aria-hidden="true"><svg><use href="#icon-chevron"/></svg></span>
+            </button>
           </h2>
-          <button class="section-collapse-button" type="button" data-action="toggle-section" data-section-toggle="clients" aria-expanded="true" aria-controls="clients-section-body" data-i18n-title="action.collapse">
-            <svg aria-hidden="true"><use href="#icon-chevron"/></svg>
-            <span class="visually-hidden" data-i18n="action.collapse"></span>
-          </button>
         </div>
         <div id="clients-section-body" class="section-collapse-body" data-section-body="clients">
           <div id="client-list" class="entity-list section-collapse-inner" data-client-list aria-live="polite">
@@ -352,7 +363,7 @@
           </div>
         </div>
       </section>
-      <footer class="app-footer">FoxHole OpenWRT Client</footer>
+      <footer class="app-footer">FoxHole OpenWRT</footer>
     </main>
   </div>
 
@@ -379,7 +390,7 @@
           <strong data-i18n="add.server"></strong>
           <svg class="choice-chevron" aria-hidden="true"><use href="#icon-chevron"/></svg>
         </button>
-        <button class="choice-card" type="button" data-action="add-client">
+        <button class="choice-card" type="button" data-action="add-client" data-vpn-server-only hidden>
           <span class="choice-icon" aria-hidden="true"><svg><use href="#icon-mobile"/></svg></span>
           <strong data-i18n="add.client"></strong>
           <svg class="choice-chevron" aria-hidden="true"><use href="#icon-chevron"/></svg>
@@ -523,6 +534,26 @@
     </div>
   </template>
 
+  <template id="tpl-vpn-server-enable" data-template="vpn-server-enable">
+    <div class="modal-panel" data-modal-view="vpn-server-enable" data-title-key="vpn_server.title">
+      <p data-i18n="vpn_server.description"></p>
+      <p><a href="https://github.com/apernet/hysteria" target="_blank" rel="noopener noreferrer">GitHub</a></p>
+      <div class="help-notice vpn-server-info" role="note"><svg aria-hidden="true"><use href="#icon-info"/></svg><p data-i18n="vpn_server.public_ip"></p></div>
+      <div class="vpn-server-plan" data-vpn-server-plan aria-live="polite"></div>
+    </div>
+  </template>
+
+  <template id="tpl-vpn-server-disable" data-template="vpn-server-disable">
+    <div class="modal-panel" data-modal-view="vpn-server-disable" data-title-key="vpn_server.disable_title">
+      <p data-i18n="vpn_server.disable_body"></p>
+      <label class="setting-row"><span class="setting-copy" data-i18n="vpn_server.remove_component"></span>
+        <input type="checkbox" data-vpn-server-remove-component>
+      </label>
+      <p class="muted" data-vpn-server-shared data-i18n="vpn_server.shared_component"></p>
+      <div class="vpn-server-plan" data-vpn-server-plan aria-live="polite"></div>
+    </div>
+  </template>
+
   <template id="tpl-settings-home" data-template="settings-home">
     <div class="modal-panel" data-modal-view="settings-home" data-title-key="settings.title">
       <form id="settings-form" class="settings-list" data-settings-form>
@@ -570,18 +601,19 @@
           <span class="switch"><input id="kill-switch" name="killSwitch" type="checkbox" data-setting="killSwitch"><i aria-hidden="true"></i></span>
         </div>
 
+        <div class="setting-row">
+          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-server"/></svg></span>
+          <label class="setting-copy" for="vpn-server-enabled"><strong data-i18n="vpn_server.toggle"></strong></label>
+          <span class="switch"><input id="vpn-server-enabled" type="checkbox" data-vpn-server-toggle><i aria-hidden="true"></i></span>
+        </div>
+
         <button class="setting-row is-link" type="button" data-action="open-exceptions">
           <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-globe"/></svg></span>
           <span class="setting-copy"><strong data-i18n="settings.exceptions"></strong></span>
           <svg class="row-chevron" aria-hidden="true"><use href="#icon-chevron"/></svg>
         </button>
 
-        <button class="setting-row is-link" type="button" data-action="open-updates">
-          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-download"/></svg></span>
-          <span class="setting-copy"><strong data-i18n="updates.title"></strong></span>
-          <small class="muted" data-update-summary></small>
-          <svg class="row-chevron" aria-hidden="true"><use href="#icon-chevron"/></svg>
-        </button>
+
 
         <button class="setting-row is-link" type="button" data-action="open-engines">
           <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-network"/></svg></span>
@@ -607,6 +639,18 @@
           <svg class="row-chevron" aria-hidden="true"><use href="#icon-chevron"/></svg>
         </button>
 
+        <button class="setting-row is-link" type="button" data-action="open-updates">
+          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-download"/></svg></span>
+          <span class="setting-copy"><strong><span data-i18n="updates.title"></span><sup class="update-badge" data-update-summary hidden></sup></strong></span>
+          <svg class="row-chevron" aria-hidden="true"><use href="#icon-chevron"/></svg>
+        </button>
+
+        <button class="setting-row is-link" type="button" data-action="open-about">
+          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-info"/></svg></span>
+          <span class="setting-copy"><strong data-i18n="about.title"></strong></span>
+          <svg class="row-chevron" aria-hidden="true"><use href="#icon-chevron"/></svg>
+        </button>
+
       </form>
     </div>
   </template>
@@ -626,11 +670,15 @@
   <template id="tpl-logs" data-template="logs">
     <div class="modal-panel" data-modal-view="logs" data-title-key="logs.title">
       <p class="muted" data-log-status role="status" aria-live="polite"></p>
+      <div data-log-content>
+      <p class="muted" data-i18n="logs.flash_policy"></p>
       <p class="muted" data-log-summary></p>
       <p class="muted" data-log-runtime></p>
       <section class="settings-group"><h3 data-i18n="logs.package"></h3><pre class="log-output" data-log-source="package"></pre></section>
       <section class="settings-group"><h3>FoxHole Core</h3><p class="muted" data-core-log-state></p><pre class="log-output" data-log-source="core"></pre></section>
       <section class="settings-group"><h3 data-i18n="logs.kernel"></h3><pre class="log-output" data-log-source="kernel"></pre></section>
+      <button class="outline-button is-full" type="button" data-action="logs-older" data-i18n="logs.older" hidden></button>
+      </div>
     </div>
   </template>
 
@@ -733,12 +781,21 @@
         </div>
         <div class="setting-row">
           <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-monitor"/></svg></span>
-          <label class="setting-copy" for="foxhole-style"><strong>
-            <span class="font-preview-tiny5" data-font-style="tiny5" data-i18n="font.tiny5"></span>
-            <span aria-hidden="true"> / </span>
-            <span class="font-preview-mono" data-font-style="mono" data-i18n="font.jetbrains_mono"></span>
-          </strong></label>
-          <span class="switch"><input id="foxhole-style" name="foxholeStyle" type="checkbox" data-setting="plainHeadings" data-setting-inverted><i aria-hidden="true"></i></span>
+          <span class="setting-copy"><strong data-i18n="settings.font"></strong></span>
+          <span class="setting-picker" data-setting-picker data-popup>
+            <select id="font-select" name="plainHeadings" data-setting="plainHeadings" data-value-type="boolean" hidden>
+              <option value="false" data-i18n="font.tiny5"></option>
+              <option value="true" data-i18n="font.jetbrains_mono"></option>
+            </select>
+            <button class="setting-picker-trigger font-picker-trigger" type="button" data-action="toggle-popup" data-popup-trigger aria-expanded="false" data-picker-label-key="settings.font">
+              <span class="setting-picker-value" data-setting-current></span>
+              <svg aria-hidden="true"><use href="#icon-chevron"/></svg>
+            </button>
+            <span class="setting-picker-menu font-picker-menu" role="listbox" data-setting-menu data-popup-menu hidden>
+              <button type="button" role="option" data-action="select-setting-option" data-value="false" aria-selected="true"><span class="font-preview-tiny5" data-i18n="font.tiny5"></span></button>
+              <button type="button" role="option" data-action="select-setting-option" data-value="true" aria-selected="false"><span class="font-preview-mono" data-i18n="font.jetbrains_mono"></span></button>
+            </span>
+          </span>
         </div>
         <button class="setting-row is-link" type="button" data-action="open-pin-change">
           <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-key"/></svg></span>
@@ -981,44 +1038,26 @@
     </div>
   </template>
 
+  <template id="tpl-about" data-template="about">
+    <div class="modal-panel" data-modal-view="about" data-title-key="about.title">
+      <h3 class="about-product">FoxHole OpenWRT</h3>
+      <p class="muted" data-i18n="about.description"></p>
+      <dl class="about-details">
+        <dt data-i18n="about.version"></dt><dd data-about-version></dd>
+        <dt data-i18n="about.storage"></dt><dd data-about-storage></dd>
+        <dt data-i18n="about.firmware"></dt><dd data-about-firmware></dd>
+        <dt data-i18n="about.model"></dt><dd data-about-model></dd>
+        <dt data-i18n="about.address"></dt><dd data-about-address></dd>
+        <dt data-i18n="about.home_server"></dt><dd data-about-home-server></dd>
+        <dt data-i18n="about.modules"></dt><dd data-about-modules></dd>
+      </dl>
+      <a class="outline-button is-full" href="https://github.com/foxhole-team/foxhole-openwrt-client" target="_blank" rel="noopener noreferrer" data-i18n="about.source"></a>
+    </div>
+  </template>
+
   <template id="tpl-help" data-template="help">
     <div class="modal-panel" data-modal-view="help" data-title-key="help.title">
-      <section class="help-topic">
-        <h3><svg aria-hidden="true"><use href="#icon-play"/></svg><span data-i18n="help.connect_title"></span></h3>
-        <ol>
-          <li data-i18n="help.connect_add"></li>
-          <li data-i18n="help.connect_save"></li>
-          <li data-i18n="help.connect_start"></li>
-        </ol>
-        <p class="muted" data-i18n="help.test_note"></p>
-      </section>
-      <section class="help-topic">
-        <h3><svg aria-hidden="true"><use href="#icon-globe"/></svg><span data-i18n="help.rules_title"></span></h3>
-        <ul>
-          <li data-i18n="help.rules_direct"></li>
-          <li data-i18n="help.rules_order"></li>
-          <li data-i18n="help.rules_dns"></li>
-          <li data-i18n="help.rules_country"></li>
-        </ul>
-      </section>
-      <section class="help-topic">
-        <h3><svg aria-hidden="true"><use href="#icon-shield"/></svg><span data-i18n="help.protection_title"></span></h3>
-        <p data-i18n="help.protection"></p>
-        <dl>
-          <div><dt>WAN</dt><dd data-i18n="help.wan_measurement"></dd></div>
-          <div><dt>VPN</dt><dd data-i18n="help.vpn_measurement"></dd></div>
-        </dl>
-      </section>
-      <section class="help-topic">
-        <h3><svg aria-hidden="true"><use href="#icon-key"/></svg><span data-i18n="help.access_title"></span></h3>
-        <ul>
-          <li data-i18n="help.access_pin"></li>
-          <li data-i18n="help.access_recovery"></li>
-          <li data-i18n="help.access_clients"></li>
-          <li data-i18n="help.access_client_port"></li>
-          <li data-i18n="help.hiddify"></li>
-        </ul>
-      </section>
+      <div data-help-content></div>
     </div>
   </template>
 
@@ -1054,6 +1093,6 @@
     </div>
   </template>
 
-  <script src="./app.js?v=1.0.6" type="module"></script>
+  <script src="./app.js?v=1.0.8-r2" type="module"></script>
 </body>
 </html>

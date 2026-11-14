@@ -72,7 +72,8 @@ function metadata() {
  return info;
 };
 
-// Callers hold the shared state lock through comparison and record replacement.
+// Callers hold the shared state lock through comparison and
+// record replacement.
 export function load(stamp) {
  let before = metadata(), raw = store.read(PATH, 1024), after = metadata();
  if ((before == null) != (after == null) ||

@@ -3,11 +3,20 @@ import test from 'node:test';
 import {
   maskIpv4, maskMac, ModelError, normalizeMac, normalizeSitePattern,
   normalizedState, validAddress, normalizeSettings, countryCode,
-  serverCountryCode
+  serverCountryCode, packageMetadata
 } from '../package/foxhole-openwrt-client/htdocs/luci-static/resources/foxhole/frontend-model.js';
 import {
   Charts, decimateSeries, formatBytes
 } from '../package/foxhole-openwrt-client/htdocs/luci-static/resources/foxhole/charts.js';
+
+test('installed package metadata preserves unknown version and authentic storage', () => {
+  const value = { schema: 1, product: 'foxhole', installed: true, storage: 'RAM', version: '1.0.6-r1' };
+  assert.deepEqual(packageMetadata(value), { storage: 'RAM', version: '1.0.6-r1', installedModules: null });
+  assert.deepEqual(packageMetadata({ ...value, storage: 'FLASH', version: null }), { storage: 'FLASH', version: null, installedModules: null });
+  for (const bad of [{ ...value, storage: 'ram' }, { ...value, installed: false },
+    { ...value, product: 'another' }, { ...value, version: '<script>' }])
+    assert.throws(() => packageMetadata(bad));
+});
 
 test('frontend model normalizes MAC and IP input without DOM state', () => {
   assert.equal(normalizeMac('02-11-22-33-44-55'), '02:11:22:33:44:55');
