@@ -1,5 +1,5 @@
 import { countryCode as country, countryFlagPath }
-  from './frontend-model.js?v=1.0.8-r2';
+  from './frontend-model.js?v=1.0.13-r1-ui16';
 
 const periods = { '24h': 86400000, '7d': 604800000, '30d': 2592000000 };
 const number = (value) => value == null || value === '' || !Number.isFinite(Number(value)) ? null : Number(value);

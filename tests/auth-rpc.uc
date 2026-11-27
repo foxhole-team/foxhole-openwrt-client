@@ -2,6 +2,7 @@ import * as pairing from '/workspace/package/foxhole-openwrt-client/root/usr/sha
 import * as digest from 'digest';
 import * as update_model from '/workspace/package/foxhole-openwrt-client/root/usr/share/foxhole/update-model.uc';
 
+let initial_updates = { pending: () => null };
 let sessions = {}, setup = true, stored = null, locked_depth = 0;
 let bootstrap = null, pairing_writes = 0;
 let paired_record = pairing.defaults(), token_number = 0;

@@ -62,3 +62,19 @@ test('RAM descriptor parser keeps an exact OS string and still requires all bank
  for(const patch of [{osRelease:'25.12.7'},{osRelease:['25.12.5','25.12.6']},{baseSha256:null},{signerPemSha256:null},
   {target:'x86/64'},{arch:'armv7'}])assert.throws(()=>scope.descriptor({...value,...patch}));
 });
+
+test('post-update package compatibility requires the exact live RPC identity', () => {
+ const expected={schema:1,product:'foxhole',installed:true,storage:'RAM',version:'1.0.9-r2',packageUpdates:true};
+ for (const [replies, passes] of [[[null, expected], true], [[{...expected,storage:'FLASH'}], false],
+  [[{...expected,version:'1.0.8-r2'}], false], [[{...expected,packageUpdates:false}], false]]) {
+  let attempts=0, disconnects=0;
+  const scope=vm.createContext({ubus:{connect:()=>({call:(name,method,args)=>{
+   assert.equal(name,'foxhole'); assert.equal(method,'package.status'); assert.deepEqual(Object.keys(args),[]);
+   return replies[Math.min(attempts++, replies.length-1)];}, disconnect:()=>disconnects++})},
+  sleep:()=>true,guard:{fail:reason=>{throw Error(reason);}}});
+  vm.runInContext(`function require_package_ready(storage, version) ${functionBody(native,'require_package_ready')}`, scope);
+  if (passes) assert.doesNotThrow(()=>scope.require_package_ready('RAM','1.0.9-r2'));
+  else assert.throws(()=>scope.require_package_ready('RAM','1.0.9-r2'), /PACKAGE_VERIFICATION_FAILED/);
+  assert.equal(disconnects,attempts);
+ }
+});

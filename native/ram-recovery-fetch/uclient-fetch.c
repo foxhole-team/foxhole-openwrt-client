@@ -18,6 +18,8 @@
 
 #define _GNU_SOURCE
 #include <sys/stat.h>
+#include <sys/wait.h>
+#include <sys/prctl.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -48,6 +50,12 @@ struct header {
 	char *value;
 };
 
+#define FOXHOLE_API "https://api.github.com/repos/foxhole-team/foxhole-openwrt-client/releases/"
+static bool github_metadata;
+static const char github_selector[] =
+#include "github-selector.inc"
+;
+
 static const char *user_agent = "foxhole-ram-fetch/1";
 static const char *method = NULL;
 static const char *post_data;
@@ -71,6 +79,8 @@ static char **urls;
 static int n_urls;
 static int timeout = 60;
 static int redirects;
+static bool github_release;
+static const char *initial_url;
 static bool resume, cur_resume;
 static LIST_HEAD(headers);
 
@@ -182,15 +192,20 @@ out:
 
 static bool foxhole_redirect_allowed(struct uclient *cl)
 {
-	struct blobmsg_policy location = { .name = "location", .type = BLOBMSG_TYPE_STRING };
-	struct blob_attr *value;
+	struct blob_attr *field;
+	const char *location = NULL;
+	int rem;
 
 	if (!uclient_http_status_redirect(cl))
 		return true;
-	if (redirects >= 10)
-		return false;
-	blobmsg_parse(&location, 1, &value, blob_data(cl->meta), blob_len(cl->meta));
-	return value && foxhole_https_url(blobmsg_get_string(value));
+	if (github_metadata) return false;
+	blobmsg_for_each_attr(field, cl->meta, rem) {
+		if (strcmp(blobmsg_name(field), "location")) continue;
+		if (location || blobmsg_type(field) != BLOBMSG_TYPE_STRING) return false;
+		location = blobmsg_get_string(field);
+		if ((size_t)blobmsg_data_len(field) != strlen(location)+1) return false;
+	}
+	return location && foxhole_recovery_hop(github_release, initial_url, location, redirects);
 }
 
 static void header_done_cb(struct uclient *cl)
@@ -214,7 +229,14 @@ static void header_done_cb(struct uclient *cl)
 		return;
 	}
 
-	if (redirects < 10) {
+	if (github_release && !uclient_http_status_redirect(cl) &&
+	    (cl->status_code != 200 || (!github_metadata && redirects != 1))) {
+		fprintf(stderr, "RAM release fetch requires a complete response\n");
+		error_ret = 8;
+		request_done(cl);
+		return;
+	}
+	if (uclient_http_status_redirect(cl)) {
 		int ret = uclient_http_redirect(cl);
 		if (ret < 0) {
 			if (!quiet)
@@ -317,6 +339,11 @@ static void read_data_cb(struct uclient *cl)
 		if (len <= 0)
 			return;
 
+		if (github_metadata && out_bytes > 262144-len) {
+			error_ret = 8;
+			request_done(cl);
+			return;
+		}
 		out_bytes += len;
 		if (no_output)
 			continue;
@@ -414,6 +441,8 @@ static int init_request(struct uclient *cl)
 	}
 
 	uclient_http_set_header(cl, "User-Agent", user_agent);
+	if (github_release)
+		uclient_http_set_header(cl, "Accept", github_metadata ? "application/vnd.github+json" : "application/octet-stream");
 
 	if (cur_resume)
 		check_resume_offset(cl);
@@ -699,7 +728,94 @@ static const struct option longopts[] = {
 
 
 
+
+static int fetch(int argc, char **argv);
+
+static bool child_ok(pid_t pid)
+{
+ int status;
+ while (waitpid(pid, &status, 0) < 0)
+  if (errno != EINTR) return false;
+ return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+}
+
+static bool stay_with_parent(pid_t parent)
+{
+ return prctl(PR_SET_PDEATHSIG, SIGKILL, 0, 0, 0) == 0 && getppid() == parent;
+}
+
+static bool select_asset(const char *stable, const char *tag, const char *filename, char id[18])
+{
+ char endpoint[192];
+ int body[2], result[2];
+ if (snprintf(endpoint, sizeof(endpoint), FOXHOLE_API "tags/%s", tag) >= (int)sizeof(endpoint) || pipe(body))
+  return false;
+ if (pipe(result)) { close(body[0]); close(body[1]); return false; }
+ pid_t parent = getpid(), producer = fork();
+ if (!producer) {
+  if (!stay_with_parent(parent) || dup2(body[1], STDOUT_FILENO) < 0) _exit(1);
+  close(body[0]); close(body[1]); close(result[0]); close(result[1]);
+  github_metadata = true;
+  char *args[] = {"foxhole-ram-fetch", endpoint, NULL};
+  _exit(fetch(2, args));
+ }
+ pid_t parser = producer < 0 ? -1 : fork();
+ if (!parser) {
+  if (!stay_with_parent(parent) || dup2(body[0], STDIN_FILENO) < 0 || dup2(result[1], STDOUT_FILENO) < 0) _exit(1);
+  close(body[0]); close(body[1]); close(result[0]); close(result[1]);
+  char *const args[] = {"/usr/bin/ucode", "-e", (char *)github_selector, "--",
+                        (char *)tag, (char *)filename, (char *)stable, NULL};
+  char *const env[] = {"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL=C", NULL};
+  execve(args[0], args, env);
+  _exit(1);
+ }
+ close(body[0]); close(body[1]); close(result[1]);
+ size_t used = 0;
+ bool complete = false;
+ while (used < 17) {
+  ssize_t n = read(result[0], id + used, 17 - used);
+  if (n < 0 && errno == EINTR) continue;
+  if (n <= 0) { complete = n == 0; break; }
+  used += n;
+ }
+ close(result[0]);
+ bool fetched = producer > 0 && child_ok(producer);
+ bool parsed = parser > 0 && child_ok(parser);
+ if (!fetched || !parsed || !complete || used == 0 || used > 16 || id[0] == '0') return false;
+ id[used] = 0;
+ return strspn(id, "0123456789") == used;
+}
+
 int main(int argc, char **argv)
+{
+	if (!foxhole_recovery_arguments(argc, argv)) {
+		fprintf(stderr, "Usage: foxhole-ram-fetch [--github-release] [--ca-certificate FILE] HTTPS_URL\n");
+		return 1;
+	}
+ initial_url = argv[argc-1];
+ github_release = !strcmp(argv[1], "--github-release");
+ if (!github_release) {
+  fprintf(stderr, "FoxHole HTTPS-only fetch v1\n");
+  return fetch(argc, argv);
+ }
+ const char *name = foxhole_github_filename(initial_url), *start = initial_url + sizeof(FOXHOLE_GITHUB_ORIGIN)-1;
+ char tag[24], id[18], endpoint[192];
+ size_t tag_size = (size_t)(name - start - 1);
+ if (!tag_size || tag_size >= sizeof(tag)) return 1;
+ memcpy(tag, start, tag_size); tag[tag_size] = 0;
+ quiet = true;
+ if (!select_asset(initial_url, tag, name, id)) {
+  fprintf(stderr, "GitHub release asset could not be verified\n");
+  return 8;
+ }
+ if (snprintf(endpoint, sizeof(endpoint), FOXHOLE_API "assets/%s", id) >= (int)sizeof(endpoint)) return 1;
+ char *args[] = {"foxhole-ram-fetch", endpoint, NULL};
+ int status = fetch(2, args);
+ if (!status) fprintf(stderr, "FoxHole GitHub release fetch v2\n");
+ return status;
+}
+
+static int fetch(int argc, char **argv)
 {
 	const char *progname = argv[0];
 	const char *proxy_url;
@@ -715,11 +831,6 @@ int main(int argc, char **argv)
 	int af = -1;
 	int debug_level = 0;
 
-	if (!foxhole_recovery_arguments(argc, argv)) {
-		fprintf(stderr, "Usage: foxhole-ram-fetch [--ca-certificate FILE] HTTPS_URL\n");
-		return 1;
-	}
-	fprintf(stderr, "FoxHole HTTPS-only fetch v1\n");
 	signal(SIGPIPE, SIG_IGN);
 	ssl_ctx = uclient_new_ssl_context(&ssl_ops);
 

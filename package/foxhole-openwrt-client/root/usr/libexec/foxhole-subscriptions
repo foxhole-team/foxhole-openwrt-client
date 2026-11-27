@@ -1,0 +1,4 @@
+#!/usr/bin/ucode
+'use strict';
+import * as subscriptions from '/usr/share/foxhole/subscriptions.uc';
+try { subscriptions.tick(); } catch (_) { exit(1); }

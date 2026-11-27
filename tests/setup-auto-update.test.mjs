@@ -13,9 +13,10 @@ function model() {
   index: (values, value) => values.indexOf(value), lc: value => value.toLowerCase(),
   die: reason => { throw new Error(reason); }
  });
- for (const [name, args] of [['fail', 'reason'], ['safe_int', 'value'], ['policy', 'value'],
+ for (const [name, args] of [['fail', 'reason'], ['safe_int', 'value'], ['initial_owner_policy', 'auth'],
+  ['policy', 'value,auth'], ['empty_install', 'state,pairs'], ['first_owner_choice', 'auth,offered,requested,configured'],
   ['fresh_setup', 'auth,state,pairs,configured']])
-  vm.runInContext(`function ${name}(${args}) ${functionBody(source, name)}`, scope);
+  vm.runInContext(`function ${name}(${args}) ${functionBody(source, name).replace(/for \(let (\w+) in /g, 'for (let $1 of ')}`, scope);
  return scope;
 }
 function fresh() {
@@ -45,7 +46,27 @@ test('legacy missing policy, configured auth, reset and prior owner records rema
   assert.equal(model().fresh_setup(value.auth, value.state, value.pairs, false), false);
  }
 });
-test('fresh web setup persists the selected ON default or explicit OFF through authenticated Settings', async () => {
+test('the first owner commits the effective choice while bootstrap and unclaimed legacy remain off', () => {
+ const m = model(), original = fresh().auth;
+ for (const offered of [true, false, null]) {
+  for (const requested of [true, false, null]) {
+   const saved = m.first_owner_choice(original, offered, requested, false);
+   const enabled = offered === null ? null : offered && requested !== false;
+   assert.equal(saved, enabled);
+   assert.equal(m.policy(null, original).enabled, false);
+   const owner = { changed: true, initialPackageAutoUpdate: saved };
+   assert.equal(m.policy(null, owner).enabled, enabled === true);
+   assert.equal(m.first_owner_choice(owner, true, !enabled, false), enabled);
+   assert.equal(m.first_owner_choice(original, offered, requested, true), null);
+  }
+ }
+ const storedOff = { schema: 1, revision: 6, enabled: false, lastAttemptAtUnixMs: null };
+ assert.equal(m.policy(storedOff, { changed: true, initialPackageAutoUpdate: true }), storedOff);
+ assert.equal(m.first_owner_choice({ changed: false, resetPending: true, initialPackageAutoUpdate: false }, true, true, false), false);
+ assert.throws(() => m.policy(null, { changed: true, initialPackageAutoUpdate: 'false' }), /recovery_required/);
+});
+
+test('legacy web setup persists the selected choice through authenticated Settings', async () => {
  for (const enabled of [true, false]) {
   const calls = [];
   const result = await initializeUpdatePolicy(true, enabled, async (action, payload) => {
@@ -89,4 +110,32 @@ test('the fresh web choice is selected separately above unchecked license accept
  assert.match(app, /result\.autoUpdateSetupEligible === true && pinSetupRequired/);
  assert.match(app, /initializeUpdatePolicy\(true, autoUpdates, api\)/);
  assert.match(app, /openView\('updates', \{\}, true\)/);
+});
+
+test('the modern panel sends the first choice with the PIN in one request and preserves the legacy flow', async () => {
+ const app = await read(`${packageRoot}/htdocs/luci-static/resources/foxhole/app.js`);
+ for (const atomic of [true, false]) {
+  for (const offered of [true, false]) {
+   for (const selected of [true, false]) {
+    const calls = [], fallback = [];
+    const form = { classList: { remove() {} }, reset() {} };
+    const elements = { '[data-pin-change-form]': form, '[data-new-pin]': { value: '123456' },
+     '[data-repeat-pin]': { value: '123456' }, '[data-license-accept]': { checked: true },
+     '[data-initial-auto-update]': { checked: selected } };
+    const context = vm.createContext({ $: key => elements[key], token: null, pinSetupRequired: true,
+     licenseRequired: true, licenseRequiredVersion: 1, LICENSE_VERSION: 1, autoUpdateSetupEligible: offered,
+     initialAutoUpdateSupported: atomic, operation: async fn => fn(), t: value => value, toast() {},
+     openView: async () => {}, poll() {}, api: async (action, payload) => {
+      calls.push({ action, payload });
+      return { token: 'b'.repeat(64), autoUpdateSetupEligible: offered };
+     }, initializeUpdatePolicy: async (eligible, enabled) => fallback.push([eligible, enabled]) });
+    vm.runInContext(`async function savePin() ${functionBody(app, 'savePin')}`, context);
+    await context.savePin();
+    assert.deepEqual(JSON.parse(JSON.stringify(calls)), [{ action: 'pin.change', payload: {
+     newPin: '123456', ...(atomic && offered ? { initialAutoUpdateEnabled: selected } : {}),
+     licenseAccepted: true, licenseVersion: 1 } }]);
+    assert.deepEqual(fallback, !atomic && offered ? [[true, selected]] : []);
+   }
+  }
+ }
 });

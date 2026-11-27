@@ -44,7 +44,7 @@
   ],
   "libuboxRevision": "7dd127841e82eb1cfb61185da37dde7b9bd9ba6d",
   "ustreamSslRevision": "99f1c0db5a729f615bc5114b3b52fd8ac8083f34",
-  "transportPolicy": "single credential-free HTTPS GET to stdout; only absolute HTTPS redirects; stock TLS and CA validation; no proxy, custom headers, POST or insecure mode",
+  "transportPolicy": "fixed credential-free HTTPS GETs with system hostname and CA verification; direct mode permits same-authority HTTPS redirects; GitHub mode resolves the exact official tag using the bounded native ucode selector, authenticates the matching numeric release asset ID, then permits one checked handoff from its official API URL to the release-assets host, exact repository ID and matching asset filename",
   "runtimeQualification": "not claimed by source or host URL-policy tests",
   "licenses": [
     "ISC (uclient and public headers)",

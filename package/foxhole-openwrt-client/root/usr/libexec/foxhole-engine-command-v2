@@ -31,6 +31,10 @@ case "$timeout" in ''|*[!0-9]*) exit 1 ;; esac
 [ "$timeout" -ge 1000 ] && [ "$timeout" -le 130000 ] || exit 1
 case "${1-}" in
  /usr/bin/apk|/usr/bin/sha256sum|/bin/df) ;;
+ /usr/sbin/nft)
+  [ "$#" -eq 7 ] && [ "$2" = -j ] && [ "$3" = list ] && [ "$4" = set ] &&
+   [ "$5" = inet ] && [ "$6" = fw4 ] && [ "$7" = foxhole_inbound_ports ] &&
+   [ "$limit" -eq 8192 ] && [ "$timeout" -eq 5000 ] || exit 1 ;;
  /sbin/logread)
   [ "$#" -eq 5 ] && [ "$2" = -l ] && [ "$3" = 128 ] && [ "$4" = -e ] && [ "$5" = foxhole ] || exit 1 ;;
  /bin/dmesg) [ "$#" -eq 1 ] || exit 1 ;;

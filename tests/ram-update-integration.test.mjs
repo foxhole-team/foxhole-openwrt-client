@@ -82,12 +82,25 @@ test('device RPC wire fields, HTTPS and access scopes match the shared controlle
   assert.match(functionBody(rpc, 'package_status'), /update_service\.deployment\(\)/);
   assert.doesNotMatch(functionBody(rpc, 'package_status'), /1\.0\.1/);
 });
-test('backend default is off and pairing/setup identity paths do not rewrite update policy', async () => {
-  const model = await read(`${packageRoot}/root/usr/share/foxhole/update-model.uc`);
-  assert.match(functionBody(model, 'policy'), /value == null[\s\S]*enabled:false/);
+test('pairing and public status cannot overwrite storage-specific owner policy', async () => {
+  for (const [name, namespace] of [['update-service', 'model'], ['ram-update-service', 'updates']]) {
+    const backend = await read(`${packageRoot}/root/usr/share/foxhole/${name}.uc`), calls = [];
+    const context = vm.createContext({ POLICY: 'policy', saved: null, owner: { changed: true },
+      read(path) { calls.push(path); return path === 'policy' ? context.saved : context.owner; },
+      [namespace]: { policy: (saved, owner) => ({ saved, owner }) } });
+    vm.runInContext(`function policy() ${functionBody(backend, 'policy')}`, context);
+    assert.deepEqual(plain(context.policy()), { saved: null, owner: { changed: true } });
+    assert.deepEqual(calls, ['policy','/etc/foxhole/auth.json']);
+    calls.length = 0;
+    context.saved = { enabled: false, revision: 3 };
+    assert.deepEqual(plain(context.policy()), { saved: context.saved, owner: null });
+    assert.deepEqual(calls, ['policy']);
+  }
   const rpc = await read(`${packageRoot}/root/usr/share/rpcd/ucode/foxhole.uc`);
-  for (const name of ['pair_create', 'pair_unlock', 'phone_provision', 'package_status'])
+  for (const name of ['pair_create', 'pair_unlock', 'phone_provision'])
     assert.doesNotMatch(functionBody(rpc, name), /update_service\.settings|autoUpdateEnabled|update-policy\.json/);
+  const publicStatus = functionBody(rpc, 'package_status');
+  assert.doesNotMatch(publicStatus, /write_json|update_service\.settings|fs\.(?:writefile|unlink|rename)|store\.write/);
   const setup = await read(`${packageRoot}/root/usr/libexec/foxhole-bootstrap-enroll`);
   assert.doesNotMatch(setup, /autoUpdate|update-policy\.json/);
 });

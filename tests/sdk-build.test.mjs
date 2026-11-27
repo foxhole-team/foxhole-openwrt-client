@@ -50,7 +50,11 @@ const mocks = {
       *foxcore-cli-ram/compile*)
         touch bin/packages/foxcore-cli-ram-1.0.2-r2.apk ;;
       *foxhole-openwrt-client/compile*)
-        touch bin/packages/foxhole-openwrt-client-1.2.3-r4.apk ;;
+        case "$*" in
+          *FOXHOLE_BASE_ROLE=managed-ram*)
+            touch bin/packages/foxhole-openwrt-client-1.2.3-r2.apk ;;
+          *) touch bin/packages/foxhole-openwrt-client-1.2.3-r4.apk ;;
+        esac ;;
     esac
   `
 };
@@ -170,6 +174,15 @@ test('Server RAM without a verified native producer fails before SDK setup', asy
   assert.equal(result.status, 2);
   assert.match(result.stderr, /verified native producer/);
   await assert.rejects(readFile(join(directory, 'scratch')), { code: 'ENOENT' });
+});
+
+test('SDK wrapper selects the declared managed RAM revision without evaluating metadata', async t => {
+  const metadata = 'PKG_VERSION:=1.2.3\nFOXHOLE_BASE_ROLE?=flash\nifeq ($(FOXHOLE_BASE_ROLE),flash)\n' +
+    'PKG_RELEASE:=1\nelse ifeq ($(FOXHOLE_BASE_ROLE),managed-ram)\nPKG_RELEASE:=2\nelse\n' +
+    '$(error Unsupported FOXHOLE_BASE_ROLE)\nendif\n';
+  const { directory, result } = await fixture(t, 0, false, ['--base-role','managed-ram'], metadata);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(await readFile(join(directory, 'compile.args'), 'utf8'), /FOXHOLE_BASE_ROLE=managed-ram/);
 });
 
 for (const [name, metadata] of [

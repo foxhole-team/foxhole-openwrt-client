@@ -5,6 +5,7 @@ while :; do
  /usr/libexec/foxhole-probe >/dev/null 2>&1
  /usr/libexec/foxhole-history >/dev/null 2>&1
  /usr/libexec/foxhole-update-job tick >/dev/null 2>&1
+ /usr/libexec/foxhole-subscriptions >/dev/null 2>&1
  if [ "$journal_tick" -eq 0 ]; then
   /usr/libexec/foxhole-journal >/dev/null 2>&1
  fi

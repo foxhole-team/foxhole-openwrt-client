@@ -18,13 +18,13 @@ function run(command, args) {
 test('native catalog root and unique-index Python regressions', () => {
   assert.match(run('python3', [
     '-B', 'tests/test-build-engine-catalog-root.py'
-  ]), /Ran 12 tests[\s\S]*OK/);
+  ]), /Ran 15 tests[\s\S]*OK/);
 });
 
 test('global artifact universe includes every anchored archive', () => {
   assert.match(run('python3', [
     '-B', 'tests/test_compact_engine_artifacts.py'
-  ]), /Ran 4 tests[\s\S]*OK/);
+  ]), /Ran 12 tests[\s\S]*OK/);
 });
 
 test('actual ucode strict root layout regressions', () => {
@@ -54,5 +54,5 @@ test('registry architecture uses the strict APK architecture file without invoki
 test('prebuilt Hysteria packaging does not require a Go helper or compiler', () => {
   assert.match(run('python3', [
     '-B', 'tests/test_hysteria_prebuilt_make.py'
-  ]), /Ran 5 tests[\s\S]*OK/);
+  ]), /Ran 7 tests[\s\S]*OK/);
 });

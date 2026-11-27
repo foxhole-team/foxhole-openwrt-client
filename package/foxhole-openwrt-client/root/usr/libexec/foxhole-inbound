@@ -86,32 +86,26 @@ function rebind_observations(state, signature, base, clients) {
 		if (store.read(directory + '/generation', 128) != signature) return false;
 		let record = json(store.read(directory + '/observations.json', 8192) || 'null');
 		let ids = inbound.shared(base) ? (length(clients) ? ['shared'] : []) : map(clients, c => c.id);
-		if (record?.schema != 1 || record.generation != signature || type(record.revision) != 'int' ||
+		if (record?.schema != 2 || record.generation != signature || type(record.revision) != 'int' ||
 		    record.revision < 0 || record.revision > state.revision ||
 		    type(record.listeners) != 'array' || length(record.listeners) != length(ids)) return false;
 		for (let i = 0; i < length(ids); i++) {
 			let item = record.listeners[i], id = ids[i];
 			if (item?.id != id) return false;
 			let expected = observation.stats_config(id == 'shared' ? 0 : i + 1, item.secret);
-			let config = json(store.read(directory + '/' + id + '.json', 65536));
-			if (item.listen != expected.listen || config?.trafficStats?.listen != expected.listen ||
-			    config.trafficStats.secret != expected.secret) return false;
-			if (config.auth?.type != 'userpass' || type(config.auth.userpass) != 'object') return false;
-			let users = keys(config.auth.userpass);
-			if (length(users) != (id == 'shared' ? length(clients) : 1)) return false;
-			for (let user in users) {
-				let client = filter(clients, c => c.id == user)[0];
-				if (!client || (id != 'shared' && user != id) ||
-				    config.auth.userpass[user] != client.secret) return false;
-			}
+			let users = inbound.listener_users(id, clients, base.legacyUsers);
+			let stamp = observation.witness(id, observation.config_hash(id), expected, users);
+			if (!stamp || item.witness != stamp || item.listen != expected.listen) return false;
 		}
 		store.target('/etc/foxhole/state.lock');
 		lock = fs.open('/etc/foxhole/state.lock', 'a+', 0o600);
 		if (!lock?.lock('x') || !store.file_metadata(fs.lstat('/etc/foxhole/state.lock'))) return false;
 		let latest = model.validate_state(json(store.read('/etc/foxhole/state.json', 262144)));
 		if (sprintf('%J', latest) != sprintf('%J', state)) return false;
-		record.revision = state.revision;
-		store.write(directory + '/observations.json', sprintf('%J', record));
+		if (record.revision != state.revision) {
+			record.revision = state.revision;
+			store.write(directory + '/observations.json', sprintf('%J', record));
+		}
 		return true;
 	};
 	let result = false;
@@ -159,32 +153,71 @@ if (sprintf('%J', latest) != sprintf('%J', state)) die('state_changed');
 let ports = [], observations = [];
 let listeners = inbound.shared(base) ?
 	(length(clients) ? ['shared'] : []) : map(clients, c => c.id);
-for (let i = 0; i < length(listeners); i++) {
-	let id = listeners[i];
-	let client = filter(clients, c => c.id == id)[0];
+function legacy_listeners(signature, revision, listeners) {
+	try {
+		if (store.read(directory + '/generation', 128) != signature) return null;
+		let old = json(store.read(directory + '/observations.json', 8192) || 'null');
+		if (old?.schema != 1 || old.generation != signature || type(old.revision) != 'int' ||
+		    old.revision < 0 || old.revision > revision || type(old.listeners) != 'array' ||
+		    length(old.listeners) != length(listeners)) return null;
+		for (let i = 0; i < length(listeners); i++) {
+			let id = listeners[i], item = old.listeners[i];
+			if (item?.id != id || observation.stats_config(id == 'shared' ? 0 : i + 1, item.secret).listen != item.listen)
+				return null;
+		}
+		return old.listeners;
+	} catch (_) { return null; }
+};
+
+function fresh_stats(slot) {
 	let random = fs.readfile('/dev/urandom', 32);
 	if (length(random || '') != 32) die('storage_error');
-	let stats = observation.stats_config(id == 'shared' ? 0 : i + 1, hexenc(random));
-	push(observations, { id, ...stats });
-	let value = id == 'shared' ?
-		inbound.shared_config(base, state, clients, connected, prefixes, stats, managementBindings) :
-		inbound.config(base, state, client, connected, prefixes, stats, managementBindings);
-	let path = directory + '/' + id + '.json';
-	store.write(path, sprintf('%J', value));
+	return observation.stats_config(slot, hexenc(random));
+};
+
+function write_listener(id, slot, previous, build) {
+	let stats = previous ? observation.stats_config(slot, previous.secret) : fresh_stats(slot);
+	let value = build(stats), body = sprintf('%J', value), hash = digest.sha256(body);
+	// Schema 1 has no digest. Rebuild its bytes before reusing it.
+	let changed = !previous || observation.config_hash(id) != hash;
+	if (changed) {
+		if (previous) {
+			stats = fresh_stats(slot);
+			value.trafficStats = stats;
+			body = sprintf('%J', value);
+			hash = digest.sha256(body);
+		}
+		store.write(directory + '/' + id + '.json', body);
+	}
+	return { changed, listener: { id, ...stats,
+		witness: observation.witness(id, hash, value.trafficStats, value.auth.userpass) } };
+};
+
+let legacy = ARGV[0] != 'force' ? legacy_listeners(signature, state.revision, listeners) : null;
+let restart = legacy == null;
+for (let i = 0; i < length(listeners); i++) {
+	let id = listeners[i], client = filter(clients, c => c.id == id)[0];
+	let result = write_listener(id, id == 'shared' ? 0 : i + 1, legacy ? legacy[i] : null, stats =>
+		id == 'shared' ? inbound.shared_config(base, state, clients, connected, prefixes, stats, managementBindings) :
+		inbound.config(base, state, client, connected, prefixes, stats, managementBindings));
+	push(observations, result.listener);
 	push(ports, id == 'shared' ? 443 : client.port);
+	if (result.changed) restart = true;
 }
-publish_ports(ports);
-store.write(directory + '/clients', join('\n', listeners) + '\n');
-for (let name in fs.lsdir(directory) || []) {
-	if (match(name, /^(client-[a-f0-9]{12}|shared)\.json$/) &&
-	    !length(filter(listeners, id => id + '.json' == name)))
-		fs.unlink(directory + '/' + name);
+if (restart) {
+	publish_ports(ports);
+	store.write(directory + '/clients', join('\n', listeners) + '\n');
+	for (let name in fs.lsdir(directory) || []) {
+		if (match(name, /^(client-[a-f0-9]{12}|shared)\.json$/) &&
+		    !length(filter(listeners, id => id + '.json' == name)))
+			fs.unlink(directory + '/' + name);
+	}
+	if (system(['/etc/init.d/foxhole-inbound-services', 'restart'], 15000) != 0)
+		die('inbound_start_failed');
 }
-if (system(['/etc/init.d/foxhole-inbound-services', 'restart'], 15000) != 0)
-	die('inbound_start_failed');
 store.write(directory + '/generation', signature);
 store.write(directory + '/observations.json', sprintf('%J', {
-	schema: 1, generation: signature, revision: state.revision, listeners: observations
+	schema: 2, generation: signature, revision: state.revision, listeners: observations
 }));
 store.write(directory + '/status.json', sprintf('%J', {
 	viaVpn: connected && state.settings.clientRules,

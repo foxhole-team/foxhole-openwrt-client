@@ -84,7 +84,10 @@ function profile_locked(fn) {
  try{let value=fn();handle.lock('u');handle.close();return value;}
  catch(error){try{handle.lock('u');handle.close();}catch(_){}die(error);}
 };
-function policy() {return updates.policy(read(POLICY,8192));};
+function policy() {
+ let saved=read(POLICY,8192);
+ return updates.policy(saved,saved==null?read('/etc/foxhole/auth.json',4096):null);
+};
 function state() {
  let value=read(STATE);
  if(value!=null&&(value.schema!=1||!model.integer(value.revision)||value.revision>=0x7ffffffe))fail('RECOVERY_REQUIRED');
@@ -222,7 +225,10 @@ function stage_candidate(archive,manifest,id) {
  if(length(signed_root)!=1||!fs.chmod(directory+'/root',signed_root[0].acl.mode))fail('PACKAGE_VERIFICATION_FAILED');
  native_command('extract',[directory+'/keys',archive,directory+'/root'],4096);
  verify_payload(directory,document);
- let policy=model.policy(decode(directory+'/root/usr/share/foxhole/update-policy.json',8192),manifest.version,manifest.releaseTag,native.target().release);
+ let policy_path=directory+'/root/usr/share/foxhole/update-policy.json';
+ let modern_path=directory+'/root/usr/share/foxhole/update-policy-v2.json';
+ let policy=model.policy_records(decode(policy_path,8192),fs.lstat(modern_path)?decode(modern_path,8192):null,
+  manifest.version,manifest.releaseTag,native.target().release);
  if(digest.sha256(raw(directory+'/root'+KEY,16384,false))!=model.signer_sha256)fail('PACKAGE_VERIFICATION_FAILED');
  let recovery=bootstrap.prove(manifest,digest.sha256(sprintf('%J',document)));
  if(digest.sha256(raw(archive,model.maximum_apk_bytes,false))!=manifest.sha256)fail('PACKAGE_VERIFICATION_FAILED');
@@ -396,23 +402,6 @@ function failure_reason(error) {
  let reason=index(['update_','engine_'],substr(code||'',0,7))>=0?uc(substr(code,7)):'PACKAGE_VERIFICATION_FAILED';
  return index(updates.reasons,reason)>=0?reason:'PACKAGE_VERIFICATION_FAILED';
 };
-function failed(job,error) {
- let reason=failure_reason(error);
- let stop_changed=job.stopIntent!=stop_intent();if(stop_changed&&!job.mutationStarted)reason='STALE_PLAN';
- if(job.operation=='CHECK') {
-  let value=state(),relay=value.relayEvidence?.jobId==job.jobId&&value.deviceDownloadRequired==true&&
-   !stop_changed&&authorized(job);
-  record_check_failure(job,reason,relay&&value.relayEvidence.cohortKind=='CORE'?'CORE':relay);
- }
- transaction(()=>profile_locked(()=>{
-  let live=job_record();if(live?.jobId!=job.jobId)fail('RECOVERY_REQUIRED');
-  job.cancelledByStop=job.stopIntent!=stop_intent();if(job.cancelledByStop&&!job.mutationStarted)reason='STALE_PLAN';
-  job.failureReason=job.mutationStarted?'RECOVERY_REQUIRED':reason;job.atomicPackagePhase=false;
-  job.state=job.mutationStarted?'RECOVERY_REQUIRED':'FAILED';job.step=job.state;save_job(job);
- }));
- if(job.mutationStarted&&job.cancelledByStop&&data_state().activeServerId==null)
-  system(['/etc/init.d/foxhole-runtime','restart'],30000);
-};
 function require_candidate_manifest(receipt) {
  if(receipt.schema!=1||!model.candidate_id(receipt.id)||!model.version(receipt.version)||!model.sha(receipt.sha256)||
   receipt.root!=candidate_directory(receipt.id)+'/root'||receipt.archive!=candidate_directory(receipt.id)+'/base.apk')fail('PACKAGE_VERIFICATION_FAILED');
@@ -468,6 +457,40 @@ function protected_unchanged(before,job) {
   for(let path in ['/etc/foxhole/state.json','/etc/foxhole/engine-intent.json']){delete before[path];delete after[path];}
  }
  if(!same(before,after))fail('RECOVERY_REQUIRED');
+};
+function restored_base(job) {
+ if(job.previous==null||job.plan?.candidate?.component=='CORE')return false;
+ try {
+  let receipt=read('/etc/foxhole/ram-update/switches/'+job.jobId+'.json',131072);
+  if(receipt?.schema!=1||receipt.kind!='foxhole-ram-switch-journal-v1'||receipt.jobId!=job.jobId||
+   receipt.bootId!=job.bootId||receipt.owner!=digest.sha256(sprintf('%J',job.worker))||receipt.phase!='ROLLED_BACK')return false;
+  let installed=current();
+  if(installed.version!=job.previous.version||installed.marker.stage!=job.previous.stage||
+   installed.marker.baseSha256!=job.previous.sha256||
+   digest.sha256(raw('/tmp/foxhole-ram-active.json',4096,false))!=job.previous.markerSha256||
+   digest.sha256(raw(installed.root+'/lib/apk/db/installed',4194304,false))!=job.previous.stageDbSha256)return false;
+  profile_locked(()=>protected_unchanged(job.protectedBefore,job));
+  return true;
+ }catch(_){return false;}
+};
+function failed(job,error) {
+ let reason=failure_reason(error);
+ let stop_changed=job.stopIntent!=stop_intent();if(stop_changed&&!job.mutationStarted)reason='STALE_PLAN';
+ if(job.operation=='CHECK') {
+  let value=state(),relay=value.relayEvidence?.jobId==job.jobId&&value.deviceDownloadRequired==true&&
+   !stop_changed&&authorized(job);
+  record_check_failure(job,reason,relay&&value.relayEvidence.cohortKind=='CORE'?'CORE':relay);
+ }
+ let restored=job.mutationStarted&&restored_base(job);
+ transaction(()=>profile_locked(()=>{
+  let live=job_record();if(live?.jobId!=job.jobId)fail('RECOVERY_REQUIRED');
+  job.cancelledByStop=job.stopIntent!=stop_intent();if(job.cancelledByStop&&!job.mutationStarted)reason='STALE_PLAN';
+  let recovery_required=job.mutationStarted&&!restored;
+  job.failureReason=recovery_required?'RECOVERY_REQUIRED':reason;job.atomicPackagePhase=false;
+  job.state=recovery_required?'RECOVERY_REQUIRED':'FAILED';job.step=job.state;save_job(job);
+ }));
+ if(job.mutationStarted&&job.cancelledByStop&&data_state().activeServerId==null)
+  system(['/etc/init.d/foxhole-runtime','restart'],30000);
 };
 function automatic_apply(job) {
  if(!job.automatic||state().availability!='AVAILABLE')return null;
@@ -584,7 +607,7 @@ export function status(principal) {
   deviceDownloadKind:relay?value.relayEvidence.cohortKind||'BASE':'BASE',coreCohortRelay:1,
   coreAvailability:value.coreAvailability||'UNKNOWN',
   coreCohortSha256:value.candidate?.component=='CORE'?value.candidate.reference.bodySha256:value.coreCohortSha256||null,
-  autoUpdate:{enabled:flag.enabled,configured:fs.lstat(POLICY)!=null,intervalSeconds:86400,lastAttemptAtUnixMs:flag.lastAttemptAtUnixMs,
+  autoUpdate:{enabled:flag.enabled,configured:fs.lstat(POLICY)!=null||updates.initial_owner_policy(read('/etc/foxhole/auth.json',4096))!=null,intervalSeconds:86400,lastAttemptAtUnixMs:flag.lastAttemptAtUnixMs,
    nextCheckAtUnixMs:flag.enabled?(flag.lastAttemptAtUnixMs==null?time()*1000:flag.lastAttemptAtUnixMs+86400000):null,
    suspendedReason:job?.state=='RECOVERY_REQUIRED'?'RECOVERY_REQUIRED':null},installedModules:ctx.modules,
   activeOwnJob:own&&active(job)?own:null,lastOwnJob:own,activeAutomaticJob:job?.automatic&&active(job)?{
@@ -798,8 +821,8 @@ export function run(id) {
     transaction(()=>profile_locked(()=>{require_job(job);backup.guard();if(!same(plan.binding,binding(context()))||
      current().version!=plan.fromVersion||current().marker.baseSha256!=plan.fromBaseSha256||current().marker.stage!=plan.fromStage)fail('STALE_PLAN');
      job.mutationStarted=true;job.atomicPackagePhase=true;job.state='INSTALLING';job.step='INSTALLING_PACKAGE';job.progressPercent=40;save_job(job);}));
-    let switched=capture('switch',[job.jobId],4096,125000);
-    if(switched.code!=0)fail('RECOVERY_REQUIRED');
+    let switched=capture('switch',[job.jobId],4096,130000);
+    if(switched.code!=0)fail('PACKAGE_VERIFICATION_FAILED');
     let installed=current();if(installed.version!=candidate.version||installed.marker.baseSha256!=candidate.sha256)fail('RECOVERY_REQUIRED');
     verify_payload(candidate_directory(candidate.id),candidate.payload);
     profile_locked(()=>protected_unchanged(job.protectedBefore,job));

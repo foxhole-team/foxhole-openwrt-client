@@ -26,6 +26,20 @@ const descriptor=()=>({schema:1,kind:'foxhole-ram-bootstrap-v1',artifact:{url:'h
  baseSha256:sha('base'),signerPemSha256:sha('public signer'),caFileSha256:null,recoveryOrigin:'https://artifacts.example.invalid/base/'});
 const overlayFor=expected=>({baseVersion:'1.0.3-r1',baseSha256:sha('new BASE'),artifact:{
  url:expected.recoveryOrigin+'foxhole-openwrt-client-1.0.3-r1.apk',bytes:2000,sha256:sha('new BASE')}});
+test('GitHub recovery binds the exact versioned bank and overlay while retaining the direct descriptor',()=>{
+ const origin='https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/';
+ const d={...descriptor(),schema:2,kind:'foxhole-ram-bootstrap-github-v1',recoveryOrigin:origin,
+  signerPemSha256:'fa220a28fd8662fc5f617f46594bafe2415b4f605136570dc3c446caeb7d1ef1'};
+ d.artifact.url=origin+'v1.0.2/foxhole-ram-bootstrap-bank-1.0.2-r2-aarch64_cortex-a53.apk';
+ d.overlay=overlayFor(d);d.overlay.artifact.url=origin+'v1.0.3/foxhole-openwrt-client-1.0.3-r1.apk';
+ assert.doesNotThrow(()=>model.descriptor(d));assert.doesNotThrow(()=>model.descriptor(descriptor()));
+ for(const change of [x=>x.schema=1,x=>x.artifact.url=x.artifact.url.replace('v1.0.2/','v1.0.3/'),
+  x=>x.artifact.url=x.artifact.url.replace('aarch64_cortex-a53','x86_64'),x=>x.recoveryOrigin+='v1.0.2/',
+  x=>x.overlay.artifact.url=x.overlay.artifact.url.replace('/v1.0.3/','/v1.0.2/'),x=>x.caFileSha256=sha('unrelated')]) {
+  const changed=structuredClone(d);change(changed);assert.throws(()=>model.descriptor(changed));
+ }
+ const stale={...descriptor(),artifact:d.artifact};assert.throws(()=>model.descriptor(stale));
+});
 function bankFixture(){
  const entries=new Map(),add=(path,type='file',mode=0o644,body='public',target=null)=>{
   const parts=path.split('/');for(let n=1;n<parts.length;n++){
@@ -339,4 +353,15 @@ test('signed destination root ACL is applied explicitly while private stage and 
  entry.mode=0o700;changed.length=0;initialize(path,{paths:[{name:'usr',acl:root.acl}]});assert.equal(entry.mode,0o700);assert.deepEqual(changed,[]);
  assert.match(loader,/initialize_destination\(model.stage\+'\/payload',document\);native\('extract'/);
  assert.match(loader,/model.base_layout\(document,overlay.baseVersion\);\n initialize_destination\(model.stage\+'\/root',document\)/);
+});
+
+
+test('RAM bootstrap validates the companion without widening its legacy firmware contract',()=>{
+ const legacy={schema:1,transactionAbi:1,stateAbi:1,osRelease:'25.12.5',packageVersion:'1.0.9-r1',releaseTag:'v1.0.9',targets:['x86/64','mediatek/filogic']};
+ const {osRelease,...rest}=legacy;
+ const modern={...rest,schema:2,supportedOpenWrt:['25.12.5','25.12.6']};
+ assert.equal(model.base_policy(legacy,'1.0.9-r1',modern),legacy);
+ for(const patch of [{},{schema:1},{stateAbi:2},{transactionAbi:2},{packageVersion:'1.0.8-r2'},{releaseTag:'v1.0.8'},{targets:['mediatek/filogic','x86/64']},{supportedOpenWrt:['25.12.5','25.12.7']},{extra:true}])
+  assert.throws(()=>model.base_policy(legacy,'1.0.9-r1',Object.keys(patch).length?{...modern,...patch}:{}));
+ assert.throws(()=>model.base_policy({...legacy,osRelease:'25.12.6'},'1.0.9-r1',modern));
 });

@@ -1,0 +1,16 @@
+/* 32 half-cell phases plus a repeat of frame zero match the app's stationary 7×7 ring. */
+.foxhole-loading {
+  display: grid; place-content: center; justify-items: center; gap: .65rem; text-align: center;
+}
+.foxhole-loading::before, .foxhole-pixels {
+  content: ""; display: block; width: 24px; height: 24px; flex: none; background: currentColor;
+  -webkit-mask: url("./assets/router-pixels.svg") left top / 3300% 100% no-repeat;
+  mask: url("./assets/router-pixels.svg") left top / 3300% 100% no-repeat;
+  animation: foxhole-pixel-phase 1s steps(32, end) infinite;
+}
+@keyframes foxhole-pixel-phase {
+  to { -webkit-mask-position: 100% 0; mask-position: 100% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .foxhole-loading::before, .foxhole-pixels { animation: none; }
+}

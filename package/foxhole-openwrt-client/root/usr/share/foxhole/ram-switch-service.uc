@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as digest from 'digest';
 import * as model from './ram-switch-model.uc';
 import * as update_model from './ram-update-model.uc';
+import * as update_native from './update-native.uc';
 import * as engine from './engine-service.uc';
 import * as engines from './engine-model.uc';
 import * as registry from './engine-registry.uc';
@@ -72,7 +73,7 @@ function covering(rows,path) {
   if((row.target=='/'||path==row.target||index(path,row.target+'/')==0)&&(!chosen||length(row.target)>length(chosen.target)))chosen=row;
  if(!chosen)fail();return chosen;
 };
-function ram_backing(rows,path,depth) {
+export function ram_backing(rows,path,depth) {
  if(depth>4||index(path,'/tmp/')!=0)fail();let row=covering(rows,path);
  if(row.filesystem=='tmpfs')return;
  if(row.filesystem!='overlay')fail();let options={};
@@ -283,6 +284,7 @@ function process_role(command_text,rpc) {
  let args=split(command_text,'\x00');
  if(rpc)return index(args,'/sbin/rpcd')>=0||index(args,'/usr/sbin/rpcd')>=0;
  for(let name in ['/usr/libexec/foxhole-supervisor','/usr/libexec/foxhole-history-loop','/usr/libexec/foxhole-inbound-loop',
+  '/usr/libexec/foxhole-subscriptions','/usr/libexec/foxhole-subscription-fetch',
   '/tmp/foxhole/hysteria.json','/tmp/foxhole/core.json','/tmp/foxhole/core-state.json','/www/foxhole-mobile'])
   if(index(args,name)>=0)return true;
  return false;
@@ -330,7 +332,7 @@ function restore_marker(journal) {
  if(!same(present,journal.previousMarker)&&!same(present,journal.newMarker))fail();
  replace(MARKER,journal.previousMarker,4096);
 };
-function rollback(journal,path) {
+function rollback(journal,path,previous_version) {
  if(journal.restarted)stop_services(journal,path);
  let actions=model.rollback_actions(journal.unmounted,journal.mounted);
  for(let row in actions.remove) {
@@ -346,6 +348,7 @@ function rollback(journal,path) {
   if(row.type=='file'?!fs.unlink(row.path):!fs.rmdir(row.path))fail();
  }
  journal.created=[];restore_marker(journal);bootstrap.restore(journal.bootstrap);start_services(journal);
+ update_native.require_package_ready('RAM',previous_version);
  journal.phase='ROLLED_BACK';replace(path,journal,131072);
 };
 function preparation(job,journal,path) {
@@ -365,7 +368,11 @@ function preparation(job,journal,path) {
  if(!same(document,receipt.payload))fail();verify_payload(receipt.root,document);
  journal.bootstrap=bootstrap.journal(receipt.recovery,receipt,digest.sha256(sprintf('%J',document)));
  replace(path,journal,131072);
- update_model.policy(decode(receipt.root+'/usr/share/foxhole/update-policy.json',8192),receipt.version,receipt.releaseTag);
+ let policy_path=receipt.root+'/usr/share/foxhole/update-policy.json';
+ let modern_path=receipt.root+'/usr/share/foxhole/update-policy-v2.json';
+ let policy=update_model.policy_records(decode(policy_path,8192),fs.lstat(modern_path)?decode(modern_path,8192):null,
+  receipt.version,receipt.releaseTag);
+ if(!same(policy,receipt.policy))fail();
  if(digest.sha256(raw(receipt.root+'/usr/share/foxhole/foxhole-openwrt-apk.pem',16384,false))!=update_model.signer_sha256)fail();
  guard(job,false);
  let previous=job.previous,marker=decode(MARKER,4096);
@@ -464,11 +471,13 @@ export function run(id) {
   if(digest.sha256(raw(journal.root+'/lib/apk/db/installed',4194304,false))!=journal.newMarker.stageDbSha256)fail();
   replace(MARKER,journal.newMarker,4096);journal.phase='ACTIVE';replace(journal_path,journal,131072);
   bootstrap.commit(journal.bootstrap);
-  guard(job,true);journal.restarted=true;replace(journal_path,journal,131072);start_services(journal);guard(job,true);
+  guard(job,true);journal.restarted=true;replace(journal_path,journal,131072);start_services(journal);
+  update_native.require_package_ready('RAM',prepared.receipt.version);
+  guard(job,true);
   print(sprintf('%J',{schema:1,jobId:id,phase:'ACTIVE',version:prepared.receipt.version,hostApkUpdated:false}));return true;
  }catch(_) {
   try {
-   if(journal.quiesceStarted)rollback(journal,journal_path);
+   if(journal.quiesceStarted)rollback(journal,journal_path,job.previous.version);
    else {journal.phase='FAILED_PREPARE';replace(journal_path,journal,131072);}
   }catch(_) {journal.phase='RECOVERY_REQUIRED';try{replace(journal_path,journal,131072);}catch(_) {}}
   die('RAM switch failed; private journal retained\n');

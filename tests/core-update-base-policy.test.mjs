@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { createHash } from 'node:crypto';
 import { read, functionBody, packageRoot, plain } from './helpers.mjs';
-const source = await read(`${packageRoot}/root/usr/share/foxhole/ram-update-model.uc`);
+const source = await read('tests/fixtures/legacy106-ram-policy.fixture.txt');
 const body = functionBody(source, 'policy');
 const policy = JSON.parse(await read(`${packageRoot}/root/usr/share/foxhole/update-policy.json`));
 function receiver(value) {
@@ -14,7 +14,7 @@ function receiver(value) {
  vm.runInContext(`function policy(value,wanted,release) ${body}`.replace('for(let key in keys(value))', 'for(let key of keys(value))'), scope);
  return plain(scope.policy(value, policy.packageVersion, policy.releaseTag));
 }
-test('the one-time BASE migration remains accepted by the unchanged exact-seven-field RAM receiver', () => {
+test('the one-time BASE migration remains accepted by the published1.0.6 exact-seven-field RAM receiver', () => {
  assert.equal(createHash('sha256').update(body).digest('hex'), '7ee1beb2dd95df782a5ecabd729051f3c20c99c421c4b40ab9091c9c016da8c1');
  assert.equal(Object.keys(policy).length, 7);
  assert.deepEqual(receiver(policy), policy);

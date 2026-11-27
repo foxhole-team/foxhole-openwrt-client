@@ -32,3 +32,15 @@ test('expired clock Stop selected modules and managed generation invalidate cach
   const h = proof(); mutate(h); assert.equal(h.read(), null);
  }
 });
+
+test('empty managed registry on a RAM-only BASE does not require a host FLASH identity',()=>{
+ const selected={selected:[]}, legacy=[];
+ const scope=vm.createContext({registry:{read:()=>selected,legacy_protocols:()=>legacy},
+  native:{selected_modules:r=>r.selected,target:()=>{if(selected.unknownTarget)throw Error('UNSUPPORTED_TARGET')}},length:r=>r.length,transaction:{context:()=>{throw Error('unsupported-host-base')}},
+  guard:{fail:reason=>{throw Error(reason)}}});
+ vm.runInContext(`function check(directory) ${functionBody(source,'check')}`,scope);
+ assert.equal(scope.check('/fixture'),null);
+ selected.unknownTarget=true;assert.throws(()=>scope.check('/fixture'),/UNSUPPORTED_TARGET/);selected.unknownTarget=false;
+ legacy.push('vless');assert.throws(()=>scope.check('/fixture'),/UNSUPPORTED_TARGET/);
+ legacy.length=0;selected.selected.push({id:'vless'});assert.throws(()=>scope.check('/fixture'),/unsupported-host-base/);
+});

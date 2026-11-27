@@ -2,9 +2,10 @@
 'require rpc';
 'require request';
 'require view';
+'require foxhole.loader as pixelLoader';
 
 const setPin = rpc.declare({
-	object: 'foxhole.admin', method: 'set_pin', params: ['newPin', 'licenseAccepted', 'licenseVersion'],
+	object: 'foxhole.admin', method: 'set_pin', params: ['newPin', 'licenseAccepted', 'licenseVersion', 'initialAutoUpdateEnabled'],
 	reject: true
 });
 
@@ -14,6 +15,7 @@ const languages = ['ru', 'en', 'ja', 'de', 'fr', 'es', 'zh'];
 
 return view.extend({
 	load: function() {
+  pixelLoader.mount();
 		return Promise.all([...languages.map(language =>
 			request.get(L.resource('foxhole/locales/' + language + '.json'),
 				{ cache: false }).then(response => response.json())), packageStatus()]);
@@ -30,6 +32,9 @@ return view.extend({
 		const supported = (status.licenseRequired == null || typeof status.licenseRequired === 'boolean') &&
 			(status.licenseVersion == null || status.licenseVersion === 1);
 		const acceptance = E('input', { type: 'checkbox' });
+		const offerUpdates = status.initialAutoUpdateSetupEligible === true && status.initialAutoUpdateSupported === true;
+		const initialUpdates = E('input', { type: 'checkbox', id: 'foxhole-initial-package-updates' });
+		initialUpdates.checked = status.initialAutoUpdateDefault !== false;
 		let saving = false;
 		const input = name => E('input', {
 			id: name, type: 'password', inputmode: 'numeric',
@@ -55,7 +60,7 @@ return view.extend({
 		acceptance.addEventListener('change', updateAcceptance);
 		updateAcceptance();
 		const form = E('form', { autocomplete: 'off' }, [
-			...agreement, row(first, 'pin_change.new_pin'),
+			...agreement, ...(offerUpdates ? [row(initialUpdates, 'updates.auto')] : []), row(first, 'pin_change.new_pin'),
 			row(repeat, 'pin_change.repeat_pin'), message, button
 		]);
 		form.addEventListener('submit', async event => {
@@ -71,7 +76,9 @@ return view.extend({
 			}
 			saving = true; acceptance.disabled = true; updateAcceptance();
 			try {
-				const result = await setPin(first.value, agreementRequired && acceptance.checked, agreementRequired && acceptance.checked ? 1 : 0);
+				const args = [first.value, agreementRequired && acceptance.checked, agreementRequired && acceptance.checked ? 1 : 0];
+				if (offerUpdates) args.push(initialUpdates.checked);
+				const result = await setPin(...args);
 				if (!result?.changed) throw new Error('unavailable');
 				form.reset();
 				message.textContent = text('pin_change.success');

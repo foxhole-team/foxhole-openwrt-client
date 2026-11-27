@@ -117,12 +117,12 @@ try {
       if (source.split(observationMarker).length !== 2)
         throw new Error('Invalid client observation fixture marker');
       source = source.replace(observationMarker,
-        `function client_status(request) ${functionBody(rpc, 'client_status').replaceAll('read_online(', 'fixture_read_online(')};`);
+        `function client_status(request) ${functionBody(rpc, 'client_status').replaceAll('read_online(', 'fixture_read_online(').replaceAll('observation.config_hash(', 'fixture_config_hash(')};`);
       const socketMarker = '// The loopback socket reader is injected without process calls.';
       if (source.split(socketMarker).length !== 2)
         throw new Error('Invalid socket observer fixture marker');
       source = source.replace(socketMarker, [
-        ['online_ready', 'connection, flags, deadline'], ['read_online', 'listener, ids']
+        ['online_ready', 'connection, flags, deadline'], ['read_online', 'listener, ids, legacy']
       ].map(([name, args]) => `function ${name}(${args}) ${functionBody(rpc, name)};`).join('\n'));
       const rebindMarker = '// The unchanged-generation metadata rebind is injected here.';
       const inboundSource = await readFile(resolve(root,
@@ -130,7 +130,7 @@ try {
       if (source.split(rebindMarker).length !== 2)
         throw new Error('Invalid observation rebind fixture marker');
       source = source.replace(rebindMarker,
-        `function rebind_observations(state, signature, base, clients) ${functionBody(inboundSource, 'rebind_observations')};`);
+        `function rebind_observations(state, signature, base, clients) ${functionBody(inboundSource, 'rebind_observations').replaceAll('observation.config_hash(', 'fixture_config_hash(')};\nfunction write_listener(id, slot, previous, build) ${functionBody(inboundSource, 'write_listener').replaceAll('observation.config_hash(', 'fixture_config_hash(')};`);
 
     }
     if (path === 'tests/core-bootstrap-rpc.uc') {
@@ -171,8 +171,8 @@ try {
     if (result.error) throw new Error('Model execution failed');
     failed ||= result.status !== 0;
   }
-  const socketResult = spawnSync('docker', ['exec', container, 'node',
-    'tests/client-observation-socket.mjs'], {
+  const socketResult = spawnSync('docker', ['exec', '--user', '1000:1000', container, 'node',
+    '/workspace/tests/client-observation-socket.mjs'], {
     encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024
   });
   if (socketResult.stdout) process.stdout.write(socketResult.stdout);

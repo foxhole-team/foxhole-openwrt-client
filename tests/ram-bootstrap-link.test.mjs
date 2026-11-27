@@ -17,23 +17,39 @@ const model=new Function(...Object.keys(builtins),'updates',adapt(read('usr/shar
 const BOOT='/etc/foxhole/ram-update/boot.json',BANK='/tmp/foxhole-ram-stage-boot-v1/bank.apk',TRUST='/etc/foxhole/ram-update/bootstrap';
 const key=readFileSync(new URL('../config/foxhole-openwrt-apk.pem',import.meta.url),'utf8'),bank='signed-bank',apk='signed-next-base';
 const desc=()=>({schema:1,kind:'foxhole-ram-bootstrap-v1',artifact:{url:'https://example.test/bank.apk',bytes:bank.length,sha256:sha(bank)},version:'1.0.2-r1',baseVersion:'1.0.2-r1',arch:'aarch64_cortex-a53',target:'mediatek/filogic',osRelease:'25.12.5',baseSha256:'a'.repeat(64),signerPemSha256:sha(key),caFileSha256:null,recoveryOrigin:'https://example.test/recovery/'});
-function fixture(){
+function fixture(fetchMarker=''){
  const files=new Map([[BOOT,JSON.stringify(desc())],[TRUST+'/keys/signer.pem',key],[BANK,bank],['/tmp/foxhole-ram-active.json',JSON.stringify({schema:1,phase:'active',storage:'RAM',version:'1.0.2-r1',baseSha256:'a'.repeat(64)})]]);
- const calls=[],writes=[],captures=[];let bankInode=30,redirect=false,badFetch=false,sequence=0,api;
+ const calls=[],requests=[],writes=[],captures=[];let bankInode=30,redirect=false,badFetch=false,sequence=0,api;
  const fs={dirname,lstat:p=>files.has(p)?{type:'file',uid:0,gid:0,mode:0o600,nlink:1,size:files.get(p).length,dev:{major:0,minor:1},inode:p==BANK?bankInode:20,mtime:1,ctime:1}:{type:'directory',uid:0,mode:p=='/tmp'?0o1777:p.startsWith('/etc/foxhole')||p.startsWith('/tmp/foxhole')?0o700:0o755},readfile:p=>files.get(p),unlink:p=>files.delete(p)};
  const store={read:p=>files.get(p)??null,write:(p,v)=>{writes.push(p);files.set(p,v);},directory_metadata:v=>v?.type=='directory'&&v.mode==0o700,file_metadata:v=>v?.type=='file'&&v.mode==0o600};
- const capture=(op)=>{
+ const capture=(op,args)=>{
+  requests.push([op,args]);
   calls.push(op);const path='/tmp/foxhole/ram-updates/recovery-io-'+(++sequence).toString(16).padStart(32,'0');
-  const stdout=op=='bank'?sha(bank)+'  '+BANK+'\n':badFetch?'wrong-candidate':apk,stderr=op=='fetch'&&redirect?'Redirected to another endpoint':'';
+  const stdout=op=='bank'?sha(bank)+'  '+BANK+'\n':badFetch?'wrong-candidate':apk,stderr=op=='fetch'?(redirect?'Redirected to another endpoint':fetchMarker):'';
   files.set(path,stdout);files.set(path+'.err',stderr);
   const value={code:0,stdout,stderr,clean:true,outputs:[path,path+'.err'].map(path=>({path,identity:api.identity(fs.lstat(path))})),parentIdentity:api.directory_identity(fs.lstat('/tmp/foxhole/ram-updates'))};
   captures.push(value);return value;
  };
  const values={...builtins,fs,store,model,capture};
  api=new Function(...Object.keys(values),adapt(source).replace('function capture(','function captured_native_not_executed(')+';return {descriptor,recovery_overlay,prove,recheck,journal,before_quiesce,commit,restore,journal_valid,flash_required_bytes,identity,directory_identity};')(...Object.values(values));
- return {api,files,calls,writes,captures,redirect:()=>{redirect=true;},badFetch:()=>{badFetch=true;},changeBank:()=>{bankInode++;}};
+ return {api,files,calls,requests,writes,captures,redirect:()=>{redirect=true;},badFetch:()=>{badFetch=true;},changeBank:()=>{bankInode++;}};
 }
 const candidate=()=>({version:'1.0.2-r2',sha256:sha(apk),bytes:apk.length});
+test('managed overlays fetch the versioned GitHub asset with the restricted helper',()=>{
+ const origin='https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/';
+ const d={...desc(),schema:2,kind:'foxhole-ram-bootstrap-github-v1',recoveryOrigin:origin};
+ d.artifact.url=origin+'v1.0.2/foxhole-ram-bootstrap-bank-1.0.2-r1-aarch64_cortex-a53.apk';
+ const next={...candidate(),version:'1.0.3-r1'};
+ const valid=fixture('FoxHole GitHub release fetch v2\n');valid.files.set(BOOT,JSON.stringify(d));
+ valid.api.prove(next,sha('metadata'));
+ assert.deepEqual(valid.requests.at(-1),['fetch',[origin+'v1.0.3/foxhole-openwrt-client-1.0.3-r1.apk','github-release','1.0.3-r1']]);
+ const old=fixture('FoxHole HTTPS-only fetch v1\n');old.files.set(BOOT,JSON.stringify(d));
+ assert.throws(()=>old.api.prove(next,sha('metadata')),/DOWNLOAD_FAILED/);
+ for(const changed of [{...d,schema:1},{...d,artifact:{...d.artifact,url:d.artifact.url.replace('wr','bad')}},
+    {...d,recoveryOrigin:origin+'v1.0.2/'},{...d,caFileSha256:sha('different roots')}]) {
+  assert.throws(()=>valid.api.descriptor(changed));
+ }
+});
 test('boot-installed signer path is reused by the later RAM overlay transaction',()=>{
  const loader=readFileSync(new URL('../tools/ram-bootstrap.uc',import.meta.url),'utf8');
  assert.match(loader,/write\(model.trust\+'\/keys\/signer.pem',pem\)/);

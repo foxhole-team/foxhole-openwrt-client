@@ -25,6 +25,11 @@ export function packageMetadata(value) {
       return { id: row.id, version: row.version, packageVersion: row.packageVersion, storage: row.storage };
     });
   }
+  const component = value.hysteriaComponent;
+  if (component != null && (!['RAM', 'FLASH'].includes(component.storage) ||
+      typeof component.version !== 'string' || !/^[0-9][0-9A-Za-z_.~+-]{0,159}$/.test(component.version)))
+    throw new ModelError('unavailable');
+  const hysteriaComponent = component == null ? null : { version: component.version, storage: component.storage };
   const router = value.routerInfo;
   const routerInfo = router == null ? null : router.schema === 1 ? {
     model: typeof router.model === 'string' ? router.model : null,
@@ -33,7 +38,7 @@ export function packageMetadata(value) {
       ? router.lanAddress : null
   } : null;
   const homeServerEnabled = typeof value.homeServerEnabled === 'boolean' ? value.homeServerEnabled : null;
-  return { storage: value.storage, version: value.version, installedModules, routerInfo, homeServerEnabled };
+  return { storage: value.storage, version: value.version, installedModules, hysteriaComponent, routerInfo, homeServerEnabled };
 }
 
 export const countryCodes = Object.freeze(
@@ -58,6 +63,7 @@ export const defaultSettings = Object.freeze({
   language: 'ru',
   standaloneAccess: true,
   localRules: false,
+  gamesDirect: true,
   localScope: 'all',
   clientRules: false,
   vpnServerEnabled: false,
@@ -134,6 +140,7 @@ export function normalizeSettings(value = {}) {
     standaloneAccess: input.standaloneAccess !== false,
     localScope: input.localScope === 'selected' ? 'selected' : 'all',
     localRules: input.localRules === true,
+    gamesDirect: input.gamesDirect !== false,
     clientRules: input.clientRules === true,
     vpnServerEnabled: input.vpnServerEnabled === true,
     killSwitch: input.killSwitch === true,

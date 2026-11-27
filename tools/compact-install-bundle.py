@@ -19,12 +19,15 @@ import tempfile
 ROOT = Path(__file__).resolve().parent.parent
 NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,159}')
 HEX = re.compile(r'[a-f0-9]{64}')
+DESKTOP_INSTALLER = ROOT / 'tools' / 'foxhole-openwrt-install.sh'
 INSTALLERS = {
     'install.sh': ROOT / 'install.sh',
     **{name: ROOT / 'tools' / name for name in (
         'install-core.sh', 'install-compact.sh', 'install-plan.uc', 'install-plan-model.uc',
         'install-compact-plan.uc', 'engine-package-layout.uc', 'register-compact-engines.uc',
-        'indexed-install.uc', 'bundle-transport-model.uc', 'bundle-transport.uc')},
+        'indexed-install.uc', 'bundle-transport-model.uc', 'bundle-transport.uc',
+        'fresh-install-accounting.uc', 'fresh-install-guard.uc', 'stock-factory-verify.uc',
+        'install-ram-stage.sh', 'ram-native-command.sh', 'ram-native-command.uc')},
 }
 
 
@@ -101,6 +104,32 @@ def engine_artifact_rows(root: Path, platform: dict) -> list[tuple[dict, Path]]:
     return rows
 
 
+def fresh_modes(platform: dict) -> list[str]:
+    modes = {client['storage'] for client in platform['clients']}
+    if platform.get('freshInstallAccounting'):
+        modes.discard('ram')
+    board = platform.get('freshInstallBoard')
+    if 'mediatek/filogic' in platform.get('supportedTargets', []):
+        boards = {'25.12.5': ('cudy,wr3000-v1', 'ram'), '25.12.6': ('cudy,wr3000s-v1', 'flash')}
+        releases = platform.get('supportedOpenWrt')
+        if (platform.get('architecture') != 'aarch64_cortex-a53' or
+                platform['supportedTargets'] != ['mediatek/filogic'] or
+                not isinstance(releases, list) or len(releases) != 1 or releases[0] not in boards):
+            raise ValueError('Exact firmware and target required for a Cudy installation profile')
+        name, mode = boards[releases[0]]
+        if board != {'boardName': name, 'storageMode': mode} or mode not in modes:
+            raise ValueError('Incorrect board or storage in the fresh installation catalog')
+        witness = platform.get('stockFactoryInventory')
+        if (not isinstance(witness, dict) or set(witness) != {'file','sha256'}
+                or witness['file'] != 'stock-factory-' + name.replace(',', '-') + '.json'
+                or not HEX.fullmatch(witness['sha256'])):
+            raise ValueError('A bound factory inventory is required for this Cudy board')
+        return [mode]
+    if board is not None:
+        raise ValueError('Unqualified installation board')
+    return sorted(modes)
+
+
 def assets(root: Path, catalog: dict) -> set[str]:
     if (type(catalog.get('schema')) is not int or catalog['schema'] != 2 or
             catalog.get('kind') != 'compact-client-engines-v1' or
@@ -108,9 +137,22 @@ def assets(root: Path, catalog: dict) -> set[str]:
         raise ValueError('Separate compact v2 catalog required')
     names = {'package-catalog.json', 'foxhole-openwrt-apk.pem'}
     for platform in catalog['platforms']:
+        fresh_modes(platform)
+        witness = platform.get('stockFactoryInventory')
+        if witness is not None:
+            if sha(asset(root, witness['file'], 1048576)) != witness['sha256']:
+                raise ValueError('Stock inventory digest differs')
+            names.add(witness['file'])
+        if (platform.get('freshInstallBoard') or {}).get('storageMode') == 'ram':
+            plan_name = 'ram-root-plan-cudy-wr3000-v1.json'
+            ram_plan = module('ram-root-plan')
+            plan = document(root, plan_name, 32768)
+            ram_plan.validate(plan, platform, sha(root / 'package-catalog.json'))
+            ram_plan.validate_inputs(root, platform, plan_name, plan, INSTALLERS)
+            names.add(plan_name)
         for entry, archive in engine_artifact_rows(root, platform):
             names.add(archive.name)
-        for key in ('engineCatalog', 'packageUniverse'):
+        for key in ('engineCatalog', 'packageUniverse', *(['freshInstallAccounting'] if platform.get('freshInstallAccounting') is not None else [])):
             binding = platform[key]
             path = asset(root, binding['file'], 2097152)
             if sha(path) != binding['sha256']:
@@ -219,6 +261,35 @@ def verify_payloads(root: Path, catalog: dict, apk: str, temporary: Path,
         keys = temporary / 'keys'
         native([apk, '--keys-dir', str(keys), 'verify', str(panel)])
         native([apk, '--keys-dir', str(keys), 'extract', '--no-chown', '--destination', str(destination), str(panel)])
+        role = 'managed-ram' if (platform.get('freshInstallBoard') or {}).get('storageMode') == 'ram' else 'flash'
+        policies = module('install-base-policies')
+        revision = policies.REVISIONS[role]
+        version = (ROOT / 'config/release-version.txt').read_text().strip()
+        actual_version = f'{version}-r{revision}'
+        index_name = 'base-ram.adb' if role == 'managed-ram' else 'base.adb'
+        if panel.name != 'foxhole-openwrt-client-' + actual_version + '.apk':
+            raise ValueError('BASE version does not match the installation role')
+        rows = [item for item in universe['packageAuthentications'] if item['name'] == 'foxhole-openwrt-client']
+        if len(rows) != 1 or rows[0]['indexFile'] != index_name or rows[0]['file'] != panel.name or rows[0]['version'] != actual_version:
+            raise ValueError('BASE must come from the one signed index for this installation role')
+        authority = [item for item in universe['repositoryIndexes'] if item['file'] == index_name]
+        expected_url = 'https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/v' + version + '/' + index_name
+        if len(authority) != 1 or authority[0]['role'] != 'foxhole' or authority[0]['sourceUrl'] != expected_url:
+            raise ValueError('BASE index source differs from its release role')
+        native([apk, '--keys-dir', str(keys), 'verify', str(root / index_name)])
+        indexed_rows = json.loads(native([apk, 'adbdump', '--format', 'json', str(root / index_name)]))['packages']
+        if (len(indexed_rows) != 1 or indexed_rows[0].get('name') != 'foxhole-openwrt-client'
+                or indexed_rows[0].get('arch') != 'noarch' or indexed_rows[0].get('version') != actual_version
+                or indexed_rows[0].get('hashes') != platform['basePackage']['packageIdentity']
+                or indexed_rows[0].get('file-size') != panel.stat().st_size):
+            raise ValueError('Signed BASE index must contain precisely the bound native archive')
+        wanted = temporary / ('base-policy-' + platform['id'])
+        wanted.mkdir()
+        policies.install(ROOT / 'package/foxhole-openwrt-client/root/usr/share/foxhole', wanted, version, revision, role)
+        for name in (policies.PRIMARY, policies.MODERN):
+            generated, shipped = wanted / name, destination / 'usr/share/foxhole' / name
+            if generated.is_file() != shipped.is_file() or (generated.exists() and sha(generated) != sha(shipped)):
+                raise ValueError('Signed BASE firmware records differ from the selected reader contract')
         embedded = destination / 'usr/share/foxhole/engine-catalog.json'
         if sha(embedded) != platform['engineCatalog']['sha256']:
             raise ValueError('Control base embeds a different engine catalog')
@@ -251,7 +322,7 @@ def verify(root: Path, apk: str, ucode: str, keys: Path, development: bool,
     names = assets(root, catalog)
     cases = 0
     for platform in catalog['platforms']:
-        for mode in {client['storage'] for client in platform['clients']}:
+        for mode in fresh_modes(platform):
             count = len({client['id'] for client in platform['clients'] if client['storage'] == mode})
             cases += (count + (1 if count > 1 else 0)) * len(platform['supportedOpenWrt']) * (
                 2 if (platform.get('server') or {}).get('modes', {}).get(mode) else 1)
@@ -262,6 +333,13 @@ def verify(root: Path, apk: str, ucode: str, keys: Path, development: bool,
     for name, source in INSTALLERS.items():
         if sha(asset(root, name, 2097152)) != sha(source):
             raise ValueError('Compact installer differs from the checked-out source')
+    desktop = root / DESKTOP_INSTALLER.name
+    if desktop.exists() or desktop.is_symlink():
+        if desktop.name in names or len(names) + len(INSTALLERS) >= 4096:
+            raise ValueError('Unexpected desktop installer asset')
+        if desktop.stat().st_size > 65536 or sha(desktop) != sha(DESKTOP_INSTALLER):
+            raise ValueError('Desktop installer differs from the checked-out source')
+        names.add(desktop.name)
     with tempfile.TemporaryDirectory(prefix='foxhole-compact-recheck-') as work:
         temporary = Path(work)
         own_keys = temporary / 'keys'; own_keys.mkdir()
@@ -269,8 +347,7 @@ def verify(root: Path, apk: str, ucode: str, keys: Path, development: bool,
         verify_payloads(root, catalog, apk, temporary, core_commit, core_source)
         for platform in catalog['platforms']:
             covered = set()
-            modes = sorted({client['storage'] for client in platform['clients']})
-            for mode in modes:
+            for mode in fresh_modes(platform):
                 available = sorted({client['id'] for client in platform['clients'] if client['storage'] == mode})
                 # Verify singles plus the whole common-mode graph.
                 # Re-solve each real selection before router mutation.
@@ -280,7 +357,7 @@ def verify(root: Path, apk: str, ucode: str, keys: Path, development: bool,
                         for server in (False, True):
                             if server and not (platform.get('server') or {}).get('modes', {}).get(mode):
                                 continue
-                            raw = native([ucode, str(ROOT / 'tools/install-compact-plan.uc'), 'budget',
+                            raw = native([ucode, str(ROOT / 'tools/install-compact-plan.uc'), 'factory-budget',
                                 str(root / 'package-catalog.json'), platform['architecture'], release,
                                 ','.join(selected), '1' if development else '0', platform['supportedTargets'][0],
                                 str(root), mode, str(2**53 - 1), str(2**53 - 1), '0', '1' if server else '0'])
@@ -353,6 +430,7 @@ def main() -> None:
                 shutil.copyfile(asset(root, name), prepared / name)
             for name, path in INSTALLERS.items():
                 shutil.copyfile(path, prepared / name)
+            shutil.copyfile(DESKTOP_INSTALLER, prepared / DESKTOP_INSTALLER.name)
             verified = verify(prepared, args.apk, args.ucode, args.factory_keys_dir,
                               args.development, args.core_commit, args.core_source_sha256)
             if set(path.name for path in prepared.iterdir()) != verified | set(INSTALLERS):

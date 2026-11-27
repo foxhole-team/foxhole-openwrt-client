@@ -9,6 +9,7 @@ export const helpTopics = Object.freeze([
   topic('profiles', 'server', [paragraph('manual.profiles.body'), warning('manual.profiles.editor')]),
   topic('routing', 'globe', [paragraph('manual.routing.body'),
     steps('manual.routing.devices','manual.routing.vpn','manual.routing.direct','manual.routing.countries'), warning('manual.routing.note')]),
+  topic('games', 'gamepad', [paragraph('manual.games.body'), warning('manual.games.scope')]),
   topic('dns', 'globe', [paragraph('manual.dns.body'), { type: 'examples', values: ['example.com', '*.example.com'] }, warning('manual.dns.limits')]),
   topic('blocking', 'shield', [paragraph('manual.blocking.start'), paragraph('manual.blocking.stop'),
     paragraph('manual.blocking.direct'), warning('manual.blocking.notice')]),
@@ -104,6 +105,64 @@ export class HelpPanel {
     }
     throw new Error('unsupported-help-block');
   }
+  bindDisclosure(details, summary, body, id) {
+    let pinned = details.open, desired = pinned, animation = null, closeTimer = null, dismissed = false, pointer = null;
+    if (pinned) this.expanded.add(id);
+    const reveal = open => {
+      if (open === desired) return;
+      desired = open;
+      summary.setAttribute('aria-expanded', String(open));
+      const start = details.open ? body.getBoundingClientRect().height : 0;
+      const opacity = details.open ? getComputedStyle(body).opacity : '0';
+      animation?.cancel();
+      animation = null;
+      if (!body.animate || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        details.open = open;
+        return;
+      }
+      details.open = true;
+      const end = open ? body.scrollHeight : 0;
+      const flight = body.animate([{height:start+'px',opacity}, {height:end+'px',opacity:open?1:0}],
+        {duration:150,easing:'ease-out',fill:'both'});
+      animation = flight;
+      flight.onfinish = () => {
+        if (animation !== flight) return;
+        details.open = desired;
+        animation = null;
+        flight.cancel();
+      };
+    };
+    const cancelClose = () => clearTimeout(closeTimer);
+    const leave = () => {
+      cancelClose();
+      closeTimer = setTimeout(() => {
+        if (details.isConnected && !pinned && !details.matches(':hover') && !details.contains(document.activeElement)) reveal(false);
+      }, 80);
+    };
+    details.addEventListener('pointerenter', cancelClose);
+    // Opening on pointer movement avoids new previews when layout alone moves under a stationary mouse.
+    summary.addEventListener('pointermove', event => {
+      if (event.pointerType !== 'mouse' || dismissed || !matchMedia('(any-hover: hover)').matches) return;
+      cancelClose();
+      reveal(true);
+    });
+    details.addEventListener('pointerleave', event => {
+      if (event.pointerType === 'mouse' && !details.contains(event.relatedTarget)) { dismissed = false; leave(); }
+    });
+    details.addEventListener('focusin', cancelClose);
+    details.addEventListener('focusout', event => { if (!details.contains(event.relatedTarget)) leave(); });
+    summary.addEventListener('pointerdown', event => { pointer = event.pointerType; });
+    summary.addEventListener('click', event => {
+      if (event.defaultPrevented || event.button > 0) return;
+      event.preventDefault();
+      cancelClose();
+      // A mouse click on a hover preview pins it. Keyboard and touch toggle its visible state.
+      pinned = (!pinned && desired && event.detail > 0 && pointer === 'mouse') || !desired;
+      dismissed = !pinned;
+      if (pinned) this.expanded.add(id); else this.expanded.delete(id);
+      reveal(pinned);
+    });
+  }
   render(root, selected = null) {
     this.factsNodes = null;
     root.replaceChildren(this.textNode('p', 'manual.intro', 'help-intro'));
@@ -124,11 +183,10 @@ export class HelpPanel {
       chevron.setAttribute('aria-hidden', 'true'); chevron.append(this.icon('chevron'));
       heading.append(chevron); summary.append(heading);
       content.append(...item.blocks.map(block => this.block(block)));
-      details.append(summary, content);
-      details.addEventListener('toggle', () => {
-        if (details.open) this.expanded.add(item.id); else this.expanded.delete(item.id);
-        summary.setAttribute('aria-expanded', String(details.open));
-      });
+      const body = this.element('div', 'help-topic-body');
+      body.append(content);
+      details.append(summary, body);
+      this.bindDisclosure(details, summary, body, item.id);
       root.append(details);
     }
     this.updateFacts();
@@ -146,7 +204,10 @@ export class HelpPanel {
     const facts = this.facts?.() || {}, unavailable = this.text('about.unavailable');
     this.factsNodes.version.textContent = facts.version || unavailable;
     this.factsNodes.storage.textContent = facts.storage || unavailable;
-    this.factsNodes.modules.textContent = facts.modules?.length
-      ? facts.modules.map(item => `${item.id}: ${item.version} (${item.storage})`).join('\n') : Array.isArray(facts.modules) ? this.text('about.no_modules') : unavailable;
+    const modules = (facts.modules || []).map(item => `${item.id}: ${item.version} (${item.storage})`);
+    const component = facts.hysteriaComponent;
+    if (component) modules.push(`Hysteria 2: ${component.version} (${component.storage})`);
+    this.factsNodes.modules.textContent = modules.length ? modules.join('\n')
+      : Array.isArray(facts.modules) ? this.text('about.no_modules') : unavailable;
   }
 }

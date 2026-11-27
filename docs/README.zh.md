@@ -60,44 +60,13 @@
 
 <a id="whats-new"></a>
 
-> **🆕 更新内容 - 1.0.8 Beta**
+> **🆕 更新内容 - 1.0.13 Beta (FLASH r1 · RAM r2)**
 >
-> - 新增对 OpenWrt 25.12.6 的支持
-> - 优化了界面
-> - 新增经过单独验证的可选 Hysteria2 服务器包（需要固定公网 IP）
-> - 更新了帮助、应用更新检查和关于页面
-> - 日志仅在 FLASH 中可用，最多循环保留30天，并限制存储占用
-> - 改进了通过 VPN 管理路由器以及在 RAM 中重新安装软件包的流程
->
-> 配套应用：FoxHole VPN 1.0.6和Guard 1.0.7修复了路由器首次安装和配置；Guard还更新了Tor传输组件Lyrebird和conjure-client
->
-> 持久bootstrap注册仍未启用。冷启动恢复尚未验证，ELF库路径检查问题仍未解决
-
-<a id="features"></a>
-
-## 🔌 支持的 VPN 协议
-
-当前可用于路由器的 FoxHole VPN 模块：
-
-| 协议 | 安装选项 | 说明 |
-| --- | --- | --- |
-| VLESS | `--vless` | 使用VPN配置中给定的参数，通过客户端模块连接兼容的VLESS代理服务器。 |
-| Hysteria2 | `--hy2` | 通过QUIC/UDP连接Hysteria2服务器，使用该协议独立的客户端模块。 |
-| WireGuard | `--wg` | 与WireGuard对等节点建立L3 IP隧道，由配置提供密钥、地址及网络参数。 |
-
-## 📋 要求
-
-- 带apk包管理器的OpenWrt 25.12.5 或 25.12.6和root权限。直接下载需要路由器联网；本地`--bundle`只需可信局域网。
-- 适用于准确固件、目标、架构及所选协议的已发布软件包。当前软件包与更新策略允许 `x86/64` 和 `mediatek/filogic`；SDK 构建或 ARM 架构名称本身不能证明所有路由器型号均兼容。
-- 足以容纳完整且经过验证的软件包预算的闪存和 RAM。更改软件包前，安装程序会检查依赖关系、内核 ABI 和暂存空间。
-- 从可信本地网络访问。通过Android查找和初次设置时，请将手机连接到路由器Wi-Fi。
-
-[v1.0.6版本](https://github.com/foxhole-team/foxhole-openwrt-client/releases/tag/v1.0.6)包含BASE 1.0.6-r1和FoxHole Core 1.0.4客户端模块。兼容的Core更新可以单独安装。软件包的可用性和兼容性取决于所选版本、固件和目标平台。
-
-仅有源码支持和交叉编译的二进制文件，并不能证明路由器兼容性。
-只能安装已验证真实性的发布目录中包含的软件包。
-入站服务器在未使用的 S2/OpenPGP 软件包中仍有两项经过审查的依赖问题；
-针对确切构建的检查及例外的到期时间见[发布说明](RELEASE.md)。
+> - 使用 Bash 安装程序从 macOS、Linux 或 Windows 通过 SSH 安装。全新安装完成设置后会启用软件包自动更新，也可关闭。
+> - 软件包更新会检查路由器 API，检查失败时尝试恢复旧版本。修复了家庭 VPN 服务器管理和首个客户端的创建。
+> - 可在 LuCI 中导入受支持的 Hysteria 2、VLESS 和 WireGuard 订阅，也可从 Guard 或 VPN 转入。路由器会自动刷新受支持的订阅。
+> - 「游戏不走 VPN」使用设置中的标准开关。从「添加」打开路由，展开和折叠箭头的转角清晰可见。
+> - 日志使用新的刷新图标，在 RAM 中显示最近十条 VPN 事件。软件状态会显示单独安装的 Hysteria 2。
 
 <a id="quickstart"></a>
 
@@ -105,21 +74,34 @@
 
 此客户端连接您自己的VPN服务器或服务商，不附带现成VPN服务器或其访问权限。
 
-选择已发布且经过验证的版本。将`RELEASE_TAG`替换为其标签，`MANIFEST_SHA256`替换为可信`SHA256SUMS`的SHA-256，`INSTALLER_SHA256`替换为同一版本`install.sh`的SHA-256。请通过独立途径确认这些值的真实性。执行前会验证安装器：
+选择已发布且经过验证的版本。将`RELEASE_TAG`替换为其标签，`MANIFEST_SHA256`替换为可信`SHA256SUMS`的SHA-256，`INSTALLER_SHA256`替换为同一版本`install.sh`的SHA-256。请通过独立途径确认这些值的真实性。执行前会验证安装器。
+
+### 从电脑安装
+
+在路由器局域网内的电脑上打开已验证的发布版源代码。安装程序使用 Bash 和 OpenSSH。Windows 请使用 Git for Windows。
+
+**macOS / Linux / Git Bash**
 
 ```sh
-(
-  set -eu
-  release_tag='RELEASE_TAG'
-  manifest_sha256='MANIFEST_SHA256'
-  installer_sha256='INSTALLER_SHA256'
-  url="https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/$release_tag"
-  installer=$(mktemp /tmp/foxhole-install.XXXXXX)
-  trap 'rm -f "$installer"' EXIT
-  uclient-fetch -q -T 60 -O "$installer" "$url/install.sh"
-  printf '%s  %s\n' "$installer_sha256" "$installer" | sha256sum -c -
-  sh "$installer" --base-url "$url" --manifest-sha256 "$manifest_sha256" --apply
-)
+bash tools/foxhole-openwrt-install.sh --release RELEASE_TAG --manifest-sha256 MANIFEST_SHA256 --installer-sha256 INSTALLER_SHA256 --auto
+```
+
+**Windows PowerShell**
+
+```powershell
+& "$env:ProgramFiles\Git\bin\bash.exe" ./tools/foxhole-openwrt-install.sh --release RELEASE_TAG --manifest-sha256 MANIFEST_SHA256 --installer-sha256 INSTALLER_SHA256 --auto
+```
+
+也可以从同一发布版下载 `foxhole-openwrt-install.sh`，用签名校验和核对 SHA-256 后，省略命令中的 `tools/`。PowerShell 示例使用 Git for Windows 的默认安装路径。
+
+安装程序使用默认 IPv4 网关。要选择局域网中的其他路由器，请添加 `--host ROUTER_IP`。按提示核对 SSH 主机密钥，登录并在路由器上阅读许可协议。
+
+### 从路由器终端安装
+
+在路由器上以 root 身份运行命令。
+
+```sh
+( set -eu; release_tag='RELEASE_TAG'; manifest_sha256='MANIFEST_SHA256'; installer_sha256='INSTALLER_SHA256'; url="https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/$release_tag"; installer=$(mktemp /tmp/foxhole-install.XXXXXX); trap 'rm -f "$installer"' EXIT; uclient-fetch -q -T 60 -O "$installer" "$url/install.sh"; printf '%s  %s\n' "$installer_sha256" "$installer" | sha256sum -c -; sh "$installer" --base-url "$url" --manifest-sha256 "$manifest_sha256" --apply )
 ```
 
 使用 `--apply` 时，交互式安装程序会显示协议并询问 `[y/N]`，默认为“否”。可用 `sh install.sh --license` 阅读协议。非交互式安装须在明确接受后提供 `--accept-license`。手机设置向导中，独立的同意选项默认不勾选。
@@ -147,6 +129,41 @@ sh install.sh --bundle /tmp/bundle --manifest-sha256 HASH --hy2 --ram --apply
 
 去掉`--apply`即可只检查选定包而不安装。不会为了适配不兼容的包而升级内核软件包。精简目录中的`--server`仅在所选目录包含兼容且经过验证的入站Hysteria服务器包时可用，此时才将其计入资源预算。配置远程访问前保持关闭。
 
+<a id="features"></a>
+
+## 🔌 支持的 VPN 协议
+
+当前可用于路由器的 FoxHole VPN 模块：
+
+| 协议 | 安装选项 | 说明 |
+| --- | --- | --- |
+| VLESS | `--vless` | 使用VPN配置中给定的参数，通过客户端模块连接兼容的VLESS代理服务器。 |
+| Hysteria2 | `--hy2` | 通过QUIC/UDP连接Hysteria2服务器，使用该协议独立的客户端模块。 |
+| WireGuard | `--wg` | 与WireGuard对等节点建立L3 IP隧道，由配置提供密钥、地址及网络参数。 |
+
+## 📋 要求
+
+- 带apk包管理器的OpenWrt 25.12.5 或 25.12.6和root权限。直接下载需要路由器联网；本地`--bundle`只需可信局域网。
+- 适用于准确固件、目标、架构及所选协议的已发布软件包。当前软件包与更新策略允许 `x86/64` 和 `mediatek/filogic`；SDK 构建或 ARM 架构名称本身不能证明所有路由器型号均兼容。
+- 足以容纳完整且经过验证的软件包预算的闪存和 RAM。更改软件包前，安装程序会检查依赖关系、内核 ABI 和暂存空间。
+- 从可信本地网络访问。通过Android查找和初次设置时，请将手机连接到路由器Wi-Fi。
+
+[v1.0.6版本](https://github.com/foxhole-team/foxhole-openwrt-client/releases/tag/v1.0.6)包含BASE 1.0.6-r1和FoxHole Core 1.0.4客户端模块。兼容的Core更新可以单独安装。软件包的可用性和兼容性取决于所选版本、固件和目标平台。
+
+仅有源码支持和交叉编译的二进制文件，并不能证明路由器兼容性。
+只能安装已验证真实性的发布目录中包含的软件包。
+入站服务器在未使用的 S2/OpenPGP 软件包中仍有两项经过审查的依赖问题；
+针对确切构建的检查及例外的到期时间见[发布说明](RELEASE.md)。
+
+## 支持的路由器
+
+| 型号 | RAM | Flash | OpenWrt | 软件包安装位置 |
+|---|---|---|---|---|
+| [Cudy WR3000 v1](https://www.cudy.com/products/wr3000-1-0) | 256 MB | 16 MB NOR | 25.12.5 | 仅 RAM |
+| [Cudy WR3000S v1](https://www.cudy.com/products/wr3000s-1-0) | 256 MB | 128 MB NAND | 25.12.6 | FLASH |
+
+表中列出的是硬件总容量。安装前，安装程序会检查具体型号及可用空间。
+
 <p align="center">
   <img src="../media/dashboard.png" width="100%" alt="FoxHole OpenWrt Client dashboard">
 </p>
@@ -157,7 +174,7 @@ sh install.sh --bundle /tmp/bundle --manifest-sha256 HASH --hy2 --ram --apply
 
 更改 PIN 会重置配对：手机需要重新连接，但 VPN 配置和设置会保留。
 
-打开 **LuCI → Services → FoxHole**，设置 PIN 并添加 VPN 配置。
+打开 **LuCI → Services → FoxHole OpenWRT Client → Panel**，设置 PIN 并添加 VPN 配置。
 规则可将设备、域名和国家/地区流量通过 VPN 或直接连接发送。
 
 `ACCESS_LOCAL_NETWORK` - 用于发现、设置和管理路由器。在 Android 17（API 37）及更高版本上，若应用的目标 API 也是 37 或更高版本，会在 LAN 操作前请求系统权限。拒绝后会阻止这些操作。
@@ -206,7 +223,7 @@ Wi-Fi 图标仅表示实际的 Wi-Fi 连接，不读取 SSID 或访问定位。�
 
 在网页面板或已配对应用的 **设置 → FoxHole 更新** 中，通过同一套经过身份验证的事务检查并安装更新。更新范围是 FoxHole 面板/runtime 和所选的已安装客户端协议模块，并保留其 FLASH/RAM 模式。新协议须单独安装。配置与配对会保留，不升级 OpenWrt 固件或其他系统软件包。
 
-直接通过CLI／后端安装时，默认关闭自动更新。首次通过网页或Android配置时，独立且可见的自动更新复选框默认勾选；可取消勾选以退出。配对或打开配置时保留路由器现有策略，包括已关闭自动更新的选择。之后可在设置中修改。
+新安装的软件包会在所有者设置 PIN 后开启自动更新。若要关闭，可在设置时取消勾选，或向安装程序传入 `--no-auto-update`。重新配对会保留原有选择。稍后也可在设置中更改。
 
 启用后，路由器每天检查并安装经过验证的 FoxHole 软件包更新。取消手机配对不会关闭此策略。没有更新器的旧软件包须先进行单独审核的迁移。请参阅[软件更新](UPDATES.md)。
 
@@ -219,6 +236,16 @@ Wi-Fi 图标仅表示实际的 Wi-Fi 连接，不读取 SSID 或访问定位。�
 - **使用说明:** [CLI](CLI.md) · [Updates](UPDATES.md) · [Rollback](ROLLBACK.md)
 - **架构:** [Architecture](ARCHITECTURE.md) · [Mobile networks](MOBILE-NETWORKS.md) · [Backup](BACKUP-ARCHITECTURE.md) · [Profile origin](PROFILE-ORIGIN.md)
 - **维护:** [Release](RELEASE.md) · [Bundle transport](BUNDLE-TRANSPORT.md) · [RAM install](RAM-INSTALL.md) · [Bootstrap](RAM-BOOTSTRAP.md) · [Prerequisites](RAM-PREREQUISITES.md) · [RAM updates](RAM-UPDATE-CONTROLLER.md) · [Engine origin](engine-release-origin.md) · [Security](../SECURITY.md)
+
+### 卸载 FoxHole
+
+在 LuCI 中打开 **服务 → FoxHole OpenWRT Client → Uninstall FoxHole**，确认要卸载的安装。在路由器的 root 终端运行以下命令。
+
+```sh
+/usr/libexec/foxhole-uninstall
+```
+
+命令会显示计划并要求确认。卸载 FLASH 版会断开 VPN 并移除基础软件包。对于托管 RAM 安装，请在禁用自动启动后重启 OpenWrt。如果重启后仍有 FLASH 副本，请单独卸载。网络设置、配置文件和配对设备将保留。FLASH 中已有的恢复缓存将保留。
 
 ## 🤝 参与开发
 

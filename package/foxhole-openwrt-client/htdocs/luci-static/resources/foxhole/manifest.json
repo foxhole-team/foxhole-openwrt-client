@@ -1,6 +1,6 @@
 {
-  "name": "FoxHole OpenWRT",
-  "short_name": "FoxHole OpenWRT",
+  "name": "FOXHOLE OPENWRT",
+  "short_name": "FOXHOLE OPENWRT",
   "id": "./shell.html",
   "start_url": "./shell.html",
   "scope": "./",

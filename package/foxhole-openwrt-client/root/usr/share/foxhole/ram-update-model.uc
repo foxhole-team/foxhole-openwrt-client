@@ -72,12 +72,23 @@ export function network_unreachable(code,stderr) {
  if(code!=4)return false;
  return match(stderr,/Connection error: Connection (failed|timed out)/)!=null;
 };
+export function official_base_release(release) {
+ const api='https://api.github.com/repos/foxhole-team/foxhole-openwrt-client/releases/';
+ const web='https://github.com/foxhole-team/foxhole-openwrt-client/releases/tag/';
+ if(!integer(release?.id)||release.id<1||!tag(release.tag_name)||release.url!=api+release.id||
+    release.html_url!=web+release.tag_name||type(release.assets)!='array'||length(release.assets)>1024)fail('RELEASE_UNAVAILABLE');
+ for(let asset in release.assets) {
+  if(asset?.name=='SHA256SUMS'||match(asset?.name||'',/^foxhole-openwrt-client-.*\.apk$/)) {
+   if(asset.browser_download_url!=origin+release.tag_name+'/'+asset.name)fail('RELEASE_UNAVAILABLE');
+  }
+ }
+};
 export function select_release(value,current) {
  if(type(value)!='array'||length(value)>10||!version(current))fail('RELEASE_UNAVAILABLE');
  let chosen=null,eligible=0;
  for(let release in value) {
   if(release?.draft!=false||type(release.prerelease)!='bool'||!tag(release.tag_name))continue;
-  if(type(release.assets)!='array'||length(release.assets)>1024)fail('RELEASE_UNAVAILABLE');
+  official_base_release(release);
   let sums=false,base=null,seen={};
   for(let asset in release.assets) {
    if(type(asset.name)!='string'||length(asset.name)>255||seen[asset.name])fail('RELEASE_UNAVAILABLE');seen[asset.name]=true;
@@ -87,7 +98,12 @@ export function select_release(value,current) {
    if(!integer(asset.size)||asset.size<1||asset.size>maximum_apk_bytes)fail('PACKAGE_VERIFICATION_FAILED');
    if(base==null||compare(found[1],base.version)>0)base={version:found[1],file:asset.name,bytes:asset.size,releaseTag:release.tag_name};
   }
-  if(!sums||base==null)continue;eligible++;
+  if(!sums||base==null) {
+   // A partial release at or above the installed tag cannot establish that there is no update.
+   if(release.tag_name==release_for(current)||compare(substr(release.tag_name,1)+'-r1',current)>0)fail('RELEASE_UNAVAILABLE');
+   continue;
+  }
+  eligible++;
   if(compare(base.version,current)<=0)continue;
   if(chosen==null||compare(base.version,chosen.version)>0)chosen=base;
  }
@@ -121,6 +137,14 @@ export function policy(value,wanted,release,observed) {
   value.supportedOpenWrt[0]!='25.12.5'||value.supportedOpenWrt[1]!='25.12.6')fail('PACKAGE_VERIFICATION_FAILED');
  if(observed!=null)supports_firmware(value,observed);
  return value;
+};
+export function policy_records(legacy,modern,wanted,release,observed) {
+ if(modern==null)return policy(legacy,wanted,release,observed);
+ let prior=policy(legacy,wanted,release,null),current=policy(modern,wanted,release,null);
+ if(prior.schema!=1 || current.schema!=2 || index(current.supportedOpenWrt,prior.osRelease)<0)
+  fail('PACKAGE_VERIFICATION_FAILED');
+ if(observed!=null)supports_firmware(current,observed);
+ return current;
 };
 export function metadata(value,wanted) { return updates.base_layout(value,wanted); };
 export function capture_arguments(output,operation,args) {

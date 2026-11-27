@@ -13,9 +13,10 @@ const secret = randomBytes(32).toString('hex');
 const generation = randomBytes(32).toString('hex');
 const config = { trafficStats: { listen: '127.0.0.1:901', secret },
   auth: { type: 'userpass', userpass: { [id]: secret, [other]: secret } } };
-const state = { revision: 7, clients: [id, other].map(value =>
+const state = { revision: 7, settings: { vpnServerEnabled: true }, clients: [id, other].map(value =>
   ({ id: value, inbound: true, secret })) };
 const records = {
+  '/etc/foxhole/inbound.json': '{}',
   '/tmp/foxhole/inbound/generation': generation,
   '/tmp/foxhole/inbound/shared.json': JSON.stringify(config),
   '/tmp/foxhole/inbound/observations.json': JSON.stringify({ schema: 1,
@@ -23,13 +24,15 @@ const records = {
 };
 const source = `import * as socket from 'socket';
 import * as core_adapter from '/workspace/package/foxhole-openwrt-client/root/usr/share/foxhole/core-adapter.uc';
+import * as inbound from '/workspace/package/foxhole-openwrt-client/root/usr/share/foxhole/inbound.uc';
 import * as observation from '/workspace/package/foxhole-openwrt-client/root/usr/share/foxhole/client-observation.uc';
+import * as server_mode from '/workspace/package/foxhole-openwrt-client/root/usr/share/foxhole/server-mode.uc';
 let records = ${JSON.stringify(records)}, state = ${JSON.stringify(state)};
 let store = { read: (path, limit) => records[path] };
 function session(request) { if (request.args?.token != 'synthetic-session') die('unauthorized'); };
 function locked(fn) { return fn(); };
 function state_record() { return state; };
-${[['online_ready', 'connection, flags, deadline'], ['read_online', 'listener, ids'],
+${[['online_ready', 'connection, flags, deadline'], ['read_online', 'listener, ids, legacy'],
   ['client_status', 'request']].map(([name, args]) =>
   `function ${name}(${args}) ${functionBody(rpc, name)};`).join('\n')}
 print(sprintf('%J', client_status({ args: { token: 'synthetic-session' } })), '\\n');

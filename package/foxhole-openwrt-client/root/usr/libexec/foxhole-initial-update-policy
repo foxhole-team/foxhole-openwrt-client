@@ -1,0 +1,6 @@
+#!/usr/bin/ucode
+'use strict';
+import * as fs from 'fs';
+import * as choice from '/usr/share/foxhole/initial-update-choice.uc';
+if (fs.stat('/proc/self')?.uid!=0 || length(ARGV)) die('Root initial setup required\n');
+choice.initialize();

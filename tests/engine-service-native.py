@@ -12,7 +12,7 @@ ROOT=Path(__file__).resolve().parents[1]
 MODULE='package/foxhole-openwrt-client/root/usr/share/foxhole/engine-service.uc'
 MOCKS={
 'fixture-state.uc':'''export const memory={files:{},commands:[],lockCalls:0,badLock:false,workerCurrent:false,lockSnapshot:null,writeCalls:0,snapshotUnavailable:false,snapshotCalls:0,workerBoot:null};
-export function reset(){memory.files={};memory.commands=[];memory.lockCalls=0;memory.badLock=false;memory.workerCurrent=false;memory.lockSnapshot=null;memory.writeCalls=0;memory.snapshotUnavailable=false;memory.snapshotCalls=0;memory.workerBoot=null;};
+export function reset(){memory.files={};memory.commands=[];memory.applianceProtocols=null;memory.statusRows=null;memory.ramBase=false;memory.lockCalls=0;memory.badLock=false;memory.workerCurrent=false;memory.lockSnapshot=null;memory.writeCalls=0;memory.snapshotUnavailable=false;memory.snapshotCalls=0;memory.workerBoot=null;};
 ''',
 'fixture-fs.uc':'''import { memory } from './fixture-state.uc';
 export function readfile(path,limit){
@@ -22,6 +22,7 @@ export function readfile(path,limit){
  die('fixture_refused_real_filesystem_read');
 };
 export function lstat(path){
+ if(path=='/tmp/foxhole-ram-active.json')return memory.ramBase?{type:'file'}:null;
  if(path=='/etc/foxhole/engine.lock'||path=='/etc/foxhole/state.lock')
   return {type:'file',uid:memory.badLock?1:0,gid:0,mode:0o600,nlink:1,inode:17};
  return null;
@@ -47,7 +48,7 @@ export function system(argv,timeout){
 export function validate_state(value){return value;};
 ''',
 'engine-model.uc':'''import { memory } from './fixture-state.uc';
-export function status(catalog,installed,context){return {entries:[],revision:installed.revision};};
+export function status(catalog,installed,context){return {entries:memory.statusRows||[],revision:installed.revision};};
 export function plan(request,catalog,installed,context,owner,nonce,stamp){
  return {schema:1,planId:'fixture-plan',owner,impact:'NONE',createdAtUptimeMs:stamp};
 };
@@ -99,6 +100,7 @@ function allowed(path){return index(['/etc/foxhole/state.json','/etc/foxhole/eng
  '/tmp/foxhole/core-uploads/current.json'],path)>=0||
  substr(path,0,25)=='/tmp/foxhole/engine-plan-';};
 export function read(path,limit){
+ if(path=='/etc/foxhole/vpn-server-job.json')return memory.files[path]??null;
  if(!allowed(path))die('fixture_refused_real_store_read');
  return memory.files[path]??null;
 };
@@ -108,6 +110,11 @@ export function directory(path){die('fixture_refused_real_directory');};
 export function file_metadata(info){return info?.type=='file'&&info.uid==0&&info.nlink==1&&!(info.mode&0o077)&&info.inode>0;};
 '''
 }
+MOCKS['update-native.uc']="export function installed_identities(){die('fixture_unexpected_identity');};export function native_cas(value){return 'sha256-160:'+substr(value,0,40);};"
+MOCKS['protocol-facts.uc']="import { memory } from './fixture-state.uc';export function installed(){return memory.applianceProtocols;};"
+MOCKS['fixture-fs.uc'] += "\nexport function dirname(path){return '/';};export function chmod(path,mode){die('fixture_unexpected_chmod');};export function rename(a,b){die('fixture_unexpected_rename');};"
+MOCKS['engine-model.uc'] += "\nexport function reinstall_scope(a,b,c){die('fixture_unexpected_scope');};export function reinstall_bound(a,b,c,d){die('fixture_unexpected_bound');};export function reinstall_only(a,b){die('fixture_unexpected_simulation');};"
+
 MAIN='''\
 'use strict';
 import * as service from './engine-service.uc';
@@ -131,6 +138,16 @@ test('actual status reaches ordered reconcile with no job',()=>{
 test('actual plan keeps snapshot and stored-plan behavior',()=>{
  let value=service.plan({},PRINCIPAL);equal(value.planId,'fixture-plan');
  equal(length(keys(memory.files)),1);
+});
+test('a verified built-in provider is installed without a fabricated native slot or mutation right',()=>{
+ memory.applianceProtocols={schema:1,protocols:['hysteria2']};memory.statusRows=[{id:'hysteria2',installed:false,version:null,storage:null,binarySha256:null,availability:'NOT_RELEASED',updateAvailable:false}];
+ let value=service.status(PRINCIPAL);
+ equal(value.entries[0],{id:'hysteria2',installed:true,version:null,storage:null,binarySha256:null,availability:'NOT_RELEASED',updateAvailable:false});
+});
+test('RAM is reported read-only and unknown independent facts cannot hide the controls status',()=>{
+ memory.ramBase=true;memory.applianceProtocols=null;
+ let value=service.status(PRINCIPAL);equal(value.managementSupported,false);equal(value.entries,[]);
+ refused(()=>service.plan({},PRINCIPAL),'engine_unsupported_target');
 });
 test('actual job reaches ordered reconcile for its original owner',()=>{
  save_job(own_job('SUCCEEDED'));let value=service.job('fixture-job',PRINCIPAL);equal(value.state,'SUCCEEDED');

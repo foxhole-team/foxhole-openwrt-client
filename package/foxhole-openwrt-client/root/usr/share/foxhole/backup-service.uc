@@ -42,7 +42,10 @@ function state() {
  try { return state_model.validate_state(value); } catch (_) { fail(); }
 };
 function phones() { return mobile.journal(private_json('/etc/foxhole/mobile.json',65536)); };
-function policy() { return policy_model.policy(private_json(POLICY,8192)); };
+function policy() {
+ let saved=private_json(POLICY,8192);
+ return policy_model.policy(saved,saved==null?private_json('/etc/foxhole/auth.json',4096):null);
+};
 function stop_intent() {
  let value=private_json('/etc/foxhole/engine-intent.json',4096)||{schema:1,revision:0};
  if(value.schema!=1||type(value.revision)!='int'||value.revision<0||value.revision>=0x7fffffff)fail();

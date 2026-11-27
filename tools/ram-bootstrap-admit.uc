@@ -20,7 +20,8 @@ parents(model.stage);if((fs.lstat(model.stage).mode&0o7777)!=0o700)fail();
 let descriptor=model.descriptor(json(read('/etc/foxhole/ram-update/boot.json',8192)));
 if(operation=='fetch') {
  let artifact=args[0]==descriptor.artifact.url?descriptor.artifact:descriptor.overlay?.artifact;
- if(length(args)!=2||artifact==null||args[0]!=artifact.url||args[1]!=(descriptor.caFileSha256==null?'system':'pinned')||+limit!=artifact.bytes)fail();
+ let mode=descriptor.schema==2?'github-release':descriptor.caFileSha256==null?'system':'pinned';
+ if(length(args)!=2||artifact==null||args[0]!=artifact.url||args[1]!=mode||+limit!=artifact.bytes)fail();
  if(args[1]=='pinned')regular(model.trust+'/ca.pem',32768,false);
 }else {
  if(+limit>model.maximum_metadata)fail();

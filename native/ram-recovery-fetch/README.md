@@ -25,17 +25,24 @@ The interface is deliberately limited:
 
 ```
 foxhole-ram-fetch [--ca-certificate /protected/public-ca.pem] https://host/path
+foxhole-ram-fetch --github-release https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/TAG/ASSET
 ```
 
-It performs one GET to stdout with a 60-second request timeout. The bootstrap's
+Archive data goes to stdout with a 60-second timeout per HTTP request. The bootstrap's
 existing owned capture adds the total deadline and byte limit. Initial HTTP URLs,
 credentials, proxy settings, custom headers, additional URLs, POST and insecure
-certificate options are refused before network dispatch. Every redirect Location
-must be an absolute HTTPS URL before libuclient is allowed to follow it; relative
-redirects are refused. Signed GitHub asset query strings can remain in the HTTPS
-redirect, but the redirected URL is not logged. Stock certificate and hostname
-validation is unchanged. The caller still verifies exact size, SHA-256 and native
-APK signatures before extraction or activation.
+certificate options are refused before network dispatch. The direct HTTPS mode
+allows up to three absolute redirects on the original authority.
+
+GitHub mode derives the official tag API endpoint from the stable versioned URL.
+The existing system ucode interpreter checks the bounded metadata, exact repository,
+tag, filename, numeric asset ID and uploaded state. The helper requests that ID
+as an octet stream with system CA trust. It allows one HTTPS handoff to `release-assets.githubusercontent.com`,
+under repository ID `1361759440`. The CDN resource has a UUID and the signed
+disposition names the requested BASE or architecture-specific bank. The helper
+validates the certificate and hostname on each connection. It does not persist
+or log the temporary CDN URL. The loader checks the exact signed archive size,
+SHA-256 and native APK signature before extraction or activation.
 
 Host policy tests compile the actual policy header. They do not qualify target
 linking, TLS, redirects, native APK verification, low-memory boot or reboot. Those

@@ -71,14 +71,14 @@ test('missing country cannot suppress connection notice indefinitely', () => {
   assert.equal(h.notices.length, 1);
 });
 
-test('runtime error is announced once and recovery can announce again', () => {
+test('an old runtime error is quiet on entry but a new failure is announced', () => {
   const h = harness();
   const error = { phase: 'error', connected: false, error: 'runtime_failed' };
   h.update(error);
   h.update(error);
-  assert.equal(h.notices.length, 1);
-  assert.equal(h.notices[0].kind, 'error');
+  assert.equal(h.notices.length, 0);
   h.update(connected);
   h.update(error);
-  assert.equal(h.notices.length, 3);
+  assert.equal(h.notices.length, 2);
+  assert.equal(h.notices[1].kind, 'error');
 });

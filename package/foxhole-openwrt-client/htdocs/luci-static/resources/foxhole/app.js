@@ -1,11 +1,11 @@
-import { UpdatePanel, initializeUpdatePolicy } from './update-panel.js?v=1.0.8-r2';
-import { EnginePanel } from './engine-panel.js?v=1.0.8-r2';
-import { BackupPanel } from './backup-panel.js?v=1.0.8-r2';
-import { LogsPanel } from './logs-panel.js?v=1.0.8-r2';
-import { PairingPanel } from './pairing-panel.js?v=1.0.8-r2';
-import { HelpPanel } from './help-content.js?v=1.0.8-r2';
-import { hasHost, request, cancelPending, PanelError } from './bridge.js?v=1.0.8-r2';
-import { Charts, formatBytes, setCountryLabel } from './charts.js?v=1.0.8-r2';
+import { UpdatePanel, initializeUpdatePolicy } from './update-panel.js?v=1.0.13-r1-ui16';
+import { EnginePanel } from './engine-panel.js?v=1.0.13-r1-ui16';
+import { BackupPanel } from './backup-panel.js?v=1.0.13-r1-ui16';
+import { LogsPanel } from './logs-panel.js?v=1.0.13-r1-ui16';
+import { PairingPanel } from './pairing-panel.js?v=1.0.13-r1-ui16';
+import { HelpPanel } from './help-content.js?v=1.0.13-r1-ui16';
+import { hasHost, request, cancelPending, PanelError } from './bridge.js?v=1.0.13-r1-ui16';
+import { Charts, formatBytes, setCountryLabel } from './charts.js?v=1.0.13-r1-ui16';
 import {
   clientDeviceIcon, clientDeviceType, clone, countryCodes,
   countryFlagPath, finite, maskIpv4, maskMac, networkDeviceIcon,
@@ -13,10 +13,10 @@ import {
   randomId,
   serverCountryCode,
   validAddress
-, modalFooterActions } from './frontend-model.js?v=1.0.8-r2';
+, modalFooterActions } from './frontend-model.js?v=1.0.13-r1-ui16';
 import {
   ModalFlow, PopupController, waitForMotion
-} from './ui-controller.js?v=1.0.8-r2';
+} from './ui-controller.js?v=1.0.13-r1-ui16';
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -33,6 +33,7 @@ let preferredPlainHeadings = storage.get('plainHeadings') === '1';
 let token = null;
 let pinSetupRequired = false;
 let autoUpdateSetupEligible = false;
+let initialAutoUpdateSupported = false;
 const LICENSE_VERSION = 1;
 let licenseRequired = false;
 let licenseRequiredVersion = LICENSE_VERSION;
@@ -42,6 +43,8 @@ let packageMetadataPending = null;
 let draft = null;
 let draftChange = 0;
 let draftSaved = 0;
+let draftGeneralChange = 0;
+let draftGamesChange = 0;
 let draftSaving = false;
 let draftSession = 0;
 let draftNoticeKey = null;
@@ -215,13 +218,12 @@ const modalDefinitions = {
   },
   'client-device': {
     icon: 'mobile', actions: (view) => {
-      if (!view.data?.export) return [backAction, {
-        action: 'generate-client', icon: 'chevron', label: 'action.next',
-        tone: 'accent'
-      }];
       if (view.data.managed) return [backAction, {
         action: 'delete-client', icon: 'trash', label: 'action.delete',
-        tone: 'danger', id: view.data.id
+        tone: 'danger', id: view.data.id, disabled: !view.data.export
+      }];
+      if (!view.data.export) return [backAction, {
+        action: 'generate-client', icon: 'chevron', label: 'action.next', tone: 'accent'
       }];
       return [backAction, {
         action: 'modal-close', icon: 'check', label: 'action.done',
@@ -231,16 +233,15 @@ const modalDefinitions = {
   },
   'client-control': {
     icon: 'mobile', actions: (view) => [closeAction, {
-      action: 'manage-client', icon: 'settings', label: 'action.manage',
+      action: 'manage-client', icon: 'eye', label: 'action.open_profile',
       tone: 'accent', id: view.data.id
     }]
   },
   'engines': { icon: 'network', actions: () => [backAction, closeAction] },
   'engine-plan': { icon: 'download', actions: () => [backAction, { action: 'engine-apply', icon: 'check', label: 'action.confirm', tone: 'accent' }] },
   'engine-progress': { icon: 'download', actions: () => [closeAction] },
-  'updates': { icon: 'download', actions: () => [backAction, closeAction] },
-  'update-plan': { icon: 'download', actions: () => [backAction, { action: 'update-apply', icon: 'check', label: 'action.confirm', tone: 'accent' }] },
-  'logs': { icon: 'logs', layout: 'journal', actions: () => [backAction, { action: 'logs-refresh', icon: 'refresh', label: 'logs.refresh' }, closeAction] },
+  'updates': { icon: 'download', actions: () => [{action:'update-check',icon:'refresh',label:'updates.check',marker:'updatePrimary',disabled:true},backAction,closeAction] },
+  'logs': { icon: 'logs', actions: () => [backAction, closeAction] },
   'settings-home': {
     icon: 'settings', actions: () => [closeAction]
   },
@@ -258,7 +259,7 @@ const modalDefinitions = {
     }]
   },
   'network-management': {
-    icon: 'settings', actions: () => [backAction, closeAction]
+    icon: 'settings', actions: () => [{action:'refresh-profiles',icon:'refresh',label:'pairing.refresh'},backAction,closeAction]
   },
   'pin-change': {
     icon: 'key', actions: () => [pinSetupRequired ? {
@@ -320,8 +321,12 @@ function renderModalChrome(view) {
     server ? serverCountryCode(server, state.runtime) : '');
   $('[data-modal-icon]').setAttribute('href',
     `#icon-${definition.icon}`);
-  const clientExport = view.name === 'client-device' && view.data?.export;
+  const clientExport = view.name === 'client-device' && (view.data.managed || view.data.export || view.data.creating);
   const dialog = $('#modal-shell');
+  $('[data-settings-help-entry]', dialog).hidden = view.name !== 'settings-home';
+  const refreshLogs = $('[data-log-refresh]', dialog);
+  refreshLogs.hidden = view.name !== 'logs';
+  refreshLogs.disabled = view.name !== 'logs' || Boolean(logsPanel.loading);
   dialog.className = `modal view-${view.name}${clientExport
     ? ' has-client-export' : ''}`;
 
@@ -338,12 +343,14 @@ function renderModalChrome(view) {
     if (action.id) button.dataset.id = action.id;
     if (action.topic) button.dataset.helpTopic = action.topic;
     if (action.marker === 'serverToggle') button.dataset.serverToggle = '';
+    if (action.marker === 'updatePrimary') button.dataset.updatePrimary = '';
     button.disabled = action.disabled === true;
     const label = element('span', '', t(action.label));
     label.dataset.i18n = action.label;
     button.append(icon(action.icon), label);
     return button;
   }));
+  if (view.name === 'updates') updatePanel.renderFooter();
 }
 
 function prepareModalView(view) {
@@ -367,13 +374,19 @@ function prepareModalView(view) {
   if (view.name === 'help') helpPanel.render($('[data-help-content]'), view.data.topic);
   if (view.name === 'pairings') void pairingPanel.open();
   if (view.name === 'pairing-revoke') $('[data-pairing-revoke-name]').textContent = view.data.name;
-  if (view.name === 'update-plan') updatePanel.render();
   if (view.name === 'settings-home') {
     void updatePanel.summary();
     const entry = $('[data-backup-entry]');
-    void backupPanel.capability().then(supported => {
-      if (entry?.isConnected) entry.hidden = !supported;
-    });
+    if (entry) {
+      entry.disabled = true;
+      entry.setAttribute('aria-busy', 'true');
+      void backupPanel.capability().then(supported => {
+        if (!entry.isConnected) return;
+        entry.disabled = !supported;
+        entry.removeAttribute('aria-busy');
+        entry.title = supported ? '' : t('error.backup_unavailable');
+      });
+    }
   }
   if (view.name === 'backup') {
     backupPanel.render();
@@ -391,8 +404,10 @@ function prepareModalView(view) {
   if (view.name === 'network-management') renderManagement();
   if (view.name === 'server-config') {
     $('[data-server-config]').value = view.data.config || '';
-    $('[data-server-name]').value = [...(view.data.name ??
-      t('server.default_name'))].slice(0, 13).join('');
+    syncServerTestAction(view);
+    const name = $('[data-server-name]');
+    name.required = Boolean(view.data.id);
+    name.value = [...(view.data.name ?? t('server.default_name'))].slice(0, 13).join('');
   }
   if (view.name === 'server-control') renderServerControl(view.data);
   if (view.name === 'client-device') renderClientView(view.data);
@@ -439,8 +454,11 @@ const modal = new ModalFlow({
 });
 const views = modal.views;
 const popups = new PopupController($('#modal-shell'));
+const footerYear = $('[data-footer-year]');
+footerYear.textContent = footerYear.dateTime = String(new Date().getFullYear());
 const updatePanel = new UpdatePanel({
-  call: api, text: t, element, show: openView, scope: () => epoch,
+  call: api, text: t, element, icon, scope: () => epoch,
+  confirmPlan: message => window.confirm(message),
   error: (error) => toast(errorText(error), 'error')
 });
 const enginePanel = new EnginePanel({
@@ -457,7 +475,6 @@ const backupPanel = new BackupPanel({
 });
 
 const logsPanel = new LogsPanel({ call: api, text: t, scope: () => epoch, bytes: formatBytes,
-  storage: () => refreshPackageMetadata().then(value => value?.storage),
   error: error => { if (['locked', 'unauthorized', 'luci_required'].includes(error.code)) localLock(); } });
 
 const helpPanel = new HelpPanel({ text: t, element, icon, facts: () => versionFacts() });
@@ -625,6 +642,7 @@ function refreshPackageMetadata() {
 function versionFacts() {
   return { version: installedPackage?.version || null,
     storage: installedPackage?.storage || null, modules: installedPackage?.installedModules ?? null,
+    hysteriaComponent: installedPackage?.hysteriaComponent ?? null,
     routerInfo: installedPackage?.routerInfo || null, homeServerEnabled: installedPackage?.homeServerEnabled ?? null };
 }
 
@@ -643,15 +661,16 @@ function renderAbout() {
   $('[data-about-address]', root).textContent = facts.routerInfo?.lanAddress || unavailable;
   $('[data-about-home-server]', root).textContent = facts.homeServerEnabled == null
     ? unavailable : t(facts.homeServerEnabled ? 'about.enabled' : 'about.disabled');
-  const modules = facts.modules;
+  const modules = (facts.modules || []).map(item => ({...item, name: `FoxHole Core ${item.id}`}));
+  if (facts.hysteriaComponent) modules.push({ ...facts.hysteriaComponent, name: 'Hysteria 2' });
   const list = $('[data-about-modules]', root);
   list.replaceChildren();
-  if (modules?.length) for (const item of modules) {
+  if (modules.length) for (const item of modules) {
     const row = element('p', 'about-module');
-    row.append(icon('network'), document.createTextNode(`FoxHole Core ${item.id}: ${item.version}`),
+    row.append(icon('network'), document.createTextNode(`${item.name}: ${item.version}`),
       icon(item.storage === 'RAM' ? 'memory' : 'floppy'), document.createTextNode(item.storage));
     list.append(row);
-  } else list.textContent = Array.isArray(modules) ? t('about.no_modules') : unavailable;
+  } else list.textContent = Array.isArray(facts.modules) ? t('about.no_modules') : unavailable;
 }
 
 function applyState(next) {
@@ -660,6 +679,10 @@ function applyState(next) {
   pairingPanel.renderHeader(state.pairedDeviceCount);
   syncVpnContext();
   if (!draft) appearance(state.settings, false);
+  else if (draftSaved === draftChange && state.revision > draft.revision) {
+    draft = settingsDraft();
+    refreshDraftView();
+  }
   renderLists();
   renderRuntimeNotice();
 }
@@ -791,7 +814,7 @@ function renderRuntimeNotice() {
     runtimeNoticeKey = key;
     connectionNoticeStarted = Date.now();
     if (!runtime.connected) connectedNoticeKey = null;
-    if (!runtime.connected && (previous || runtime.error)) {
+    if (!runtime.connected && previous) {
       toast(runtime.error ? errorText({ code: runtime.error }) :
         t(`dashboard.runtime_${runtime.phase}`),
       ['error', 'blocked'].includes(runtime.phase) ? 'error' : 'info');
@@ -844,6 +867,7 @@ async function back() {
   if (busy || modal.transitioning || pinSetupRequired) return;
   popups.closeAll();
   if (modal.current?.name === 'engines') enginePanel.close();
+  if (modal.current?.name === 'updates') updatePanel.close();
   if (modal.current?.name === 'logs') logsPanel.close();
   if (modal.current?.name === 'pairings') pairingPanel.close();
   await modal.back();
@@ -966,6 +990,7 @@ function renderSettings() {
     }
     else node.value = value;
   }
+  syncGamesControls();
   const languageSelect = $('[data-language]');
   if (languageSelect) languageSelect.value = draft.settings.language;
   const languageFlag = $('[data-language-flag]');
@@ -1262,6 +1287,16 @@ function prepareRuleMenu(picker) {
   syncRoutePicker(picker);
 }
 
+function syncGamesControls() {
+  if (!draft) return;
+  const disabled = !draft.settings.localRules || draft.settings.localScope !== 'all' ||
+    !draft.countries.some(item => item.route === 'direct');
+  for (const input of $$('[data-setting="gamesDirect"]')) {
+    input.checked = draft.settings.gamesDirect === true;
+    input.disabled = disabled;
+  }
+}
+
 function renderRules() {
   const list = $('[data-saved-rule-list]');
   const table = $('[data-rule-table="saved"]');
@@ -1351,7 +1386,7 @@ function renderDevicePicker() {
   const selected = selectedDeviceMacs();
   list.replaceChildren();
   if (dhcpLoading) {
-    list.append(element('p', 'list-empty', t('exceptions.devices_loading')));
+    list.append(element('p', 'list-empty foxhole-loading', t('exceptions.devices_loading')));
   } else if (!dhcpDevices.length) {
     list.append(element('p', 'list-empty', t(dhcpFailed
       ? 'exceptions.devices_unavailable' : 'exceptions.no_devices')));
@@ -1526,7 +1561,7 @@ function renderManagement() {
   const selected = view.data.tab || 'servers';
   for (const type of ['server', 'client']) {
     const list = $(`[data-management-${type}s]`);
-    list.replaceChildren();
+    const rows = document.createDocumentFragment();
     for (const item of state[`${type}s`]) {
       const row = element('div', 'management-row');
       row.append(icon(type === 'server' ? 'server' :
@@ -1546,9 +1581,10 @@ function renderManagement() {
       actions.append(actionButton(type === 'server' ? 'edit-server' : 'view-client', type === 'server' ? 'edit' : 'eye', type === 'server' ? 'action.edit' : 'action.view', item.id));
       actions.append(actionButton(`delete-${type}`, 'trash', 'action.delete', item.id));
       row.append(name, actions);
-      list.append(row);
+      rows.append(row);
     }
-    if (!state[`${type}s`].length) list.append(element('div', 'empty-state is-compact', t(`${type}s.empty_title`)));
+    if (!state[`${type}s`].length) rows.append(element('div', 'empty-state is-compact', t(`${type}s.empty_title`)));
+    list.replaceChildren(rows);
     $(`[data-${type}-count]`).textContent = state[`${type}s`].length;
   }
   for (const button of $$('[data-network-tab]')) {
@@ -1579,6 +1615,12 @@ function safeQr(markup) {
 
 function renderClientView(data) {
   const exported = data.export;
+  const pending = data.creating || (data.managed && !exported && !data.failure);
+  $('[data-client-form]').hidden = Boolean(exported || pending || data.failure);
+  $('[data-client-pending]').hidden = !pending;
+  $('[data-client-failure]').hidden = !data.failure;
+  if (data.failure) $('[data-client-failure-message]').textContent = errorText(data.failure);
+  if (pending || data.failure) { $('[data-client-result]').hidden = true; return; }
   if (!exported) {
     $('[data-client-name]').value = data.name || '';
     $('[data-client-type]').value = clientDeviceType(data.deviceType);
@@ -1666,6 +1708,8 @@ function beginSettingsDraft() {
   draft = settingsDraft();
   draftChange = 0;
   draftSaved = 0;
+  draftGeneralChange = 0;
+  draftGamesChange = 0;
   draftNoticeKey = null;
 }
 
@@ -1687,7 +1731,10 @@ async function persistDraft() {
         draftSaved < draftChange) {
       const version = draftChange;
       const noticeKey = draftNoticeKey;
-      const payload = clone(draft);
+      const gamesOnly = draftGeneralChange <= draftSaved;
+      const payload = gamesOnly ? settingsDraft() : clone(draft);
+      if (gamesOnly) payload.settings.gamesDirect = draft.settings.gamesDirect;
+      else if (draftGamesChange <= draftSaved) delete payload.settings.gamesDirect;
       try {
         const next = await api('settings', {
           revision: payload.revision,
@@ -1700,9 +1747,17 @@ async function persistDraft() {
         if (!draft || session !== draftSession) break;
         draft.revision = state.revision;
         draftSaved = version;
-        if (draftSaved >= draftChange && noticeKey) {
-          toast(t(noticeKey));
-          draftNoticeKey = null;
+        if (draftSaved >= draftChange) {
+          draft.settings.gamesDirect = state.settings.gamesDirect;
+          syncGamesControls();
+          if (gamesOnly && retried) {
+            draft = settingsDraft();
+            refreshDraftView();
+          }
+          if (noticeKey) {
+            toast(t(noticeKey));
+            draftNoticeKey = null;
+          }
         }
         retried = false;
         storage.set('language', state.settings.language);
@@ -1733,10 +1788,12 @@ async function persistDraft() {
   }
 }
 
-function queueDraftSave(noticeKey = 'settings.saved') {
+function queueDraftSave(noticeKey = 'settings.saved', gamesOnly = false) {
   if (!draft) return;
   draftNoticeKey = noticeKey;
   draftChange += 1;
+  if (gamesOnly) draftGamesChange = draftChange;
+  else draftGeneralChange = draftChange;
   void persistDraft();
 }
 
@@ -1751,15 +1808,23 @@ function serverTestNotice(result) {
   return { key: 'server.test_unconfirmed', tone: 'info' };
 }
 
-async function testServer() {
-  await operation(async () => {
+function newServerSubscription(view, config) {
+  return view?.name === 'server-config' && !view.data.id && /^(https|ttps):\/\//.test(config.trim());
+}
 
+function syncServerTestAction(view) {
+  const config = $('[data-server-config]'), button = $('[data-action="test-server"]');
+  if (config && button) button.hidden = newServerSubscription(view, config.value);
+}
+
+async function testServer() {
+  const config = $('[data-server-config]').value, view = views.at(-1);
+  if (newServerSubscription(view, config)) return;
+  await operation(async () => {
     toast(t('server.testing'), 'info');
     const result = await api('server.test', {
-      config: $('[data-server-config]').value,
-      engine: views.at(-1)?.data.engine || '', reachability: true
+      config, engine: view?.data.engine || '', reachability: true
     });
-
     const notice = serverTestNotice(result);
     toast(t(notice.key), notice.tone);
   });
@@ -1769,7 +1834,7 @@ async function saveServer() {
   await operation(async () => {
     const view = views[views.length - 1];
     const name = $('[data-server-name]').value.trim();
-    if (!name) throw new PanelError('invalid_name');
+    if (view.data.id && !name) throw new PanelError('invalid_name');
     const next = await api('server.save', {
       revision: state.revision, name,
       config: $('[data-server-config]').value,
@@ -1799,21 +1864,32 @@ async function controlServer(id, stop) {
 }
 
 async function createClient() {
+  const view = modal.current;
+  if (view?.name !== 'client-device' || view.data.managed || view.data.export) return;
   let exported;
   await operation(async () => {
     const form = $('[data-client-form]');
     const name = form.elements.name.value.trim();
     const deviceType = form.elements.deviceType.value;
     if (!name || name.length > 48 || /[\u0000-\u001f\u007f]/.test(name)) throw new PanelError('invalid_name');
+    view.data.name = name; view.data.deviceType = deviceType; view.data.creating = true;
+    $('#modal-shell').classList.add('has-client-export');
+    renderClientView(view.data);
     const result = await api('client.save', { revision: state.revision, name, deviceType, ...(state.servers[0] ? { serverId: state.servers[0].id } : {}) });
     applyState(result.state);
     if (draft) draft.revision = state.revision;
     exported = result.client;
   });
+  if (view !== modal.current) return;
+  delete view.data.creating;
   if (exported) {
-    views[views.length - 1].data = { export: exported, titleKey: 'client.export_title' };
-    await modal.repaint();
+    view.data = { export: exported, titleKey: 'client.export_title' };
+    renderModalChrome(view);
+    renderClientView(view.data);
     toast(t('client.saved_notice'));
+  } else {
+    $('#modal-shell').classList.remove('has-client-export');
+    renderClientView(view.data);
   }
 }
 
@@ -1841,6 +1917,7 @@ async function savePin() {
   let policyError = null;
   await operation(async () => {
     const result = await api('pin.change', { newPin: first,
+      ...(setupUpdates && initialAutoUpdateSupported ? { initialAutoUpdateEnabled: autoUpdates } : {}),
       licenseAccepted: licenseRequired && accepted, licenseVersion: licenseRequired && accepted ? LICENSE_VERSION : 0 });
     if (typeof result.token !== 'string' || !/^[a-f0-9]{64}$/.test(result.token)) throw new PanelError('unavailable');
     token = result.token;
@@ -1849,7 +1926,7 @@ async function savePin() {
     licenseRequired = false;
     $('[data-pin-change-form]').reset();
     saved = true;
-    if (setupUpdates && result.autoUpdateSetupEligible === true) {
+    if (setupUpdates && !initialAutoUpdateSupported && result.autoUpdateSetupEligible === true) {
       try { await initializeUpdatePolicy(true, autoUpdates, api); }
       catch (error) { policyError = error; }
     }
@@ -1946,16 +2023,45 @@ async function operation(task, closeOnSuccess = false) {
   }
 }
 
+async function readClientProfile(view) {
+  if (!view?.data.managed || view.data.reading || view.data.export) return;
+  const scope = epoch, id = view.data.id;
+  const active = () => epoch === scope && token && modal.current === view && !modal.transitioning;
+  view.data.reading = true;
+  delete view.data.failure;
+  renderClientView(view.data);
+  try {
+    const reply = await api('client.get', { id });
+    if (!active()) return;
+    const profile = reply?.export || reply;
+    if (!profile || typeof profile !== 'object' || typeof profile.name !== 'string' ||
+        (reply.id != null && reply.id !== id) || (profile.id != null && profile.id !== id)) throw new PanelError('unavailable');
+    view.data.export = profile;
+  } catch (error) {
+    if (!active()) return;
+    if (['locked','unauthorized','luci_required'].includes(error.code)) { localLock(); return; }
+    view.data.failure = error;
+  } finally {
+    view.data.reading = false;
+    if (active()) {
+      renderClientView(view.data);
+      const remove = $('[data-modal-footer] [data-action="delete-client"]');
+      if (remove) remove.disabled = !view.data.export;
+    }
+  }
+}
+
 async function loadEntity(type, id) {
+  if (type === 'client') {
+    await openView('client-device', { id, managed: true, titleKey: 'client.export_title' });
+    const view = modal.current;
+    if (view?.name === 'client-device' && view.data.id === id) await readClientProfile(view);
+    return;
+  }
   let data;
-  await operation(async () => { data = await api(`${type}.get`, { id }); });
-  if (!data) return;
-  await openView(type === 'server' ? 'server-config' : 'client-device', type === 'server'
-    ? { id: data.id, name: data.name, config: data.config,
-      engine: data.engine || '', subscription: data.subscription || null,
-      titleKey: 'server.edit_title' }
-    : { export: data.export || data, id: data.id || id, managed: true,
-      titleKey: 'client.export_title' });
+  await operation(async () => { data = await api('server.get', { id }); });
+  if (data) await openView('server-config', { id: data.id, name: data.name, config: data.config,
+    engine: data.engine || '', subscription: data.subscription || null, titleKey: 'server.edit_title' });
 }
 
 async function deleteEntity() {
@@ -2062,6 +2168,13 @@ function rateSparkline(series) {
   return svg;
 }
 
+function showTelemetryStatus(key) {
+  const notice = $('[data-telemetry-notice]');
+  notice.hidden = !key;
+  if (key) { notice.dataset.i18n = key; notice.textContent = t(key); }
+  else { delete notice.dataset.i18n; notice.textContent = ''; }
+}
+
 function stopPolling() { clearTimeout(pollTimer); pollTimer = 0; }
 
 async function poll() {
@@ -2072,9 +2185,8 @@ async function poll() {
   try {
     const payload = await api('telemetry');
     if (currentEpoch !== epoch) return;
-    if (payload.available !== true && telemetryAvailable !== false)
-      toast(t('dashboard.no_telemetry'), 'error');
     telemetryAvailable = payload.available === true;
+    showTelemetryStatus(telemetryAvailable ? null : 'dashboard.no_telemetry');
     if (payload.runtime) applyRuntime(payload.runtime, payload.sample);
     if (telemetryAvailable) charts.update(payload);
     failures = 0;
@@ -2083,8 +2195,7 @@ async function poll() {
     if (currentEpoch !== epoch) return;
     if (error.code === 'locked' || error.code === 'unauthorized' ||
         error.code === 'luci_required') localLock();
-    else if (++failures === 1)
-      toast(t('dashboard.stale_notice'), 'error');
+    else { failures++; showTelemetryStatus('dashboard.stale_notice'); }
   } finally {
     polling = false;
     renderRuntimeNotice();
@@ -2105,7 +2216,7 @@ function renderPinCooldown() {
 function localLock() {
   enginePanel.close();
   updatePanel.close();
-  updatePanel.current = null;
+  updatePanel.forget();
   backupPanel.close();
   logsPanel.close();
   pairingPanel.close();
@@ -2133,6 +2244,7 @@ function localLock() {
   dhcpLoading = false;
   dhcpFailed = false;
   telemetryAvailable = null;
+  showTelemetryStatus(null);
   failures = 0;
   $('#app-shell').hidden = true;
   $('#app-shell').inert = false;
@@ -2142,6 +2254,7 @@ function localLock() {
   $$('[data-pin-dot]').forEach((dot) => dot.classList.remove('is-filled'));
   $('#pin-gate').classList.remove('is-loading', 'is-unlocking', 'is-error');
   renderPinCooldown();
+  if (!$('#pin-input').disabled) $('#pin-input').focus({preventScroll:true});
 }
 
 async function unlock(event) {
@@ -2159,6 +2272,9 @@ async function unlock(event) {
     token = result.token;
     pinSetupRequired = result.pinChangeRequired === true;
     autoUpdateSetupEligible = result.autoUpdateSetupEligible === true && pinSetupRequired;
+    initialAutoUpdateSupported = result.initialAutoUpdateSupported === true;
+    const initialUpdates = $('[data-initial-auto-update]');
+    if (initialUpdates && autoUpdateSetupEligible) initialUpdates.checked = result.initialAutoUpdateDefault !== false;
     licenseRequired = result.licenseRequired === true || (result.licenseRequired == null && pinSetupRequired);
     licenseRequiredVersion = result.licenseVersion == null ? LICENSE_VERSION : result.licenseVersion;
     if (licenseRequired && licenseRequiredVersion !== LICENSE_VERSION) throw new PanelError('unavailable');
@@ -2171,6 +2287,7 @@ async function unlock(event) {
     $('#pin-input').value = '';
     epoch += 1;
     void refreshPackageMetadata();
+    if (!pinSetupRequired) void updatePanel.warm();
     if (pinSetupRequired) await openView('pin-change', {
       titleKey: 'pin_setup.title'
     }, true);
@@ -2225,6 +2342,7 @@ async function perform(action, target) {
     case 'open-server-control': await openView('server-control', { id }, true); break;
     case 'open-client-control': await openView('client-control', { id }, true); break;
     case 'manage-client': await loadEntity('client', id); break;
+    case 'retry-client': await readClientProfile(modal.current); break;
     case 'modal-close': await closeModal(); break;
     case 'modal-back': await back(); break;
     case 'save-server': await saveServer(); break;
@@ -2234,6 +2352,16 @@ async function perform(action, target) {
     case 'open-exceptions':
       if (!draft) beginSettingsDraft();
       await openView('exceptions'); break;
+    case 'refresh-profiles': {
+      const view = modal.current, scope = epoch;
+      if (view?.name !== 'network-management') break;
+      await operation(async () => {
+        const next = await api('state');
+        if (scope !== epoch || modal.current !== view) return;
+        applyState(next); renderManagement();
+      });
+      break;
+    }
     case 'open-networks': await openView('network-management'); break;
     case 'open-manual-address': await openView('manual-address'); break;
     case 'toggle-popup': {
@@ -2295,12 +2423,11 @@ async function perform(action, target) {
     }
     case 'open-updates': await openView('updates'); break;
     case 'update-check': await updatePanel.action('check'); break;
-    case 'update-plan': await updatePanel.action('plan'); break;
-    case 'update-apply': await updatePanel.apply(); break;
-    case 'update-status': await updatePanel.open(); break;
+    case 'update-install': await updatePanel.install(); break;
     case 'open-engines': await openView('engines'); break;
     case 'engine-plan': await enginePanel.prepare(id, target.dataset.operation); break;
     case 'engine-apply': await enginePanel.apply(); break;
+    case 'engine-refresh': await enginePanel.open(); break;
     case 'engine-job': await enginePanel.showJob(); break;
     case 'open-interface-settings': await openView('interface-settings'); break;
     case 'open-backup':
@@ -2399,6 +2526,7 @@ document.addEventListener('input', (event) => {
     if (input.matches('[data-server-config]')) {
       current.data.config = input.value;
       current.data.subscription = null;
+      syncServerTestAction(current);
     }
     if (input.matches('[data-server-name]'))
       current.data.name = input.value;
@@ -2461,6 +2589,11 @@ document.addEventListener('change', (event) => {
     const value = input.type === 'checkbox' ? input.checked : input.dataset.valueType === 'boolean' ? input.value === 'true' : input.value;
     draft.settings[input.dataset.setting] = input.hasAttribute(
       'data-setting-inverted') ? !value : value;
+    if (input.dataset.setting === 'gamesDirect') {
+      syncGamesControls();
+      queueDraftSave('settings.saved', true);
+      return;
+    }
     appearance(draft.settings);
     renderSettings();
     queueDraftSave();
@@ -2579,6 +2712,7 @@ appShell.addEventListener('scroll', () => {
   topbar.classList.toggle('has-glass', solid);
 }, { passive: true });
 document.addEventListener('visibilitychange', () => {
+  logsPanel.visibilityChanged();
   if (document.hidden) { stopPolling(); clearTimeout(pinCooldownTimer); }
   else { syncViewport(); if (!$('#pin-gate').hidden) renderPinCooldown(); void poll(); }
 });
@@ -2597,6 +2731,9 @@ async function boot() {
     charts.setPeriod(period);
     $('[data-period]').value = charts.period;
     syncViewport();
+    if (hasHost && !$('#pin-gate').hidden && !$('#pin-input').disabled &&
+        (!document.activeElement || document.activeElement === document.body))
+      $('#pin-input').focus({preventScroll:true});
     if (!hasHost) {
       $('#pin-input').disabled = true;
       toast(t('error.host_required'), 'error');

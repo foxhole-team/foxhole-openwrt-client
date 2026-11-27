@@ -1,4 +1,6 @@
 import * as model from './model.uc';
+import * as fs from 'fs';
+import * as digest from 'digest';
 
 const TUN_NAME = 'foxhole0';
 const ROUTE_TABLE = 201;
@@ -6,6 +8,8 @@ const RULE_PRIORITY = 10000;
 const MARK = '0x40000000';
 const MARK_MASK = '0x40000000';
 const PROXY_LISTEN = '127.0.0.1:17890';
+const GAME_CATALOG = '/usr/share/foxhole/game-routing.json';
+const GAME_CATALOG_SHA256 = '0cb765f45be0108c90a222741627aa02c50a70e3009838c46573eafbc5f03d36';
 const CLIENT_QUIC_RECEIVE_DEFAULTS = {
  initStreamReceiveWindow: 1048576,
  maxStreamReceiveWindow: 2097152,
@@ -78,6 +82,7 @@ export function runtime_fingerprint(state) {
 		settings: {
 			localRules: state.settings.localRules,
 			localScope: state.settings.localScope,
+			gamesDirect: state.settings.gamesDirect,
 			killSwitch: state.settings.killSwitch
 		},
 		countries: state.countries,
@@ -133,7 +138,34 @@ export function hysteria_config(state, resolved, options) {
 	return { server, config };
 };
 
-export function dnsmasq_config(sites) {
+export function games_enabled(state) {
+ return state.settings.localRules == true && state.settings.localScope == 'all' &&
+  state.settings.gamesDirect == true && length(filter(state.countries || [], row => row.route == 'direct')) > 0;
+};
+
+function udp_targets(networks, ports) {
+ let result = [];
+ for (let network in networks)
+  for (let range in ports) push(result, network + ' . ' + range[0] + '-' + range[1]);
+ return result;
+};
+
+export function game_targets() {
+ let info = fs.lstat(GAME_CATALOG);
+ if (info?.type != 'file' || info.uid != 0 || info.nlink != 1 || (info.mode & 0o022) ||
+  info.size < 1 || info.size > 32768) return null;
+ let raw = fs.readfile(GAME_CATALOG, 32769);
+ if (raw == null || length(raw) != info.size || digest.sha256(raw) != GAME_CATALOG_SHA256) return null;
+ let value;
+ try { value = json(raw); } catch (_) { return null; }
+ if (value?.schema != 1) return null;
+ return { sdr: map(value.sdrIpv4Udp, row => row[0] + ' . ' + row[1] + (row[1] == row[2] ? '' : '-' + row[2])),
+  riot4: udp_targets(value.riotDirect.ipv4, value.riotDirect.udpPorts),
+  riot6: udp_targets(value.riotDirect.ipv6, value.riotDirect.udpPorts),
+  latency: value.epicFortnite.latencyHosts };
+};
+
+export function dnsmasq_config(sites, game_latency) {
 	let lines = [ '# Managed by FoxHole.' ];
 	for (let item in sites || []) {
 		let pattern = item.pattern;
@@ -144,7 +176,14 @@ export function dnsmasq_config(sites) {
 		push(lines, 'nftset=/' + pattern + '/4#inet#foxhole#' +
 			name + '4,6#inet#foxhole#' + name + '6');
 	}
+	for (let host in game_latency || [])
+		push(lines, 'nftset=/' + host + '/4#inet#foxhole#game_ping4,6#inet#foxhole#game_ping6');
 	return join('\n', lines) + '\n';
+};
+
+function game_udp_set(lines, name, address_type, values) {
+ push(lines, '\tset ' + name + ' {', '\t\ttype ' + address_type + ' . inet_service', '\t\tflags interval',
+  '\t\telements = { ' + join(', ', values) + ' }', '\t}');
 };
 
 export function nft_config(state, options) {
@@ -152,6 +191,9 @@ export function nft_config(state, options) {
 	if (!length(interfaces)) fail('invalid_interface');
 	let country4 = unique(options.country4 || []);
 	let country6 = unique(options.country6 || []);
+	let games = options.connected == true && !options.bootstrap && games_enabled(state) ? options.games : null;
+	let game_sdr = length(games?.sdr || []) > 0, game_ping = length(games?.latency || []) > 0;
+	let riot4 = length(games?.riot4 || []) > 0, riot6 = length(games?.riot6 || []) > 0;
 	let dnsUid = options.dnsUid;
 	if (type(dnsUid) != 'int' || dnsUid < 1 || dnsUid > 65535)
 		fail('invalid_dns_uid');
@@ -168,6 +210,13 @@ export function nft_config(state, options) {
 		push(lines, set_text(name, 'ipv4_addr', [], true));
 	for (let name in ['site_direct6', 'site_vpn6'])
 		push(lines, set_text(name, 'ipv6_addr', [], true));
+	if (game_sdr) game_udp_set(lines, 'game_sdr4', 'ipv4_addr', games.sdr);
+	if (riot4) game_udp_set(lines, 'game_riot4', 'ipv4_addr', games.riot4);
+	if (riot6) game_udp_set(lines, 'game_riot6', 'ipv6_addr', games.riot6);
+	if (game_ping) {
+		push(lines, '\tset game_ping4 { type ipv4_addr; flags timeout; timeout 1h; }');
+		push(lines, '\tset game_ping6 { type ipv6_addr; flags timeout; timeout 1h; }');
+	}
 
 	push(lines, '\tchain mark_vpn {');
 	rule(lines, 'meta mark set meta mark | ' + MARK);
@@ -208,8 +257,16 @@ export function nft_config(state, options) {
 			rule(lines, identity + (item.route == 'direct' ?
 				' goto mark_direct' : ' goto selected_rules'));
 		}
-		if (state.settings.localScope == 'all')
+		if (state.settings.localScope == 'all') {
 			rule(lines, 'jump scoped_rules');
+			if (game_sdr) rule(lines, 'ip daddr . udp dport @game_sdr4 jump mark_direct');
+			if (riot4) rule(lines, 'ip daddr . udp dport @game_riot4 jump mark_direct');
+			if (riot6) rule(lines, 'ip6 daddr . udp dport @game_riot6 jump mark_direct');
+			if (game_ping) {
+				rule(lines, 'ip daddr @game_ping4 icmp type echo-request jump mark_direct');
+				rule(lines, 'ip6 daddr @game_ping6 icmpv6 type echo-request jump mark_direct');
+			}
+		}
 	}
 	rule(lines, 'jump mark_vpn');
 	push(lines, '\t}');

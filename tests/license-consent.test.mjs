@@ -6,12 +6,16 @@ import { functionBody } from './helpers.mjs';
 
 const rpc = await readFile(new URL('../package/foxhole-openwrt-client/root/usr/share/rpcd/ucode/foxhole.uc', import.meta.url), 'utf8');
 
+const policy = await readFile(new URL('../package/foxhole-openwrt-client/root/usr/share/foxhole/update-model.uc', import.meta.url), 'utf8');
+
 function fixture(auth, license) {
   const records = { auth, license }, writes = [];
   const context = vm.createContext({
     AUTH_PATH: 'auth', PAIRING_PATH: 'pairs', LICENSE_RECORD_PATH: 'license', LICENSE_VERSION: 1,
+    STATE_PATH: 'state', MAX_STATE: 262144, pairing_record: () => records.pairs,
+    initial_updates: { pending: () => null }, length: value => value.length,
     sessions: {}, records, writes,
-    type: value => typeof value === 'boolean' ? 'bool' : Number.isInteger(value) ? 'int' : typeof value,
+    type: value => Array.isArray(value) ? 'array' : typeof value === 'boolean' ? 'bool' : Number.isInteger(value) ? 'int' : typeof value,
     match: (value, pattern) => value.match(pattern),
     read_json: path => records[path],
     write_json: (path, value) => { writes.push(path); records[path] = value; },
@@ -26,7 +30,10 @@ function fixture(auth, license) {
     ['license_choice', 'auth, acceptance'], ['store_pin', 'pin, acceptance']];
   const source = names.filter(([name]) => rpc.includes(`function ${name}(`))
     .map(([name, args]) => `function ${name}(${args}) ${functionBody(rpc, name)};`).join('\n');
-  vm.runInContext(source, context);
+  const policies = [['empty_install', 'state, pairs'], ['first_owner_choice', 'auth, offered, requested, configured'],
+    ['initial_owner_policy', 'auth']].map(([name, args]) =>
+    `function ${name}(${args}) ${functionBody(policy, name).replace('for (let role in', 'for (let role of')};`).join('\n');
+  vm.runInContext(policies + '\nconst update_model = {empty_install, first_owner_choice};\n' + source, context);
   return { records, writes, store: acceptance => context.store_pin('678901', acceptance) };
 }
 

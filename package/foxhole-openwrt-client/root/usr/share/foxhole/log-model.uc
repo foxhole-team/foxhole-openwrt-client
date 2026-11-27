@@ -54,3 +54,24 @@ export function runtime_status(value) {
   error: index(runtime_errors, value?.error) >= 0 ? value.error : null,
   connected: value?.connected == true, enforced: value?.enforced == true };
 };
+
+export const recent_path = '/tmp/foxhole/recent-vpn-events.json';
+const recent_kinds = ['tunnel_connected', 'tunnel_start_failed', 'tunnel_exited', 'runtime_stopped'];
+function recent_event(row) {
+ if (type(row) != 'object' || length(keys(row)) != 4 || index(keys(row), 'exitStatus') < 0 || index(recent_kinds, row.event) < 0 ||
+     index(['core', 'hysteria', 'unknown'], row.engine) < 0 || counter(row.observedAtUnixMs) == null ||
+     row.observedAtUnixMs > 8640000000000000 ||
+     (row.event == 'tunnel_exited' ? counter(row.exitStatus) == null || row.exitStatus > 255 : row.exitStatus != null))
+  die('invalid_log_data');
+ return row;
+};
+export function recent_events(value) {
+ if (type(value) != 'array' || length(value) > 10) die('invalid_log_data');
+ for (let row in value) recent_event(row);
+ return value;
+};
+export function append_recent(value, event, engine, observedAtUnixMs, exitStatus) {
+ let result = [recent_event({event, engine, observedAtUnixMs, exitStatus})];
+ for (let row in recent_events(value)) if (length(result) < 10) push(result, row);
+ return result;
+};

@@ -11,7 +11,8 @@ let info = fs.lstat(ARGV[0]);
 if (info?.type != 'file' || info.uid != 0 || info.nlink != 1 || (info.mode & 0o077) || info.size > 2097152)
  die('Invalid compact registration input\n');
 let value = authentication(read(ARGV[0]));
-if (value.schema != 2 || value.kind != 'compact-selected-budget-v1') die('Compact schema required\n');
+if (!((value.schema == 2 && value.kind == 'compact-selected-budget-v1') ||
+      (value.schema == 3 && value.kind == 'compact-selected-budget-v2'))) die('Compact schema required\n');
 function register() {
  let old = registry.read(), current = registry.catalog();
  if (old.revision != 0 || length(old.slots) || length(old.selected) || current.sha256 != value.engineCatalogSha256)

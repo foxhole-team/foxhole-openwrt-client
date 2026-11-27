@@ -60,18 +60,74 @@ Kompakte Installationen verwenden ein eigenes Clientmodul je ausgewähltem Proto
 
 <a id="whats-new"></a>
 
-> **🆕 Neuigkeiten - 1.0.8 Beta**
+> **🆕 Neuigkeiten - 1.0.13 Beta (FLASH r1 · RAM r2)**
 >
-> - Unterstützung für OpenWrt 25.12.6 hinzugefügt
-> - Optimierung der Benutzeroberfläche
-> - Optionales, separat geprüftes Hysteria2-Serverpaket ergänzt (öffentliche statische IP erforderlich)
-> - Hilfe, Updateprüfung und Informationen zur Anwendung überarbeitet
-> - Journal nur im FLASH mit bis zu 30 Tagen Ringspeicherung und begrenztem Speicherverbrauch
-> - Routerverwaltung über VPN und Neuinstallation des RAM-Pakets verbessert
->
-> Begleitende Apps: FoxHole VPN 1.0.6 und Guard 1.0.7 korrigieren die Erstinstallation und Einrichtung des Routers. Guard aktualisiert außerdem die Tor-Transporte Lyrebird und conjure-client
->
-> Die dauerhafte Bootstrap-Aktivierung bleibt deaktiviert. Die Wiederherstellung nach einem Kaltstart ist nicht bestätigt; das Problem bei der Prüfung des ELF-Bibliothekspfads besteht weiterhin
+> - Über SSH von macOS, Linux oder Windows mit dem Bash-Installationsprogramm installieren. Nach einer Neuinstallation sind automatische Paketupdates standardmäßig aktiv und können ausgeschaltet werden.
+> - Paketupdates prüfen die Router-API und versuchen bei einem Fehler, die vorherige Version wiederherzustellen. Die Verwaltung des Heim-VPN-Servers und das Anlegen des ersten Clients wurden korrigiert.
+> - Unterstützte Abonnements für Hysteria 2, VLESS und WireGuard in LuCI importieren oder aus Guard oder VPN senden. Der Router aktualisiert unterstützte Abonnements automatisch.
+> - Spiele ohne VPN hat einen Standardschalter in den Einstellungen. Routing öffnen Sie über Hinzufügen. Die Pfeile zum Auf- und Zuklappen haben klare Kanten.
+> - Das Protokoll hat ein neues Aktualisierungssymbol und zeigt in RAM die letzten zehn VPN-Ereignisse. Der Softwarestatus zeigt separat installiertes Hysteria 2.
+
+<a id="quickstart"></a>
+
+## 📦 Installation
+
+Dieser Client verbindet sich mit Ihrem eigenen VPN-Server oder Anbieter. Fertige VPN-Server und deren Zugang sind nicht enthalten.
+
+Wählen Sie eine veröffentlichte, geprüfte Version. Ersetzen Sie `RELEASE_TAG` durch deren Tag, `MANIFEST_SHA256` durch den vertrauenswürdigen SHA-256 ihrer `SHA256SUMS` und `INSTALLER_SHA256` durch den SHA-256 ihrer `install.sh`. Bestätigen Sie die Werte unabhängig. Der Installer wird vor dem Start geprüft.
+
+### Vom Computer aus
+
+Öffnen Sie den Quellcode der geprüften Version auf einem Computer im LAN des Routers. Das Installationsprogramm nutzt Bash und OpenSSH. Unter Windows benötigen Sie Git for Windows.
+
+**macOS / Linux / Git Bash**
+
+```sh
+bash tools/foxhole-openwrt-install.sh --release RELEASE_TAG --manifest-sha256 MANIFEST_SHA256 --installer-sha256 INSTALLER_SHA256 --auto
+```
+
+**Windows PowerShell**
+
+```powershell
+& "$env:ProgramFiles\Git\bin\bash.exe" ./tools/foxhole-openwrt-install.sh --release RELEASE_TAG --manifest-sha256 MANIFEST_SHA256 --installer-sha256 INSTALLER_SHA256 --auto
+```
+
+Alternativ laden Sie `foxhole-openwrt-install.sh` aus derselben Version herunter. Prüfen Sie SHA-256 anhand der signierten Prüfsummen und lassen Sie `tools/` im Befehl weg. Das PowerShell-Beispiel nutzt den Standardpfad von Git for Windows.
+
+Das Installationsprogramm verwendet das IPv4-Standardgateway. Mit `--host ROUTER_IP` wählen Sie einen anderen Router im LAN. Prüfen Sie den SSH-Hostschlüssel, melden Sie sich an und lesen Sie die Lizenz auf dem Router.
+
+### Im Router-Terminal
+
+Führen Sie den Befehl auf dem Router als root aus.
+
+```sh
+( set -eu; release_tag='RELEASE_TAG'; manifest_sha256='MANIFEST_SHA256'; installer_sha256='INSTALLER_SHA256'; url="https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/$release_tag"; installer=$(mktemp /tmp/foxhole-install.XXXXXX); trap 'rm -f "$installer"' EXIT; uclient-fetch -q -T 60 -O "$installer" "$url/install.sh"; printf '%s  %s\n' "$installer_sha256" "$installer" | sha256sum -c -; sh "$installer" --base-url "$url" --manifest-sha256 "$manifest_sha256" --apply )
+```
+
+Mit `--apply` zeigt der interaktive Installer die Vereinbarung und fragt `[y/N]`; standardmäßig wird abgelehnt. Lesen Sie sie mit `sh install.sh --license`. Eine nichtinteraktive Installation erfordert nach ausdrücklicher Zustimmung `--accept-license`. Im Telefonassistenten ist die separate Zustimmung zunächst nicht markiert.
+
+Bei kompakten Katalogen wird standardmäßig **nur der Hysteria2-Client** im Flash
+gespeichert. Wählen Sie bei einem geprüften lokalen Release-Bundle ein Protokoll oder kombinieren Sie Optionen:
+
+```sh
+sh install.sh --bundle /tmp/bundle --manifest-sha256 HASH --hy2 --flash --apply
+sh install.sh --bundle /tmp/bundle --manifest-sha256 HASH --vless --wg --flash --apply
+sh install.sh --bundle /tmp/bundle --manifest-sha256 HASH --hy2 --ram --apply
+```
+
+`-wg` ist ein Alias für `--wg`. Weitere erkannte Optionen: `--vmess`, `--tuic`,
+`--trojan`, `--shadowsocks`, `--naive`, `--anytls`, `--shadowtls`, `--socks`, `--http`.
+Jedes Modul muss für Firmware und Zielplattform veröffentlicht sein. Bei kompakten Katalogen wählt `--all` alle für die Zielplattform veröffentlichten Client-Protokolle aus. Alle ausgewählten Module müssen denselben Speichermodus unterstützen. Ein ausdrücklich angefordertes fehlendes Protokoll wird abgelehnt. Alte schema-1-Kataloge benötigen eine exakt passende Variante; dort bedeutet `--all` alle erkannten Protokolle.
+
+| Speicher | Verhalten |
+| --- | --- |
+| `--flash` | Die Engine bleibt nach einem Neustart im Flash. Standard. |
+| `--ram` | Die Engine-Binärdatei wird in den RAM geladen und nach einem Neustart bei Bedarf erneut abgerufen. Einstellungen bleiben im Flash. |
+| `--auto` | Wählt Flash, wenn das vollständige Budget hineinpasst, sonst einen verfügbaren RAM-Modulsatz. |
+
+Der Speichermodus `--ram` ist vom experimentellen nativen RAM-Bootstrap getrennt. Dauerhafte Bootstrap-Anmeldung bleibt deaktiviert, Kaltstartwiederherstellung ist nicht qualifiziert und die Zulassung des benutzerdefinierten ELF-Bibliothekspfads bleibt ungeklärt. Siehe [RAM-Bootstrap-Einschränkungen](RAM-BOOTSTRAP.md).
+
+Ohne `--apply` wird das ausgewählte Bundle geprüft, aber nicht installiert. Kernelpakete werden nie aktualisiert, um ein inkompatibles Bundle passend zu machen. Bei kompakten Katalogen ist `--server` nur verfügbar, wenn der gewählte Katalog ein kompatibles geprüftes Paket für den eingehenden Hysteria-Server enthält; nur dann wird es ins Ressourcenbudget aufgenommen. Der Server bleibt bis zur Einrichtung des Fernzugriffs ausgeschaltet.
 
 <a id="features"></a>
 
@@ -100,53 +156,14 @@ einem authentifizierten Release-Katalog. Beim eingehenden Server bestehen zwei
 geprüfte Abhängigkeitsbefunde in ungenutzten S2/OpenPGP-Paketen; Prüfungen für den
 exakten Build und die Gültigkeitsfrist stehen unter [Release](RELEASE.md).
 
-<a id="quickstart"></a>
+## Unterstützte Router
 
-## 📦 Installation
+| Modell | RAM | Flash | OpenWrt | Paketinstallation |
+|---|---|---|---|---|
+| [Cudy WR3000 v1](https://www.cudy.com/products/wr3000-1-0) | 256 MB | 16 MB NOR | 25.12.5 | Nur RAM |
+| [Cudy WR3000S v1](https://www.cudy.com/products/wr3000s-1-0) | 256 MB | 128 MB NAND | 25.12.6 | FLASH |
 
-Dieser Client verbindet sich mit Ihrem eigenen VPN-Server oder Anbieter. Fertige VPN-Server und deren Zugang sind nicht enthalten.
-
-Wählen Sie eine veröffentlichte, geprüfte Version. Ersetzen Sie `RELEASE_TAG` durch deren Tag, `MANIFEST_SHA256` durch den vertrauenswürdigen SHA-256 ihrer `SHA256SUMS` und `INSTALLER_SHA256` durch den SHA-256 ihrer `install.sh`. Bestätigen Sie die Werte unabhängig. Der Installer wird vor dem Start geprüft:
-
-```sh
-(
-  set -eu
-  release_tag='RELEASE_TAG'
-  manifest_sha256='MANIFEST_SHA256'
-  installer_sha256='INSTALLER_SHA256'
-  url="https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/$release_tag"
-  installer=$(mktemp /tmp/foxhole-install.XXXXXX)
-  trap 'rm -f "$installer"' EXIT
-  uclient-fetch -q -T 60 -O "$installer" "$url/install.sh"
-  printf '%s  %s\n' "$installer_sha256" "$installer" | sha256sum -c -
-  sh "$installer" --base-url "$url" --manifest-sha256 "$manifest_sha256" --apply
-)
-```
-
-Mit `--apply` zeigt der interaktive Installer die Vereinbarung und fragt `[y/N]`; standardmäßig wird abgelehnt. Lesen Sie sie mit `sh install.sh --license`. Eine nichtinteraktive Installation erfordert nach ausdrücklicher Zustimmung `--accept-license`. Im Telefonassistenten ist die separate Zustimmung zunächst nicht markiert.
-
-Bei kompakten Katalogen wird standardmäßig **nur der Hysteria2-Client** im Flash
-gespeichert. Wählen Sie bei einem geprüften lokalen Release-Bundle ein Protokoll oder kombinieren Sie Optionen:
-
-```sh
-sh install.sh --bundle /tmp/bundle --manifest-sha256 HASH --hy2 --flash --apply
-sh install.sh --bundle /tmp/bundle --manifest-sha256 HASH --vless --wg --flash --apply
-sh install.sh --bundle /tmp/bundle --manifest-sha256 HASH --hy2 --ram --apply
-```
-
-`-wg` ist ein Alias für `--wg`. Weitere erkannte Optionen: `--vmess`, `--tuic`,
-`--trojan`, `--shadowsocks`, `--naive`, `--anytls`, `--shadowtls`, `--socks`, `--http`.
-Jedes Modul muss für Firmware und Zielplattform veröffentlicht sein. Bei kompakten Katalogen wählt `--all` alle für die Zielplattform veröffentlichten Client-Protokolle aus. Alle ausgewählten Module müssen denselben Speichermodus unterstützen. Ein ausdrücklich angefordertes fehlendes Protokoll wird abgelehnt. Alte schema-1-Kataloge benötigen eine exakt passende Variante; dort bedeutet `--all` alle erkannten Protokolle.
-
-| Speicher | Verhalten |
-| --- | --- |
-| `--flash` | Die Engine bleibt nach einem Neustart im Flash. Standard. |
-| `--ram` | Die Engine-Binärdatei wird in den RAM geladen und nach einem Neustart bei Bedarf erneut abgerufen. Einstellungen bleiben im Flash. |
-| `--auto` | Wählt Flash, wenn das vollständige Budget hineinpasst, sonst einen verfügbaren RAM-Modulsatz. |
-
-Der Speichermodus `--ram` ist vom experimentellen nativen RAM-Bootstrap getrennt. Dauerhafte Bootstrap-Anmeldung bleibt deaktiviert, Kaltstartwiederherstellung ist nicht qualifiziert und die Zulassung des benutzerdefinierten ELF-Bibliothekspfads bleibt ungeklärt. Siehe [RAM-Bootstrap-Einschränkungen](RAM-BOOTSTRAP.md).
-
-Ohne `--apply` wird das ausgewählte Bundle geprüft, aber nicht installiert. Kernelpakete werden nie aktualisiert, um ein inkompatibles Bundle passend zu machen. Bei kompakten Katalogen ist `--server` nur verfügbar, wenn der gewählte Katalog ein kompatibles geprüftes Paket für den eingehenden Hysteria-Server enthält; nur dann wird es ins Ressourcenbudget aufgenommen. Der Server bleibt bis zur Einrichtung des Fernzugriffs ausgeschaltet.
+Die Tabelle zeigt die Gesamtkapazität. Vor der Installation prüft der Assistent das genaue Modell und den freien Speicherplatz.
 
 <p align="center">
   <img src="../media/dashboard.png" width="100%" alt="FoxHole OpenWrt Client dashboard">
@@ -158,7 +175,7 @@ Ohne `--apply` wird das ausgewählte Bundle geprüft, aber nicht installiert. Ke
 
 Eine PIN-Änderung setzt die Kopplungen zurück: Das Telefon muss erneut verbunden werden; VPN-Profile und Einstellungen bleiben erhalten.
 
-Öffnen Sie **LuCI → Services → FoxHole**, legen Sie eine PIN fest und fügen Sie
+Öffnen Sie **LuCI → Services → FoxHole OpenWRT Client → Panel**, legen Sie eine PIN fest und fügen Sie
 ein VPN-Profil hinzu. Regeln leiten Geräte-, Domain- und länderbezogenen Datenverkehr über VPN oder direkt.
 
 `ACCESS_LOCAL_NETWORK` - Router suchen, einrichten und verwalten. Unter Android 17 (API 37) oder neuer fordert die App bei Ziel-API 37 oder neuer vor LAN-Aktionen die Systemberechtigung an. Eine Ablehnung blockiert diese Aktionen.
@@ -209,7 +226,7 @@ Beenden Sie die Nutzung eines Protokolls vor dem Entfernen. Angeboten werden nur
 
 Unter **Einstellungen → FoxHole-Update** in Weboberfläche oder gekoppelter App verwenden Prüfung und Installation dieselbe authentifizierte Transaktion. Aktualisiert werden FoxHole-Oberfläche/Runtime und ausgewählte installierte Client-Protokollmodule; ihre FLASH-/RAM-Auswahl bleibt erhalten. Neue Protokolle werden separat installiert. Profile und Kopplung bleiben erhalten; OpenWrt-Firmware und andere Systempakete werden nicht aktualisiert.
 
-Bei direkten CLI-/Backend-Installationen bleiben automatische Updates standardmäßig aus. Bei einer neuen Einrichtung im Web oder unter Android ist ein eigener sichtbarer Schalter für automatische Updates aktiviert; zum Ablehnen deaktivieren Sie ihn. Bestehende Routerrichtlinien einschließlich einer Ablehnung bleiben beim Koppeln und Öffnen der Einrichtung erhalten. Die Richtlinie kann später in den Einstellungen geändert werden.
+Bei einer Neuinstallation werden automatische Paketupdates aktiviert, sobald der Eigentümer eine PIN festlegt. Deaktivieren Sie die Option bei der Einrichtung oder übergeben Sie dem Installer `--no-auto-update`. Beim erneuten Koppeln bleibt die bisherige Auswahl erhalten. Sie lässt sich später in den Einstellungen ändern.
 
 Bei Aktivierung prüft der Router täglich und installiert verifizierte FoxHole-Paketupdates. Das Entkoppeln des Telefons deaktiviert die Richtlinie nicht. Ältere Pakete ohne Updater benötigen eine separat geprüfte Migration. Siehe [Softwareupdates](UPDATES.md).
 
@@ -223,6 +240,16 @@ Verwenden Sie geprüfte Release-Pakete. Alte Installer und reine ARM-Downloads w
 - **Anleitungen:** [CLI](CLI.md) · [Updates](UPDATES.md) · [Rollback](ROLLBACK.md)
 - **Architektur:** [Architecture](ARCHITECTURE.md) · [Mobile networks](MOBILE-NETWORKS.md) · [Backup](BACKUP-ARCHITECTURE.md) · [Profile origin](PROFILE-ORIGIN.md)
 - **Wartung:** [Release](RELEASE.md) · [Bundle transport](BUNDLE-TRANSPORT.md) · [RAM install](RAM-INSTALL.md) · [Bootstrap](RAM-BOOTSTRAP.md) · [Prerequisites](RAM-PREREQUISITES.md) · [RAM updates](RAM-UPDATE-CONTROLLER.md) · [Engine origin](engine-release-origin.md) · [Security](../SECURITY.md)
+
+### FoxHole deinstallieren
+
+Öffnen Sie in LuCI **Dienste → FoxHole OpenWRT Client → Uninstall FoxHole** und bestätigen Sie die angezeigte Installation. Führen Sie im Router-Terminal als root diesen Befehl aus
+
+```sh
+/usr/libexec/foxhole-uninstall
+```
+
+Der Befehl zeigt den Plan an und verlangt eine Bestätigung. Bei FLASH wird das VPN getrennt und das Basispaket entfernt. Starten Sie OpenWrt bei einer verwalteten RAM-Installation nach dem Deaktivieren des Autostarts neu. Eine verbleibende FLASH-Kopie können Sie anschließend separat entfernen. Netzwerkeinstellungen, Profile und Kopplungen bleiben erhalten. Ein vorhandener Wiederherstellungscache im FLASH bleibt erhalten.
 
 ## 🤝 Mitwirken
 

@@ -16,7 +16,7 @@ export function endpoint(value) {
 	return { host: parts[1], port };
 };
 
-function resolve_public(host) {
+export function resolve_public(host) {
 	store.directory('/tmp/foxhole');
 	let bytes = fs.readfile('/dev/urandom', 12);
 	if (length(bytes || '') != 12) die('storage_error');

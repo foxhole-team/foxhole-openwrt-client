@@ -8,25 +8,40 @@ export const reasons = ['UNSUPPORTED_TARGET', 'NOT_CHECKED', 'RELEASE_UNAVAILABL
 export function fail(reason) { die('update_' + lc(reason)); };
 function safe_int(value) { return type(value) == 'int' && value >= 0 && value <= 9007199254740991; };
 function same(a, b) { return sprintf('%J', a) == sprintf('%J', b); };
-export function policy(value) {
-	if (value == null) return { schema:1, revision:0, enabled:false, lastAttemptAtUnixMs:null };
+export function initial_owner_policy(auth) {
+    if (auth?.changed != true || auth.initialPackageAutoUpdate == null) return null;
+    if (type(auth.initialPackageAutoUpdate) != 'bool') fail('RECOVERY_REQUIRED');
+    return auth.initialPackageAutoUpdate;
+};
+export function policy(value, auth) {
+	if (value == null) return { schema:1, revision:0, enabled:initial_owner_policy(auth) == true, lastAttemptAtUnixMs:null };
 	if (value.schema != 1 || !safe_int(value.revision) || value.revision >= 0x7fffffff ||
 	    type(value.enabled) != 'bool' || value.lastAttemptAtUnixMs != null && !safe_int(value.lastAttemptAtUnixMs))
 		fail('RECOVERY_REQUIRED');
 	return value;
 };
+export function empty_install(state, pairs) {
+ if (state != null) {
+  if (state.schema != 1 || state.revision != 0 || state.activeServerId != null) return false;
+  for (let role in ['countries','devices','sites','servers','clients'])
+   if (type(state[role]) != 'array' || length(state[role])) return false;
+ }
+ return pairs == null || (pairs.schema == 1 && type(pairs.devices) == 'array' && !length(pairs.devices));
+};
 export function fresh_setup(auth, state, pairs, configured) {
- if(type(configured)!='bool' || configured || auth?.changed!=false ||
-  auth.resetPending==true || type(auth.bootstrapBootId)!='string' ||
-  !length(auth.bootstrapBootId) || length(auth.bootstrapBootId)>128 ||
-  type(auth.bootstrapExpiresUptimeMs)!='int' ||
-  auth.bootstrapExpiresUptimeMs<=0 || state?.schema!=1 ||
-  state.revision!=0 || state.activeServerId!=null || pairs?.schema!=1 ||
-  type(pairs.devices)!='array' || length(pairs.devices))return false;
- let roles=['countries','devices','sites','servers','clients'];
- for(let i=0;i<length(roles);i++)
-  if(type(state[roles[i]])!='array' || length(state[roles[i]]))return false;
- return true;
+ return type(configured)=='bool' && !configured && auth?.changed==false && auth.resetPending!=true &&
+  type(auth.bootstrapBootId)=='string' && length(auth.bootstrapBootId)>0 && length(auth.bootstrapBootId)<=128 &&
+  type(auth.bootstrapExpiresUptimeMs)=='int' && auth.bootstrapExpiresUptimeMs>0 &&
+  state != null && pairs != null && empty_install(state,pairs);
+};
+export function first_owner_choice(auth, offered, requested, configured) {
+ let prior=auth?.resetPending==true && type(auth.initialPackageAutoUpdate)=='bool' ? auth.initialPackageAutoUpdate : initial_owner_policy(auth);
+ if (prior != null) return prior;
+ if (configured || auth?.changed==true || auth?.resetPending==true || offered==null) return null;
+ if (type(offered)!='bool' || (requested!=null && type(requested)!='bool')) fail('RECOVERY_REQUIRED');
+ // A persistent installer opt-out can be changed later in
+ // authenticated Settings.
+ return offered && requested!=false;
 };
 export function due(value, now, busy) {
 	return value.enabled && !busy && safe_int(now) && now >= 1577836800000 &&

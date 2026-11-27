@@ -2,6 +2,7 @@
 
 import * as fs from 'fs';
 import * as store from './private-store.uc';
+import * as server_install from './server-install-service.uc';
 import * as handoff from './handoff.uc';
 
 export function wan_address(status) {
@@ -57,7 +58,7 @@ export function template(address, pin) {
 export function prepare(address) {
 	let raw = store.read('/etc/foxhole/inbound.json', 65536);
 	if (raw) return json(raw);
-	if (!fs.stat('/usr/bin/hysteria')) die('inbound_required');
+	if (!server_install.installed()) die('inbound_required');
 	wan_address({ up: true, 'ipv4-address': [{ address }] });
 	store.directory('/etc/foxhole'); store.directory('/tmp/foxhole');
 	let bytes = fs.readfile('/dev/urandom', 12);

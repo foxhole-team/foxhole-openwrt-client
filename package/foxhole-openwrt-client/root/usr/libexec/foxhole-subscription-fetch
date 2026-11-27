@@ -1,0 +1,29 @@
+#!/bin/sh
+set -eu
+umask 077
+[ "$#" -eq 3 ] || exit 1
+host=$1
+address=$2
+directory=$3
+case "$host" in ''|*[!A-Za-z0-9.-]*) exit 1 ;; esac
+case "$address" in ''|*[!0-9.]*) exit 1 ;; esac
+case "$directory" in /tmp/foxhole/subscription-*) ;; *) exit 1 ;; esac
+ucode -e '
+ import * as fs from "fs";
+ import * as safe from "/usr/share/foxhole/handoff.uc";
+ let path=ARGV[0], addr=ARGV[1], host=ARGV[2];
+ if(!match(path,/^\/tmp\/foxhole\/subscription-[a-f0-9]{24}$/)||!safe.public_address(addr)||
+  safe.hostname(host)!=host) exit(1);
+ for(let p in ["/tmp/foxhole",path]) {
+  let dir=fs.lstat(p);
+  if(dir?.type!="directory"||dir.uid!=0||(dir.mode&0o7777)!=0o700)exit(1);
+ }
+ let input=fs.lstat(path+"/request");
+ if(input?.type!="file"||input.uid!=0||input.nlink!=1||(input.mode&0o7777)!=0o600||
+  input.size<1||input.size>4352||fs.lstat(path+"/response"))exit(1);
+' -- "$directory" "$address" "$host"
+ulimit -f 112
+set -C
+exec /usr/bin/openssl s_client -quiet -verify_return_error -verify_hostname "$host" \
+  -servername "$host" -CAfile /etc/ssl/certs/ca-certificates.crt -connect "$address:443" \
+  < "$directory/request" > "$directory/response" 2>/dev/null

@@ -40,6 +40,34 @@ function plan() { return engines.plan(request(), catalog(), engines.defaults(), 
 function apply_request(value) { return { planId: value.planId, planSha256: value.planSha256,
 	expectedRevision: 0, confirmed: true }; };
 
+test('reinstall is bound to an inactive owned slot and its complete signed identity',()=>{
+    let original=artifact('vless','FLASH'),old=engines.commit(engines.defaults(),[original],[],0),ctx=context();
+    let req={...request(),operation:'REINSTALL',expectedRevision:1};
+    let plan=engines.plan(req,catalog(),old,ctx,H,B,1000);
+    equal(plan.operation,'REINSTALL');equal(plan.impact,'KEEP_ACTIVE');equal(plan.artifacts,[original]);
+    equal(plan.changes[0].fromVersion,plan.changes[0].toVersion);
+    equal(engines.reinstall_scope(plan,old,ctx),true);
+    equal(engines.reinstall_bound(plan,old,{...old,revision:2},ctx),true);
+    rejects(()=>engines.reinstall_bound(plan,old,{...old,revision:3},ctx),'engine_stale_plan');
+    rejects(()=>engines.plan({...req,storage:'RAM'},catalog(),old,ctx,H,B,1000),'engine_invalid_request');
+    rejects(()=>engines.plan(req,catalog(),old,{...ctx,activeEngineId:'vless'},H,B,1000),'engine_in_use');
+    rejects(()=>engines.plan(req,catalog(),old,{...ctx,activeEngineId:null,activeProfileId:'unknown'},H,B,1000),'engine_in_use');
+    rejects(()=>engines.plan({...req,expectedRevision:0},catalog(),engines.defaults(),{...ctx,legacyProtocols:['vless']},H,B,1000),'engine_invalid_request');
+    let changed=catalog();changed.entries[0].packageSha256=H;
+    rejects(()=>engines.plan(req,changed,old,ctx,H,B,1000),'engine_package_verification_failed');
+    let forged={...plan,artifacts:[{...original,manifestSha256:B}]};
+    rejects(()=>engines.reinstall_scope(forged,old,ctx),'engine_stale_plan');
+});
+test('apk fix simulation and output permit only the exact ordered reinstall set',()=>{
+    let a=artifact('vless','FLASH'),b=artifact('hysteria2','FLASH');
+    let first='(1/2) Reinstalling '+a.packageName+' ('+a.packageVersion+')';
+    let second='(2/2) Reinstalling '+b.packageName+' ('+b.packageVersion+')';
+    let ok=first+'\n'+second+'\nOK: 30.2 MiB in 160 packages\n';
+    equal(engines.reinstall_only(ok,[a,b]),true);
+    for(let bad in [replace(ok,'Reinstalling','Installing'),replace(ok,b.packageName,a.packageName),replace(ok,first,'(1/3) Purging system (1-r1)'),
+                    replace(ok,b.packageName,'libc'),replace(ok,a.packageVersion,'9.0.0-r9'),ok+'unexpected action\n',first+'\n'])
+        equal(engines.reinstall_only(bad,[a,b]),false);
+});
 test('all twelve ids are recognized but absent signed artifacts stay unavailable', () => {
 	equal(length(engines.protocols()), 12);
 	let rows = engines.status({ schema: 1, entries: [] }, engines.defaults(), context());

@@ -27,7 +27,10 @@ test('a plan for another router/revision/protocol or malformed resource budget i
     assert.throws(() => enginePlan(changed, status(), 'ADD', 'vless'));
 });
 
-test('closing the sheet detaches a late response without issuing a remote cancellation', async () => {
+test('closing the sheet detaches a late response without issuing a remote cancellation', async (t) => {
+  const before = globalThis.document;
+  globalThis.document = { querySelector: () => null };
+  t.after(() => { globalThis.document = before; });
   let resolve, renders = 0;
   const calls = [];
   const panel = new EnginePanel({ scope: () => 1, call: (action) => {
@@ -40,4 +43,29 @@ test('closing the sheet detaches a late response without issuing a remote cancel
   await opened;
   assert.equal(renders, 0);
   assert.deepEqual(calls, ['engines.status']);
+});
+
+test('the analysis spans the actual read, replaces stale rows, and offers a retry after failure', async t => {
+  const loading = { hidden: true }, storage = { hidden: false };
+  const list = { children: ['old'], hidden: false, replaceChildren() { this.children = []; }, append(...v) { this.children.push(...v); } };
+  const nodes = { '[data-engine-analysis]': loading, '[data-engine-storage-row]': storage, '[data-engine-list]': list };
+  const old = globalThis.document;
+  globalThis.document = { querySelector: s => nodes[s] };
+  t.after(() => { globalThis.document = old; });
+  let settle, reject;
+  const panel = new EnginePanel({ scope: () => 1, text: s => s, error: () => {},
+    element: (tag, cls, text) => ({ tag, text, dataset: {} }),
+    call: () => new Promise((ok, fail) => { settle = ok; reject = fail; }) });
+  let pending = panel.open();
+  assert.equal(loading.hidden, false); assert.equal(list.hidden, true); assert.deepEqual(list.children, []);
+  reject(Error('router unreachable')); await pending;
+  assert.equal(loading.hidden, true); assert.equal(list.hidden, false); assert.equal(storage.hidden, true);
+  assert.equal(list.children.at(-1).dataset.action, 'engine-refresh');
+  pending = panel.open(); settle({ ...status(), entries: [], managementSupported: false }); await pending;
+  assert.equal(storage.hidden, true); assert.equal(loading.hidden, true); assert.equal(list.hidden, false);
+  assert.deepEqual(list.children.map(node => node.text), ['engines.not_released']);
+  const requests=[];
+  panel.call=async action=>{requests.push(action);};
+  await panel.prepare('vless','ADD');
+  assert.deepEqual(requests,[]);
 });

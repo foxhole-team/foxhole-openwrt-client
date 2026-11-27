@@ -22,6 +22,9 @@ if [ "${1-}" = --owned-child ]; then
    operation=$1; shift
    case "$operation" in
     fetch)
+     if [ "$2" = github-release ]; then
+      exec /etc/foxhole/ram-update/bootstrap/foxhole-ram-fetch --github-release "$1"
+     fi
      if [ "$2" = pinned ]; then
       exec /etc/foxhole/ram-update/bootstrap/foxhole-ram-fetch --ca-certificate /etc/foxhole/ram-update/bootstrap/ca.pem "$1"
      fi
@@ -45,10 +48,15 @@ let output=ARGV[0],limit=ARGV[1],timeout=ARGV[2],operation=ARGV[3],directory=ARG
 if(!match(output,/^\/tmp\/foxhole\/ram-updates\/recovery-io-[a-f0-9]{32}$/)||!match(limit,/^[0-9]+$/)||+limit<1||+limit>8388608||!match(timeout,/^[0-9]+$/)||+timeout<1000||+timeout>65000)fail();
 if(operation=="bank"){if(length(ARGV)!=5||+limit>128)fail();}
 else if(operation=="fetch"){
- if(length(ARGV)!=8||!match(ARGV[6],/^[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}-r[1-9][0-9]{0,5}$/)||index(["system","pinned"],ARGV[5])<0)fail();
+ if(length(ARGV)!=8||!match(ARGV[6],/^[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}-r[1-9][0-9]{0,5}$/))fail();
  let d=json(fs.readfile(directory+"/descriptor.json",8193));
  if(type(d.recoveryOrigin)!="string"||length(d.recoveryOrigin)>1024||!match(d.recoveryOrigin,/^https:\/\/[A-Za-z0-9][A-Za-z0-9.:-]*\/[A-Za-z0-9._~%+\/-]*$/)||substr(d.recoveryOrigin,-1)!="/")fail();
- if(ARGV[4]!=d.recoveryOrigin+"foxhole-openwrt-client-"+ARGV[6]+".apk"||(d.caFileSha256==null)!=(ARGV[5]=="system"))fail();
+ let github=d.schema==2&&d.kind=="foxhole-ram-bootstrap-github-v1";
+ let mode=github?"github-release":d.caFileSha256==null?"system":"pinned";
+ let address=d.recoveryOrigin+(github?"v"+split(ARGV[6],"-r")[0]+"/":"")+"foxhole-openwrt-client-"+ARGV[6]+".apk";
+ if(github&&(d.recoveryOrigin!="https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/"||d.caFileSha256!=null))fail();
+ if(!github&&(d.schema!=1||d.kind!="foxhole-ram-bootstrap-v1"))fail();
+ if(ARGV[4]!=address||ARGV[5]!=mode)fail();
  if(ARGV[5]=="pinned"){
   let path="/etc/foxhole/ram-update/bootstrap/ca.pem",s=fs.lstat(path),parent=fs.lstat(fs.dirname(path));
   if(s?.type!="file"||s.uid!=0||s.nlink!=1||(s.mode&0o7777)!=0o600||s.size<1||s.size>262144||parent?.type!="directory"||parent.uid!=0||(parent.mode&0o7777)!=0o700)fail();

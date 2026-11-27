@@ -20,7 +20,7 @@ async function fixture(t) {
   t.after(() => rm(directory, { recursive: true, force: true }));
   const stage = join(directory, 'stage');
   await mkdir(stage, { mode: 0o700 });
-  const prelude = `#!/bin/sh\nset -eu\numask 077\n${functionBody('acquire_transaction_lock')}\n${functionBody('finish')}\ntransaction_lock=$1\ntransaction_lock_held=0\nstage=$2\nkeep_stage=1\ntransaction_phase=testing\npending_constraint=''\ninstall_complete=false\n`;
+  const prelude = `#!/bin/sh\nset -eu\numask 077\n${functionBody('acquire_transaction_lock')}\n${functionBody('finish')}\ntransaction_lock=$1\ntransaction_lock_held=0\nguard_child=''\nguard_active=0\nguard_sealed=0\nstage=$2\nkeep_stage=1\ntransaction_phase=testing\npending_constraint=''\ninstall_complete=false\n`;
   return { directory, stage, lock: join(directory, 'lock'), prelude };
 }
 function run(f, suffix) {

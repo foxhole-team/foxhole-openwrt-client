@@ -233,7 +233,7 @@ export function defaults() {
 		schema: 1, revision: 0, activeServerId: null,
 		settings: {
 				language: 'ru', standaloneAccess: true,
-				localRules: false, localScope: 'all',
+				localRules: false, localScope: 'all', gamesDirect: true,
 				clientRules: false, killSwitch: false, vpnServerEnabled: false,
 				darkStyle: false, darkCharts: true,
 				plainHeadings: false, hideRouterStatus: false,
@@ -423,7 +423,7 @@ export function validate_settings(payload, resolve_mac) {
 	    index(['all', 'selected'], settings.localScope) < 0 ||
 	    index(['dark', 'light'], settings.theme) < 0)
 		fail('invalid_settings');
-	for (let key in ['standaloneAccess', 'localRules', 'clientRules',
+	for (let key in ['standaloneAccess', 'localRules', 'clientRules', 'gamesDirect',
 		'killSwitch', 'darkStyle', 'darkCharts', 'plainHeadings',
 		'hideRouterStatus', 'vpnServerEnabled'])
 		if (type(settings[key]) != 'bool') fail('invalid_settings');
@@ -516,6 +516,9 @@ export function validate_state(state) {
 		}
 		if (server.subscription != null)
 			core_model.subscription(server.subscription);
+		if (server.subscriptionPending != null && (index(['hysteria2','vless','wireguard'],server.subscription?.selectedProtocol) < 0 ||
+		    type(server.subscriptionPending) != 'string' || length(server.subscriptionPending) > 4096 ||
+		    !match(server.subscriptionPending, /^(hysteria2|hy2|vless|wireguard|wg):\/\//))) fail('storage_error');
 		ids[server.id] = true;
 	}
 	if (state.activeServerId != null && !ids[state.activeServerId])

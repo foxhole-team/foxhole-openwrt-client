@@ -18,7 +18,19 @@ base_makefile="$root/package/foxhole-openwrt-client/Makefile"
   echo 'Invalid BASE package metadata' >&2; exit 2
 }
 # Read declarations as data; never execute the package Makefile.
-base_version=$(awk '
+read_base_version() {
+ awk -v role="$1" '
+  BEGIN {
+    block[1]="ifeq ($(FOXHOLE_BASE_ROLE),flash)"; block[2]="PKG_RELEASE:=1"
+    block[3]="else ifeq ($(FOXHOLE_BASE_ROLE),managed-ram)"; block[4]="PKG_RELEASE:=2"
+    block[5]="else"; block[6]="$(error Unsupported FOXHOLE_BASE_ROLE)"; block[7]="endif"
+  }
+  {
+    if (step) {
+      if ($0 != block[step]) bad=1
+      if (step == 7) step=0; else step++
+    } else if ($0 == "FOXHOLE_BASE_ROLE?=flash") { blocks++; step=1 }
+  }
   /^[[:space:]]*((export|override)[[:space:]]+)?PKG_VERSION[[:space:]]*[:+?!]?=/ {
     versions++
     if ($0 !~ /^PKG_VERSION:=[0-9]+\.[0-9]+\.[0-9]+$/ || length($0) > 45) bad=1
@@ -30,11 +42,14 @@ base_version=$(awk '
     release=$0; sub(/^PKG_RELEASE:=/, "", release)
   }
   END {
-    if (bad || versions != 1 || releases != 1) exit 1
+    if (bad || step || versions != 1 || blocks > 1) exit 1
+    if (blocks == 1 && releases == 2) release=(role == "managed-ram" ? 2 : 1)
+    else if (blocks || releases != 1 || role != "flash") exit 1
     print version "-r" release
   }
-' "$base_makefile") || { echo 'Invalid BASE package metadata' >&2; exit 2; }
-base_package_file="foxhole-openwrt-client-$base_version.apk"
+' "$base_makefile"
+}
+base_role=${FOXHOLE_BASE_ROLE:-flash}
 target=arm64
 core_input=''
 core_source=''
@@ -52,6 +67,7 @@ out=''
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --target) target=${2:?}; shift 2 ;;
+    --base-role) base_role=${2:?}; shift 2 ;;
     --core-input) core_input=${2:?}; shift 2 ;;
     --core-source-sha256) core_source=${2:?}; shift 2 ;;
     --core-download-url) core_download=${2:?}; shift 2 ;;
@@ -75,6 +91,9 @@ while [ "$#" -gt 0 ]; do
        out=$1; shift ;;
   esac
 done
+case "$base_role" in flash|managed-ram) ;; *) echo 'Invalid BASE package metadata role' >&2; exit 2 ;; esac
+base_version=$(read_base_version "$base_role") || { echo 'Invalid BASE package metadata' >&2; exit 2; }
+base_package_file="foxhole-openwrt-client-$base_version.apk"
 [ "$all_protocols" = 0 ] || requested=all
 if [ -n "$core_download" ]; then
   [ -n "$core_input" ] && [ -n "$core_source" ] && [ -n "$core_ram_reserve" ] || {
@@ -201,6 +220,7 @@ grep -Eq '^CONFIG_PACKAGE_kmod-tun=[ym]$' .config
 for package in $packages; do
   grep -qx "CONFIG_PACKAGE_$package=m" .config
   make -j2 "package/feeds/foxhole/$package/compile" CONFIG_SIGNED_PACKAGES= \
+    FOXHOLE_BASE_ROLE="$base_role" \
     FOXCORE_PACKAGE_INPUT="$core_input" FOXCORE_SOURCE_SHA256="$core_source" \
     FOXCORE_DOWNLOAD_URL="$core_download" FOXCORE_RAM_RESERVE_BYTES="$core_ram_reserve" \
     HYSTERIA_PACKAGE_INPUT="$server_input" HYSTERIA_DOWNLOAD_URL="$server_download" \

@@ -46,17 +46,28 @@ function url(value,prefix) {
 export function recovery_overlay(value,version,sha,bytes) {
  if(!model.version(version)||!model.sha(sha)||!model.integer(bytes)||bytes<1||bytes>8388608||
   model.compare(version,value.baseVersion)<=0)fail();
- let address=value.recoveryOrigin+'foxhole-openwrt-client-'+version+'.apk';if(!url(address,false))fail();
+ if(value.schema==2&&(value.recoveryOrigin!='https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/'||
+    !match(version,/^(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})-r[1-9][0-9]{0,5}$/)))fail();
+ let tag_path=value.schema==2?'v'+split(version,'-r')[0]+'/':'';
+ let address=value.recoveryOrigin+tag_path+'foxhole-openwrt-client-'+version+'.apk';if(!url(address,false))fail();
  return {baseVersion:version,baseSha256:sha,artifact:{url:address,bytes,sha256:sha}};
 };
 export function descriptor(value) {
  let names=['schema','kind','artifact','version','baseVersion','arch','target','osRelease','baseSha256','signerPemSha256','caFileSha256','recoveryOrigin'];
  if(type(value)!='object')fail();if(index(keys(value),'overlay')>=0)push(names,'overlay');exact(value,names);exact(value.artifact,['url','bytes','sha256']);
- if(value.schema!=1||value.kind!='foxhole-ram-bootstrap-v1'||!model.version(value.version)||!model.version(value.baseVersion)||
+ let github=value.schema==2&&value.kind=='foxhole-ram-bootstrap-github-v1';
+ if(type(value.schema)!='int'||(!github&&(value.schema!=1||value.kind!='foxhole-ram-bootstrap-v1'))||!model.version(value.version)||!model.version(value.baseVersion)||
   !model.sha(value.baseSha256)||value.signerPemSha256!=model.signer_sha256||value.caFileSha256!=null&&!model.sha(value.caFileSha256)||
   !url(value.artifact.url,false)||!model.integer(value.artifact.bytes)||value.artifact.bytes<1||value.artifact.bytes>33554432||
   !model.sha(value.artifact.sha256)||!url(value.recoveryOrigin,true)||index(['25.12.5','25.12.6'],value.osRelease)<0||
   !(value.arch=='aarch64_cortex-a53'&&value.target=='mediatek/filogic'||value.arch=='x86_64'&&value.target=='x86/64'))fail();
+ let releases='https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/';
+ let reserved=/^https:\/\/(github\.com|api\.github\.com|release-assets\.githubusercontent\.com|objects\.githubusercontent\.com|github-releases\.githubusercontent\.com)\.*(:[0-9]+)?\//i;
+ if(github) {
+  if(value.recoveryOrigin!=releases||value.caFileSha256!=null||value.osRelease!='25.12.5'||
+     !match(value.version,/^(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})-r[1-9][0-9]{0,5}$/)||
+     value.artifact.url!=releases+'v'+split(value.version,'-r')[0]+'/foxhole-ram-bootstrap-bank-'+value.version+'-'+value.arch+'.apk')fail();
+ }else if(match(value.artifact.url,reserved)||match(value.recoveryOrigin,reserved))fail();
  if(value.overlay!=null) {
   exact(value.overlay,['baseVersion','baseSha256','artifact']);exact(value.overlay.artifact,['url','bytes','sha256']);
   if(!same(value.overlay,recovery_overlay(value,value.overlay.baseVersion,value.overlay.baseSha256,value.overlay.artifact.bytes)))fail();
@@ -131,10 +142,12 @@ export function prove(candidate,payload_sha) {
  let context=snapshot();current_matches(context);
  if(!model.sha(payload_sha)||model.compare(candidate.version,(context.value.overlay||context.value).baseVersion)<=0)fail('DOWNGRADE_REJECTED');
  let overlay=recovery_overlay(context.value,candidate.version,candidate.sha256,candidate.bytes);
- let fetched=capture('fetch',[overlay.artifact.url,context.value.caFileSha256==null?'system':'pinned',candidate.version],candidate.bytes,65000,context.raw);
+ let github=context.value.schema==2, mode=github?'github-release':context.value.caFileSha256==null?'system':'pinned';
+ let fetched=capture('fetch',[overlay.artifact.url,mode,candidate.version],candidate.bytes,65000,context.raw);
  // The pinned fetch helper rejects non-HTTPS hops before
  // connection.
  if(!fetched.clean||fetched.code!=0||fetched.stdout==null||fetched.stderr==null||match(fetched.stderr,/[Rr][Ee][Dd][Ii][Rr][Ee][Cc][Tt]|[Cc]ertificate|SSL error|[Tt][Ll][Ss] error/)||
+  (github&&index(fetched.stderr,'FoxHole GitHub release fetch v2\n')<0)||
   length(fetched.stdout)!=candidate.bytes||digest.sha256(fetched.stdout)!=candidate.sha256)fail('DOWNLOAD_FAILED');
  if(store.read(BOOT,maximum_descriptor)!=context.raw||identity(fs.lstat(BANK))!=context.bankIdentity)fail('STALE_PLAN');
  discard(fetched);

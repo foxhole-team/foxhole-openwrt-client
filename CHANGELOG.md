@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.0.13 Beta (FLASH r1 · RAM r2)
+
+- The Bash installer is available as a checksum-verified release asset. Updated the Journal refresh icon.
+
+## 1.0.12 Beta (FLASH r1 · RAM r2)
+
+- Games without VPN uses a standard switch in Settings. Open Routing from Add. Expand and collapse arrows have sharp corners.
+
+## 1.0.11 Beta (FLASH r1 · RAM r2)
+
+- Games without VPN has a gamepad icon and checkbox next to country-based routing. The subscription form is simpler.
+
+## 1.0.10 Beta (FLASH r1 · RAM r2)
+
+- Install from macOS, Linux or Windows over SSH.
+- Package updates check the router API after switching. If the check fails, the updater attempts to restore the previous working version.
+- The RAM journal shows the last 10 VPN events for the current boot. Software status lists standalone Hysteria 2, and the panel has smaller expand controls.
+- Import supported Hysteria 2, VLESS and WireGuard subscriptions in LuCI with the matching protocol installed. The router refreshes them hourly over HTTPS, including subscriptions sent from Guard or VPN.
+- Games without VPN routes supported Dota 2 and CS2 relay traffic, League of Legends and VALORANT traffic via Riot Direct, and Fortnite latency checks directly when country-based direct routing covers the whole LAN.
+
+## 1.0.9 Beta (FLASH r1 · RAM r2)
+
+- The installer checks the router model, OpenWrt version and available memory. Installation stops if the plan affects unrelated system packages.
+- Fixed package updates. You can check the version and turn automatic updates on or off in the web panel.
+- Fixed home VPN server management and creation of the first client.
+- The “VPN protocols” section checks the installed core and shows the available actions. You can reinstall or remove an inactive module managed by the package manager.
+- Settings and help now fit wide screens. You can remove the package from LuCI or the terminal.
+
 ## 1.0.8 Beta
 
 - Added support for OpenWrt 25.12.6

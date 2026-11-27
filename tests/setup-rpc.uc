@@ -1,3 +1,4 @@
+import * as server_mode from '/workspace/package/foxhole-openwrt-client/root/usr/share/foxhole/server-mode.uc';
 import * as model from '/workspace/package/foxhole-openwrt-client/root/usr/share/foxhole/model.uc';
 import * as pairing from '/workspace/package/foxhole-openwrt-client/root/usr/share/foxhole/pairing.uc';
 import * as digest from 'digest';
@@ -16,6 +17,8 @@ const OLD_PIN = '567800', PAIR_ID = 'pair-0123456789abcdef0123456789abcdef';
 const PAIR_KEY = digest.sha256('synthetic setup-pair fixture');
 let records, sessions, failures, writes, commands, handoffs, sequence;
 let pin_retry_after = 0;
+let initial_updates = { pending: () => null };
+let server_install = { installed: () => null };
 let update_service = { deployment: () => ({ version: '1.0.2-r2', storage: 'ram' }) };
 let pin_policy = {
  clock: () => ({ now: 1000, boot: 'synthetic-boot' }),
@@ -102,9 +105,19 @@ function test(name, fn) {
 test('missing auth has no default PIN and metadata performs no writes', () => {
 	delete records[AUTH_PATH];
 	equal(package_status({}), { schema: 1, product: 'foxhole', installed: true, backupSupported: true,
-		pinConfigured: false, resetSupported: true, packageUpdates: true, version: '1.0.2-r2', storage: 'ram', licenseRequired: true, licenseVersion: 1 });
+		pinConfigured: false, resetSupported: true, packageUpdates: true, updateVerificationUnavailable:false,
+        initialAutoUpdateSupported:true,initialAutoUpdateDefault:true,initialAutoUpdateSetupEligible:false, version: '1.0.2-r2', storage: 'ram', installedModules: null, hysteriaComponent: null, routerInfo: null, homeServerEnabled: false, licenseRequired: true, licenseVersion: 1 });
 	rejects(() => check_pin('1234'), 'pin_setup_required');
 	equal(writes, []); equal(length(keys(sessions)), 0);
+});
+test('an unreadable RAM deployment leaves PIN and pairing identity available without enabling updates', () => {
+ let original = update_service.deployment;
+ update_service.deployment = () => { die('update_package_verification_failed'); };
+ let result = package_status({});
+ update_service.deployment = original;
+ equal(result.product,'foxhole'); equal(result.pinConfigured,true); equal(result.packageUpdates,false);
+ equal(result.updateVerificationUnavailable,true); equal(result.storage,null); equal(result.version,null);
+ equal(writes,[]); equal(length(keys(sessions)),0);
 });
 test('legacy unconfigured default auth cannot grant a PIN session', () => {
 	records[AUTH_PATH].changed = false;

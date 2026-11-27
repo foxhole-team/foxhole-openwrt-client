@@ -103,3 +103,32 @@ test('standalone bridge keeps gateway errors bounded and aborts on lock', async 
   await assert.rejects(cancelled, { code: 'locked' });
   assert.equal(signal.aborted, true);
 });
+
+test('opening About in standalone or LuCI reads the public CGI with an empty payload', async () => {
+  const facts = {schema:1,product:'foxhole',installed:true,version:'1.0.9-r2',storage:'RAM',
+    installedModules:[],homeServerEnabled:true,routerInfo:{schema:1,firmwareVersion:'OpenWrt 25.12.5',model:'Cudy WR3000 v1'}};
+  for (const mode of ['embedded','direct']) {
+    const bridge = await harness(mode);
+    const pending = bridge.request('package.status', {token:'unused-fixture'});
+    assert.equal(bridge.sent.length,0);
+    assert.deepEqual(JSON.parse(bridge.fetches[0].args[1].body), {action:'package.status',payload:{}});
+    bridge.fetches[0].resolve({ok:true,json:async()=>facts});
+    assert.deepEqual(plain(await pending),facts);
+  }
+});
+
+test('LuCI public status falls back to a zero-argument RPC only on transport unavailability', async () => {
+  const bridge = await harness();
+  const pending = bridge.request('package.status', {token:'unused-fixture'});
+  bridge.fetches[0].resolve({ok:false,json:async()=>({})});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(bridge.sent.length,1);
+  const message=bridge.sent[0][0];
+  assert.deepEqual(message.payload,{});
+  bridge.receive({source:'foxhole-host',id:message.id,result:{storage:'RAM',version:'1.0.9-r2'}});
+  assert.deepEqual(plain(await pending),{storage:'RAM',version:'1.0.9-r2'});
+  const blocked=bridge.request('package.status');
+  bridge.fetches[1].resolve({ok:false,json:async()=>({_foxhole_error:'unauthorized'})});
+  await assert.rejects(blocked,{code:'unauthorized'});
+  assert.equal(bridge.sent.length,1);
+});

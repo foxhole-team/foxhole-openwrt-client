@@ -20,8 +20,8 @@ const TERMINAL = ['SUCCEEDED','FAILED'];
 const REASONS = ['vpn_server_verification_failed','vpn_server_stale_plan','vpn_server_no_space',
  'vpn_server_unavailable','vpn_server_unauthorized','vpn_server_recovery_required',
  'engine_download_failed','engine_package_verification_failed','storage_error'];
-function sync() { if (system(['/bin/sync'],5000) != 0) fail('unavailable'); };
 function fail(code) { die('vpn_server_' + (code || 'verification_failed')); };
+function sync() { if (system(['/bin/sync'],5000) != 0) fail('unavailable'); };
 function same(a,b) { return sprintf('%J',a) == sprintf('%J',b); };
 function read(path) { let raw = store.read(path,2097152); return raw ? json(raw) : null; };
 function write(path,value) {
@@ -168,43 +168,6 @@ function disabled_proof(previous) {
  }
  fail('unavailable');
 };
-function run_disable(value) {
- try {
-  value.worker = engine.update_self_worker(); write(JOB,value);
-  // Defer stopping so the queued response can leave the router.
-  if (sleep(1000) != true || (!principal_current(value.principal) &&
-      !(value.disableIntent == true && state().settings.vpnServerEnabled == false))) fail('unauthorized');
-  let previous = managed_instances();
-  progress(value,'ACTIVATING',10);
-  state_locked(() => {
-   let current = state(); if (current.revision != value.revision) fail('stale_plan');
-   value.disableIntent = true; write(JOB,value); sync();
-   current.settings.vpnServerEnabled = false; current.revision++;
-   write('/etc/foxhole/state.json',current);
-  });
-  sync();
-  if (system(['/usr/libexec/foxhole-inbound','force'],30000) != 0) fail('unavailable');
-  managed('stop');
-  disabled_proof(previous);
-  if (value.removeComponent == true) {
-   if (!value.removalGeneration || !same(native.active(),value.removalGeneration)) fail('verification_failed');
-   if (read(CONSENT) != null) {
-    store.target(CONSENT);
-    if (!fs.unlink(CONSENT)) fail('verification_failed');
-    sync();
-   }
-   native.remove_owned(value.removalGeneration);
-  }
-  progress(value,'SUCCEEDED',100); sync();
- } catch (error) {
-  let reason = type(error) == 'string' ? error : error.message;
-  value.failureReason = index(REASONS,reason) >= 0 ? reason : 'vpn_server_verification_failed';
-  // Keep the requested OFF state after a partial stop.
-  value.state = value.disableIntent == true && state().settings.vpnServerEnabled == false ? 'RECOVERY_REQUIRED' : 'FAILED';
-  value.step = value.state; write(JOB,value); sync();
- }
- return public_job(value);
-};
 export function apply(request,principal) {
  let result = engine.update_locked(() => {
   engine.guard_mutation();
@@ -242,6 +205,43 @@ function flag(enabled) {
   }
   return current;
  });
+};
+function run_disable(value) {
+ try {
+  value.worker = engine.update_self_worker(); write(JOB,value);
+  // Defer stopping so the queued response can leave the router.
+  if (sleep(1000) != true || (!principal_current(value.principal) &&
+      !(value.disableIntent == true && state().settings.vpnServerEnabled == false))) fail('unauthorized');
+  let previous = managed_instances();
+  progress(value,'ACTIVATING',10);
+  state_locked(() => {
+   let current = state(); if (current.revision != value.revision) fail('stale_plan');
+   value.disableIntent = true; write(JOB,value); sync();
+   current.settings.vpnServerEnabled = false; current.revision++;
+   write('/etc/foxhole/state.json',current);
+  });
+  sync();
+  if (system(['/usr/libexec/foxhole-inbound','force'],30000) != 0) fail('unavailable');
+  managed('stop');
+  disabled_proof(previous);
+  if (value.removeComponent == true) {
+   if (!value.removalGeneration || !same(native.active(),value.removalGeneration)) fail('verification_failed');
+   if (read(CONSENT) != null) {
+    store.target(CONSENT);
+    if (!fs.unlink(CONSENT)) fail('verification_failed');
+    sync();
+   }
+   native.remove_owned(value.removalGeneration);
+  }
+  progress(value,'SUCCEEDED',100); sync();
+ } catch (error) {
+  let reason = type(error) == 'string' ? error : error.message;
+  value.failureReason = index(REASONS,reason) >= 0 ? reason : 'vpn_server_verification_failed';
+  // Keep the requested OFF state after a partial stop.
+  value.state = value.disableIntent == true && state().settings.vpnServerEnabled == false ? 'RECOVERY_REQUIRED' : 'FAILED';
+  value.step = value.state; write(JOB,value); sync();
+ }
+ return public_job(value);
 };
 function rollback(value) {
  managed('stop');

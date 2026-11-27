@@ -49,5 +49,18 @@
         "luci-app-foxhole-pin"
       ]
     }
+  },
+  "admin/services/foxhole/remove": {
+    "title": "Uninstall FoxHole",
+    "order": 4,
+    "action": {
+      "type": "view",
+      "path": "foxhole/remove"
+    },
+    "depends": {
+      "acl": [
+        "luci-app-foxhole-remove"
+      ]
+    }
   }
 }

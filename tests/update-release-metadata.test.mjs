@@ -10,10 +10,12 @@ import { functionBody, packageRoot, read } from './helpers.mjs';
 
 const source = await read(`${packageRoot}/root/usr/share/foxhole/update-native.uc`);
 const model = await read(`${packageRoot}/root/usr/share/foxhole/update-model.uc`);
+const ramModel = await read(`${packageRoot}/root/usr/share/foxhole/ram-update-model.uc`);
 const helper = await read(`${packageRoot}/root/usr/libexec/foxhole-update-hint`);
 const maximum = 1048576, requiredMemory = 33554432 + 4 * maximum;
 function release(bytes) {
-  const value = { tag_name: 'v1.0.1', draft: false, prerelease: false,
+  const value = { id:42, url:'https://api.github.com/repos/foxhole-team/foxhole-openwrt-client/releases/42',
+    html_url:'https://github.com/foxhole-team/foxhole-openwrt-client/releases/tag/v1.0.1',tag_name: 'v1.0.1', draft: false, prerelease: false,
     assets: Array.from({ length: 235 }, (_, i) => ({ name: `asset-${i}`, size: 1234 })), body: '' };
   value.body = 'x'.repeat(bytes - JSON.stringify(value).length);
   const raw = JSON.stringify(value); assert.equal(Buffer.byteLength(raw), bytes); return raw;
@@ -23,7 +25,9 @@ function native(raw, memory = [requiredMemory, requiredMemory]) {
   const context = vm.createContext({
     RELEASE_METADATA_BYTES: Number(source.match(/const RELEASE_METADATA_BYTES\s*=\s*([0-9]+)/)?.[1]),
     length: value => typeof value === 'string' ? Buffer.byteLength(value) : value.length,
-    json: JSON.parse, type: value => typeof value,
+    json: JSON.parse, type: value => Array.isArray(value)?'array':typeof value,
+    integer: n=>Number.isSafeInteger(n)&&n>=0,tag: s=>typeof s==='string'&&/^v[0-9]+\.[0-9]+\.[0-9]+$/.test(s),
+    origin:'https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/',ram_metadata:{},
     match: (value, expression) => value.match(expression), sprintf: (_format, value) => JSON.stringify(value),
     store: { target() {} }, guard: { fail: reason => { throw new Error(reason); } },
     system: () => { created = true; fetches++; return 0; },
@@ -42,6 +46,7 @@ function native(raw, memory = [requiredMemory, requiredMemory]) {
   for (const [name, args] of [['release_memory', ''], ['public_raw', 'path,maximum'], ['decode', 'raw'], ['latest', 'directory']])
     vm.runInContext(`function ${name}(${args}) ${functionBody(source, name)}`, context);
   vm.runInContext(`guard.release_tag = function(value) ${functionBody(model, 'release_tag')}`, context);
+  vm.runInContext(`ram_metadata.official_base_release = function(release) ${functionBody(ramModel,'official_base_release').replace(/for\(let (\w+) in /g,'for(let $1 of ')}`, context);
   context.fail = context.guard.fail;
   return { run: () => context.latest('/tmp/foxhole/update-job-' + 'a'.repeat(32)),
     counts: () => ({ fetches, payloadReads, memoryReads }) };
@@ -57,7 +62,7 @@ async function download(raw, status = 0, existing = false) {
     await writeFile(join(bin, 'uclient-fetch'), `#!/bin/sh
 [ "$#" -eq 5 ] && [ "$1" = '-T' ] && [ "$2" = '20' ] && [ "$3" = '-O' ] || exit 95
 [ "$5" = 'https://api.github.com/repos/foxhole-team/foxhole-openwrt-client/releases/latest' ] || exit 96
-cat "$FETCH_INPUT" > "$4"
+dd if="$FETCH_INPUT" of="$4" bs=4096 2>/dev/null
 result=$?
 wc -c < "$4" > "$FETCH_BYTES"
 [ "$result" -eq 0 ] || exit "$result"

@@ -32,6 +32,10 @@ export function status(storage) {
  if (collect && cached_storage == storage && cached && now >= cached_at && now - cached_at < 3 &&
      collectors_admitted(available_memory()) && collectors_admitted(cached.memAvailableKiB)) return cached;
  let packages = collect ? source(['/sbin/logread', '-l', '128', '-e', 'foxhole'], 65536, model.package_events) : { available: false, events: [] };
+ let recent = null;
+ if (storage == 'RAM') {
+  try { recent = model.recent_events(read_json(model.recent_path) || []); } catch (_) {}
+ }
  let kernel = collect ? source(['/bin/dmesg'], 262144, model.kernel_events) : { available: false, events: [] };
  let core = collect ? model.core_status(read_json('/tmp/foxhole/core-state.json')) : { available: false };
  core.events = filter(packages.events, row => row.engine == 'core');
@@ -41,6 +45,7 @@ export function status(storage) {
  cached = { schema: 1, collectedAtUnixMs: now * 1000, memAvailableKiB: memory,
   uptimeSeconds: uptime ? +uptime[1] : null, runtime: model.runtime_status(read_json('/tmp/foxhole/runtime.json')),
   package: packages, core, kernel };
+ if (storage == 'RAM') cached.recent = recent;
  cached_at = now;
  cached_storage = storage;
  return cached;

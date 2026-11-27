@@ -1,0 +1,142 @@
+#!/usr/bin/ucode
+'use strict';
+import * as fs from 'fs';
+import * as digest from 'digest';
+import * as native_model from '/usr/share/foxhole/update-native.uc';
+import * as remove from '/usr/share/foxhole/package-removal.uc';
+import * as uci from 'uci';
+import * as engine from '/usr/share/foxhole/engine-service.uc';
+import * as ram_switch from '/usr/share/foxhole/ram-switch-service.uc';
+import * as ram_model from '/usr/share/foxhole/ram-switch-model.uc';
+
+const BASE='foxhole-openwrt-client',MARKER='/tmp/foxhole-ram-active.json',RC='/etc/rc.d/';
+const native='/usr/bin/apk --no-network --no-cache --repositories-file /dev/null';
+function stop(code){die(code);};
+function checked(path,max){
+ let st=fs.lstat(path);if(st?.type!='file'||st.uid!=0||st.nlink!=1||(st.mode&0o022)||st.size>max)stop('UNVERIFIED');
+ let data=fs.readfile(path,max+1),end=fs.lstat(path);
+ if(data==null||length(data)!=st.size||st.inode!=end?.inode||st.mtime!=end.mtime||st.ctime!=end.ctime)stop('UNVERIFIED');
+ return data;
+};
+function command(text,max){
+ let p=fs.popen('LC_ALL=C '+text+' 2>&1','r');if(!p)stop('NATIVE_FAILED');
+ let out=p.read(max+1),rc=p.close();
+ if(rc!=0||type(out)!='string'||length(out)>max)stop('NATIVE_FAILED');return out;
+};
+function ram(){
+ let mounts=ram_model.mounts(fs.readfile('/proc/self/mountinfo',1048577));
+ if(!fs.lstat(MARKER)){
+  for(let row in mounts)if(ram_model.public_path(row.target))stop('UNVERIFIED');
+  return null;
+ }
+ let raw=checked(MARKER,4096),m=json(raw);
+ if(m.schema!=1||m.storage!='RAM'||m.phase!='active'||!ram_model.stage(m.stage)||!ram_model.ledger_path(m.mountLedger)||
+    !match(m.version||'',/^[0-9]+\.[0-9]+\.[0-9]+-r[1-9][0-9]*$/))stop('UNVERIFIED');
+ ram_switch.ram_backing(mounts,m.stage+'/root',0);
+ let proof=checked(m.mountLedger,131072),ledger=ram_model.ledger(json(proof),m),self=false;
+ for(let r in ledger.mounts){
+  let a=fs.lstat(r.source),b=fs.lstat(r.target),view=ram_model.one_mount(mounts,r.target);
+  if(!a||!b||a.uid!=0||b.uid!=0||a.inode!=r.inode||b.inode!=a.inode||sprintf('%J',a.dev)!=sprintf('%J',r.dev)||
+    sprintf('%J',b.dev)!=sprintf('%J',a.dev)||a.type!=r.type||index(split(view.options,','),'ro')<0)stop('UNVERIFIED');
+  if(r.target=='/usr/libexec/foxhole-uninstall')self=true;
+ }
+ if(!self)stop('UNVERIFIED');
+ return {version:m.version,identity:digest.sha256(raw+proof)};
+};
+function startups(){
+ let names=fs.lsdir('/etc/rc.d');if(type(names)!='array')stop('UNVERIFIED');let result=[];
+ for(let n in names){
+  let role=match(n,/^S[0-9][0-9](foxhole-ram-bootstrap|foxhole-ram-restore)$/);if(!role)continue;
+  let s=fs.lstat(RC+n),target='../init.d/'+role[1],init=fs.lstat('/etc/init.d/'+role[1]);
+  if(s?.type!='link'||s.uid!=0||s.nlink!=1||fs.readlink(RC+n)!=target||init?.type!='file'||init.uid!=0||init.nlink!=1||(init.mode&0o022))stop('UNVERIFIED');
+  push(result,{name:n,target,inode:s.inode,dev:s.dev,init:digest.sha256(checked('/etc/init.d/'+role[1],32768))});
+ }
+ return result;
+};
+function configuration(){
+ let u=uci.cursor(),values=[];
+ for(let config in ['network','firewall','dhcp','uhttpd']){
+  let sections=[];
+  u.foreach(config,null,row=>{
+   let fields=[];
+   for(let key in sort(keys(row))){
+    if(substr(key,0,1)=='.')continue;
+    let value=row[key];
+    if((config=='dhcp'&&row['.type']=='dnsmasq'&&key=='addnmount')||
+       (config=='uhttpd'&&row['.name']=='main'&&key=='index_page')){
+     let skip=config=='dhcp'?['/var/run/foxhole.dnsmasq']:['foxhole.html','luci-static/resources/foxhole/shell.html'];
+     value=filter(type(value)=='array'?value:[value],v=>index(skip,v)<0);
+     if(!length(value))continue;
+    }
+    push(fields,[key,value]);
+   }
+   push(sections,[row['.type'],row['.anonymous']?null:row['.name'],fields]);
+  });
+  push(values,[config,sections]);
+ }
+ u.unload();
+ for(let n in ['state','auth','pairing','inbound','update-policy']){
+  let path='/etc/foxhole/'+n+'.json';push(values,fs.lstat(path)?digest.sha256(checked(path,1048576)):null);
+ }
+ return digest.sha256(sprintf('%J',values));
+};
+function flash_guard(){
+ // Removal hooks commit only these supported UCI packages.
+ for(let n in ['dhcp','uhttpd'])
+  if(length(trim(command('/sbin/uci -q changes '+n,65536))))stop('BUSY');
+};
+function reload_services(){
+ if(system(['/etc/init.d/firewall','reload'],30000)!=0)return false;
+ // Return the result before reloading rpcd.
+ return system(['/bin/sh','-c','(sleep 2; exec /etc/init.d/rpcd reload) </dev/null >/dev/null 2>&1 &'],2000)==0;
+};
+function retained(){
+ let p=native_model.installed_identities();delete p[BASE];
+ let rows=[];for(let n in sort(keys(p)))push(rows,[n,p[n].version,p[n].arch,p[n].cas]);
+ let world=filter(split(checked('/etc/apk/world',65536),'\n'),s=>!match(s,/^foxhole-openwrt-client($|[<>=~@])/));
+ return digest.sha256(sprintf('%J',[rows,sort(world),configuration()]));
+};
+let removed=null;
+const io={host:()=>native_model.installed_identities()[BASE],ram,startups,boot:()=>trim(fs.readfile('/proc/sys/kernel/random/boot_id',128)),
+ world:()=>digest.sha256(checked('/etc/apk/world',65536)),database:()=>digest.sha256(checked('/lib/apk/db/installed',4194304)),
+ simulation:()=>command(native+' del --simulate '+BASE,524288),guard:()=>engine.guard_mutation(),
+ retained,flashGuard:flash_guard,finishFlash:reload_services,sameRetained:before=>retained()==before,removeFlash:()=>command(native+' del '+BASE,524288),
+ disableStartup:r=>{
+  let current=startups();if(length(current)!=1||sprintf('%J',current[0])!=sprintf('%J',r))stop('STALE');
+  if(!fs.unlink(RC+r.name))stop('NATIVE_FAILED');removed=r;
+ },
+ afterDisable:()=>{
+  if(system(['/bin/sync'],10000)==0)return;
+  if(removed!=null&&!fs.lstat(RC+removed.name))fs.symlink(removed.target,RC+removed.name);
+  stop('VERIFY_FAILED');
+ }};
+const usage='Usage: /usr/libexec/foxhole-uninstall [--plan]\n';
+function interactive(){
+ let p=remove.plan(io);
+ if(p.mode=='ABSENT'){print('FoxHole is already absent.\n');return;}
+ let phrase=p.mode=='RAM'?'REMOVE RAM':'REMOVE FLASH';
+ let tty=fs.open('/dev/tty','r+');if(!tty)stop('UNCONFIRMED');
+ tty.write('Remove FoxHole '+p.version+' ('+p.mode+')? Profiles, pairing and router settings are kept.\n'+
+  (p.mode=='RAM'?'The RAM package will disappear on your next router reboot.\n':'The active FoxHole connection will stop.\n')+
+  (p.mode=='RAM'&&p.hostVersion?'A FLASH installation will be available after reboot.\n':'')+
+  'Type '+phrase+' to confirm: ');tty.flush();let answer=tty.read('line');let selected=type(answer)=='string'&&length(answer)<=64?trim(answer):'';tty.close();
+ if(selected!=phrase)stop('UNCONFIRMED');
+ let result=engine.update_locked(()=>remove.apply(io,p.token,p.mode));
+ if(result.status=='REBOOT_REQUIRED')print('RAM autostart is disabled. Reboot OpenWrt to finish removal.\n');
+ else if(result.status=='REMOVED_RELOAD_REQUIRED')print('FoxHole was removed. Reboot OpenWrt to finish reloading services.\n');
+ else print('FoxHole package removed.\n');
+};
+let rpc=ARGV[0]=='--luci-plan'||ARGV[0]=='--luci-apply';
+try{
+ if(fs.stat('/proc/self')?.uid!=0)stop('ROOT_REQUIRED');
+ if(!length(ARGV))interactive();
+ else if(length(ARGV)==1&&index(['--plan','--luci-plan'],ARGV[0])>=0)print(sprintf('%J\n',remove.plan(io)));
+ else if(length(ARGV)==3&&ARGV[0]=='--luci-apply'&&match(ARGV[1],/^[a-f0-9]{64}$/)&&index(['FLASH','RAM'],ARGV[2])>=0)
+  print(sprintf('%J\n',engine.update_locked(()=>remove.apply(io,ARGV[1],ARGV[2]))));
+ else{warn(usage);exit(2);}
+}catch(e){
+ let code=type(e)=='string'?e:e.message;
+ if(index(['ROOT_REQUIRED','UNVERIFIED','AMBIGUOUS_STARTUP','PACKAGE_CHANGES','UNCONFIRMED','STALE','VERIFY_FAILED','NATIVE_FAILED'],code)<0)
+  code=match(code||'',/busy/i)?'BUSY':'UNVERIFIED';
+ if(rpc)print(sprintf('%J\n',{error:code}));else{warn('FoxHole removal: '+code+'\n');exit(1);}
+}

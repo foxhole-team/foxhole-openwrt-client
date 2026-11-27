@@ -18,6 +18,7 @@ import * as mobile from '/usr/share/foxhole/mobile.uc';
 import * as core_adapter from '/usr/share/foxhole/core-adapter.uc';
 import * as store from '/usr/share/foxhole/private-store.uc';
 import * as pin_policy from '/usr/share/foxhole/pin-policy.uc';
+import * as initial_updates from '/usr/share/foxhole/initial-update-choice.uc';
 import * as core_model from '/usr/share/foxhole/core-model.uc';
 import * as handoff from '/usr/share/foxhole/handoff.uc';
 import * as remote from '/usr/share/foxhole/remote.uc';
@@ -32,6 +33,8 @@ import * as protocol_facts from '/usr/share/foxhole/protocol-facts.uc';
 import * as server_install from '/usr/share/foxhole/server-install-service.uc';
 import * as server_mode from '/usr/share/foxhole/server-mode.uc';
 import * as server_check from '/usr/share/foxhole/server-check.uc';
+import * as subscriptions from '/usr/share/foxhole/subscriptions.uc';
+import * as engine_registry from '/usr/share/foxhole/engine-registry.uc';
 
 const STATE_PATH = '/etc/foxhole/state.json';
 const AUTH_PATH = '/etc/foxhole/auth.json';
@@ -64,7 +67,7 @@ const ERRORS = [
 	'engine_unknown_protocol', 'engine_not_released', 'engine_unsupported_target', 'engine_unsupported_profile_graph', 'engine_stale_plan', 'engine_stale_session', 'engine_router_unavailable', 'engine_busy', 'engine_no_space', 'engine_authentication_failed', 'engine_download_failed', 'engine_package_verification_failed', 'engine_candidate_check_failed', 'engine_reconnect_failed', 'engine_recovery_required', 'engine_invalid_request', 'engine_in_use',
 	'invalid_pin', 'pin_cooldown', 'luci_required', 'pin_required', 'pin_unchanged', 'pin_setup_required', 'license_required',
 	'locked', 'unauthorized', 'revision_conflict',
-	'invalid_config', 'unsupported_config', 'invalid_name',
+	'invalid_config', 'unsupported_config', 'invalid_name', 'subscription_unavailable',
 	'invalid_address', 'invalid_mac', 'mac_not_found', 'invalid_site',
 	'site_path_unsupported', 'invalid_settings', 'duplicate_rule',
 	'not_found', 'storage_error', 'unavailable', 'pin_mismatch', 'client_limit',
@@ -607,6 +610,8 @@ function settings_call(request) {
 			devices: args.devices || [],
 			sites: args.sites || []
 		}, address => resolve_mac(address));
+		if (!exists(args.settings, 'gamesDirect'))
+			checked.settings.gamesDirect = state.settings.gamesDirect;
 		checked.settings.vpnServerEnabled = server_mode.settings(state, args.settings);
 		checked.settings.standaloneAccess =
 			state.settings.standaloneAccess;
@@ -620,6 +625,11 @@ function settings_call(request) {
 	return public_state(result.state);
 };
 
+function engine_principal(request) {
+	let item = sessions[session(request)];
+	if (item.pairing) return { kind: 'pair', id: item.pairing.id, verifier: item.pairing.verifier };
+	return { kind: 'admin', user: item.user, verifier: digest.sha256(auth_record().hash) };
+};
 function vpn_server_plan(request) {
  session(request);
  return server_install.plan(engine_principal(request));
@@ -656,8 +666,15 @@ function save_server(request) {
 	engine_service.guard_mutation();
 	session(request);
 	let args = request.args, expected = valid_revision(args.revision);
-	let parsed = admit_server(args.config, args.engine);
-	let subscription = core_model.subscription(args.subscription);
+	let imported = null, source = !args.id && !args.engine ? subscriptions.web_source(args.config) : null;
+	if (source != null) {
+		try { imported = subscriptions.initial(source); } catch (_) { fail('subscription_unavailable'); }
+	}
+	let engine = imported?.mode || args.engine;
+	let parsed = imported ? { ...imported.value, protocol: imported.metadata.selectedProtocol, raw: imported.value.config }
+		: admit_server(args.config, engine);
+	let subscription = core_model.subscription(imported?.metadata || args.subscription);
+	let config = imported ? imported.value.config : engine == 'core' ? parsed.raw : trim(args.config);
 	if (subscription && subscription.selectedProtocol !=
 	    (parsed.protocol || 'hysteria2')) fail('invalid_config');
 	let id = args.id || next_id('server');
@@ -670,26 +687,29 @@ function save_server(request) {
 		if (state.revision != expected) fail('revision_conflict');
 		for (let server in state.servers) {
 			if (server.id != id) continue;
-			let preserve_portable = args.engine == 'core' &&
+			let unchanged = config == server.config && (engine || 'hysteria') == (server.engine || 'hysteria');
+			let preserve_portable = engine == 'core' &&
 				trim(args.config) == trim(server.config) && server.portableProfile != null;
 			server.name = name;
 			server.endpoint = parsed.endpoint;
-			server.config = args.engine == 'core' ? parsed.raw : trim(args.config);
-			if (args.engine == 'core') {
+			server.config = config;
+			if (engine == 'core') {
 				server.engine = 'core'; server.protocol = parsed.protocol;
 				if (!preserve_portable) server.portableProfile = parsed.portableProfile;
 			} else {
 				delete server.engine; delete server.protocol; delete server.portableProfile;
 			}
+			if (!unchanged || (subscription && sprintf('%J',subscription) != sprintf('%J',server.subscription)))
+				delete server.subscriptionPending;
 			if (subscription) server.subscription = subscription;
-			else delete server.subscription;
+			else if (!unchanged) delete server.subscription;
 			found = true;
 		}
 		if (!found && args.id) fail('not_found');
 		if (!found) push(state.servers, {
 			id, name, endpoint: parsed.endpoint,
-			config: args.engine == 'core' ? parsed.raw : trim(args.config),
-			...(args.engine == 'core' ?
+			config,
+			...(engine == 'core' ?
 				{ engine: 'core', protocol: parsed.protocol,
 					portableProfile: parsed.portableProfile } : {}),
 			...(subscription ? { subscription } : {})
@@ -761,6 +781,8 @@ function start_server(request) {
 		let changed = state.activeServerId != id;
 		state.activeServerId = id;
 		let selected = runtime_model.active_server(state);
+		if (selected.subscriptionPending != null)
+			try { if (subscriptions.apply_pending(selected)) changed = true; } catch (_) {}
 		if (selected.engine != 'core')
 			runtime_model.hysteria_config(state, null);
 		if (changed) {
@@ -846,6 +868,12 @@ function profile_app_metadata(paired, client_id, uri) {
 	return { schema: 1, kind: 'foxhole-openwrt-client',
 		pairingId: paired.id, clientId: client_id,
 		uriSha256: digest.sha256(uri) };
+};
+
+function remote_wan_address() {
+	let result = remote_uplink();
+	if (result.publicIpv4Available != true || !result.address) fail('public_address_required');
+	return result.address;
 };
 
 function save_client(request) {
@@ -1041,6 +1069,10 @@ function store_pin(pin, acceptance) {
 	let previous = auth_record(true), accepted = license_choice(previous, acceptance);
 	let auth = { schema: 1, salt: random_hex(16), changed: true };
 	if (accepted) { auth.licenseAccepted = true; auth.licenseVersion = LICENSE_VERSION; }
+	let existing_policy=read_json('/etc/foxhole/update-policy.json',8192)!=null;
+	let offered=update_model.empty_install(read_json(STATE_PATH,MAX_STATE),pairing_record()) ? initial_updates.pending() : null;
+	let first=update_model.first_owner_choice(previous,offered,acceptance?.initialAutoUpdateEnabled,existing_policy);
+	if (first!=null) auth.initialPackageAutoUpdate=first;
 	auth.hash = pin_hash(auth.salt, pin);
 	pin_policy.reset();
 	revoke_handoff(null);
@@ -1074,13 +1106,36 @@ function admin_pin(request) {
 	});
 };
 
+function admin_remove_package(request, apply) {
+ let sid=request.args.ubus_rpc_session;
+ if(type(sid)!='string'||!match(sid,/^[a-f0-9]{32}$/)||sid=='00000000000000000000000000000000')fail('unauthorized');
+ let args=['--luci-plan'];
+ if(apply){
+  let token=request.args.planSha256,mode=request.args.confirmMode;
+  if(type(token)!='string'||!match(token,/^[a-f0-9]{64}$/)||index(['FLASH','RAM'],mode)<0)fail('unauthorized');
+  args=['--luci-apply',token,mode];
+ }
+ let connection=ubus.connect();if(!connection)fail('unavailable');
+ let reply=value=>{request.reply(value);connection.disconnect();};
+ return connection.defer('session','access',{ubus_rpc_session:sid,scope:'ubus',object:'foxhole.admin',
+  function:apply?'remove_package_apply':'remove_package_plan'},(code,access)=>{
+   if(code!=0||access?.access!=true){reply({error:'UNAUTHORIZED'});return;}
+   // Delegate only the fixed CLI and validated arguments.
+   connection.defer('file','exec',{command:'/usr/libexec/foxhole-uninstall',params:args},(rc,result)=>{
+    if(rc!=0||result?.code!=0||type(result.stdout)!='string'||length(result.stdout)>2048){reply({error:'UNAVAILABLE'});return;}
+    let response=null;try{response=json(result.stdout);}catch(_){}
+    reply(type(response)=='object'?response:{error:'UNAVAILABLE'});
+   });
+  });
+};
+
 function fresh_setup_policy() {
 	let auth=auth_record();
 	if(auth.changed!=false || auth.resetPending==true ||
 		type(auth.bootstrapBootId)!='string')return false;
 	if(!update_model.fresh_setup(auth,state_record(),pairing_record(),false))
 		return false;
-	return read_json('/etc/foxhole/update-policy.json',8192)==null;
+	return initial_updates.pending()!=null && read_json('/etc/foxhole/update-policy.json',8192)==null;
 };
 function change_pin(request) {
 	let sid = session(request, true);
@@ -1157,7 +1212,8 @@ function unlock(request) {
 		}
 		return { token, state: public_state(state_record()),
 			pinChangeRequired: sessions[token].setup, licenseRequired: license_required(auth),
-			licenseVersion: LICENSE_VERSION,autoUpdateSetupEligible:fresh_setup_policy() };
+			licenseVersion: LICENSE_VERSION,initialAutoUpdateSupported:true,autoUpdateSetupEligible:fresh_setup_policy(),
+            initialAutoUpdateDefault:initial_updates.pending()!=false };
 	});
 };
 
@@ -1229,12 +1285,6 @@ function phone_session(request) {
 	return paired;
 };
 
-function remote_wan_address() {
-	let result = remote_uplink();
-	if (result.publicIpv4Available != true || !result.address) fail('public_address_required');
-	return result.address;
-};
-
 function phone_capabilities(request) {
 	phone_session(request);
 	let native = core_adapter.receipt('capabilities');
@@ -1247,6 +1297,8 @@ function phone_capabilities(request) {
 			    index(protocols, name) >= 0) { protocols = []; break; }
 			push(protocols, name);
 		}
+	for (let id in ['vless','hysteria2','wireguard'])
+		if (index(protocols,id) < 0) try { if (engine_registry.select_protocol(id)) push(protocols,id); } catch (_) {}
 	let legacy = protocol_facts.server() != null;
  let available_server = server_install.installed() != null;
  let server_enabled = server_mode.enabled(state_record());
@@ -1489,7 +1541,7 @@ function online_ready(connection, flags, deadline) {
 	return length(ready || []) == 1 && (ready[0][1] & flags) != 0;
 };
 
-function read_online(listener, ids) {
+function read_online(listener, ids, legacy) {
 	let connection = null;
 	let read = () => {
 		let port = match(listener.listen || '', /^127\.0\.0\.1:90([1-5])$/);
@@ -1519,7 +1571,7 @@ function read_online(listener, ids) {
 			raw += part;
 			if (length(raw) > 10240) return null;
 		}
-		return observation.online_map(observation.http_body(raw), ids);
+		return observation.online_map(observation.http_body(raw), ids, legacy);
 	};
 	let result = null;
 	try { result = read(); } catch (_) {}
@@ -1539,7 +1591,7 @@ function client_status(request) {
 		let directory = '/tmp/foxhole/inbound', record;
 		try { record = json(store.read(directory + '/observations.json', 8192) || 'null'); }
 		catch (_) { return unknown(); }
-		if (record?.schema != 1 || record.revision != state.revision ||
+		if (index([1, 2], record?.schema) < 0 || record.revision != state.revision ||
 		    type(record.listeners) != 'array' || length(record.listeners) > 4 ||
 		    type(record.generation) != 'string' || !match(record.generation, /^[a-f0-9]{64}$/))
 			return unknown();
@@ -1547,30 +1599,41 @@ function client_status(request) {
 		try { generation = store.read(directory + '/generation', 128); }
 		catch (_) { return unknown(); }
 		if (generation != record.generation) return unknown();
-		let ids = map(filter(state.clients, item => item.inbound == true), item => item.id);
+		let clients = filter(state.clients, item => item.inbound == true), ids = map(clients, item => item.id);
 		let shared = length(record.listeners) == 1 && record.listeners[0]?.id == 'shared';
-		if ((!shared && length(record.listeners) != length(ids)) ||
+		if (length(ids) > 32 || (!shared && length(record.listeners) != length(ids)) ||
 		    (shared && !length(ids))) return unknown();
+		let legacy = {};
+		if (shared) try {
+			let base = json(store.read('/etc/foxhole/inbound.json', 65536) || 'null');
+			if (type(base) != 'object' || (base.legacyUsers != null && type(base.legacyUsers) != 'object')) return unknown();
+			legacy = base.legacyUsers || {};
+		} catch (_) { return unknown(); }
 		let seen = {};
 		for (let listener in record.listeners) {
 			let id = listener?.id;
 			if (type(id) != 'string' || (id != 'shared' && index(ids, id) < 0) || seen[id]) return unknown();
 			seen[id] = true;
-			let config;
-			try { config = json(store.read(directory + '/' + id + '.json', 65536)); }
-			catch (_) { return unknown(); }
-			if (config?.trafficStats?.listen != listener.listen || config.trafficStats.secret != listener.secret ||
-			    config.auth?.type != 'userpass' || type(config.auth.userpass) != 'object') return unknown();
-			let users = keys(config.auth.userpass);
-			if ((shared && length(users) != length(ids)) ||
-			    (!shared && (length(users) != 1 || users[0] != id))) return unknown();
-			for (let user in users) {
-				let client = filter(state.clients, item => item.id == user && item.inbound == true)[0];
-				if (!client || config.auth.userpass[user] != client.secret) return unknown();
-			}
-			let values = read_online(listener, users);
+			let users = inbound.listener_users(id, clients, legacy);
+			try {
+				let expected = observation.stats_config(shared ? 0 : index(ids, id) + 1, listener.secret);
+				if (listener.listen != expected.listen) return unknown();
+				if (record.schema == 2) {
+					let stamp = observation.witness(id, observation.config_hash(id), expected, users);
+					if (!stamp || listener.witness != stamp) return unknown();
+				} else {
+					let config = json(store.read(directory + '/' + id + '.json', 65536));
+					if (config?.trafficStats?.listen != expected.listen || config.trafficStats.secret != expected.secret ||
+					    config.auth?.type != 'userpass' || type(config.auth.userpass) != 'object' ||
+					    length(keys(config.auth.userpass)) != length(keys(users))) return unknown();
+					for (let user, secret in users)
+						if (!exists(config.auth.userpass, user) || config.auth.userpass[user] != secret) return unknown();
+				}
+			} catch (_) { return unknown(); }
+			let managed = shared ? ids : [id];
+			let values = read_online(listener, managed, legacy);
 			for (let row in rows)
-				if (index(users, row.id) >= 0) row.online = observation.online(values, row.id);
+				if (index(managed, row.id) >= 0) row.online = observation.online(values, row.id);
 		}
 		try { if (store.read(directory + '/generation', 128) != generation) return unknown(); }
 		catch (_) { return unknown(); }
@@ -1578,11 +1641,6 @@ function client_status(request) {
 	});
 };
 
-function engine_principal(request) {
-	let item = sessions[session(request)];
-	if (item.pairing) return { kind: 'pair', id: item.pairing.id, verifier: item.pairing.verifier };
-	return { kind: 'admin', user: item.user, verifier: digest.sha256(auth_record().hash) };
-};
 function backup_request(request, action) {
  let principal=engine_principal(request);
  let context={principal,owner:digest.sha256(sprintf('%J',principal)),
@@ -1634,9 +1692,18 @@ function engines_apply(request) {
 function engines_job(request) { return engine_service.job(request.args.jobId, engine_principal(request)); };
 
 function package_status(request) {
-	let auth = auth_record(true), deployment = update_service.deployment(), modules = null;
+	let auth = auth_record(true), deployment = null, modules = null, hysteriaComponent = null, initialChoice = null;
 	let currentState = state_record();
-	try { modules = update_service.installed_modules(); } catch (_) {}
+	// Keep pairing and diagnostics available if the updater fails.
+	try { deployment = update_service.deployment(); } catch (_) {}
+	if (deployment != null) try { modules = update_service.installed_modules(); } catch (_) {}
+	try {
+		let component = server_install.installed();
+		if (component?.protocol == 'hysteria2' && match(component.version || '', /^[0-9][0-9A-Za-z_.~+-]{0,159}$/))
+			hysteriaComponent = { version: component.version, storage: substr(component.executable, 0, 5) == '/tmp/' ? 'RAM' : 'FLASH' };
+	} catch (_) {}
+	if (auth?.changed != true && auth?.resetPending != true)
+		try { initialChoice = initial_updates.pending(); } catch (_) {}
  let routerInfo = null, connection = null, board = null, architecture = null, lan = null, lanAddress = null;
  let clean = (value, maximum) => {
   if (type(value) != 'string' || length(value) < 1 || length(value) > maximum ||
@@ -1679,8 +1746,12 @@ function package_status(request) {
  }
 	return { schema: 1, product: 'foxhole', installed: true,
 		backupSupported: true,
-		pinConfigured: auth?.changed == true, resetSupported: true, packageUpdates: true,
-		version: deployment.version, storage: deployment.storage, installedModules: modules, routerInfo,
+		pinConfigured: auth?.changed == true, resetSupported: true, packageUpdates: deployment != null,
+		updateVerificationUnavailable: deployment == null,
+        initialAutoUpdateSupported:true,initialAutoUpdateDefault:initialChoice!=false,
+        initialAutoUpdateSetupEligible:initialChoice!=null &&
+            fs.lstat('/etc/foxhole/update-policy.json')==null && update_model.empty_install(currentState,pairing_record()),
+		version: deployment?.version ?? null, storage: deployment?.storage ?? null, installedModules: modules, hysteriaComponent, routerInfo,
 		homeServerEnabled: server_mode.enabled(currentState),
 		licenseRequired: license_required(auth), licenseVersion: LICENSE_VERSION };
 };
@@ -1712,6 +1783,7 @@ function setup_reset(request) {
 		let pairs = pairing.defaults(), phones = { schema: 1, phones: [] };
 		let auth = { schema: 1, salt: previous.salt,
 			hash: previous.hash, changed: false, resetPending: true };
+        if (type(previous.initialPackageAutoUpdate)=='bool') auth.initialPackageAutoUpdate=previous.initialPackageAutoUpdate;
 		write_json(PAIRING_PATH, pairs, 0o600);
 		write_json(MOBILE_PATH, phones, 0o600);
 		write_json(AUTH_PATH, auth, 0o600);
@@ -1834,7 +1906,7 @@ const methods = {
 		call('client.get', request, get_client) },
 	'client.delete': { args: { token: '', revision: 0, id: '' }, call: request =>
 		call('client.delete', request, delete_client) },
-	'pin.change': { args: { token: '', newPin: '', licenseAccepted: false, licenseVersion: 0 }, call: request =>
+	'pin.change': { args: { token: '', newPin: '', licenseAccepted: false, licenseVersion: 0, initialAutoUpdateEnabled: true }, call: request =>
 		call('pin.change', request, change_pin) },
 	'device.resolve': { args: { token: '', address: '' }, call: request =>
 		call('device.resolve', request, resolve_device) },
@@ -1849,6 +1921,8 @@ const methods = {
 try {backup_service.recover();}catch(_){}
 
 return { foxhole: methods, 'foxhole.admin': {
-	set_pin: { args: { newPin: '', licenseAccepted: false, licenseVersion: 0 },
+ remove_package_plan: { args: {}, call: request => safe(() => admin_remove_package(request,false)) },
+ remove_package_apply: { args: { planSha256:'', confirmMode:'' }, call: request => safe(() => admin_remove_package(request,true)) },
+	set_pin: { args: { newPin: '', licenseAccepted: false, licenseVersion: 0, initialAutoUpdateEnabled: true },
 		call: request => safe(() => admin_pin(request)) }
 } };

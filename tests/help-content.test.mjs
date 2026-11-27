@@ -40,10 +40,14 @@ test('Help safely renders text, keeps native disclosure and never performs a req
   assert.ok(!helpResourceKeys().includes('manual.start.link'));
 });
 
-test('one global Help entry stays outside every modal and install calls to action are absent',()=>{
+test('the sole Help entry belongs to the settings header and About retains only product facts',()=>{
  const html=readFileSync(new URL('../package/foxhole-openwrt-client/htdocs/luci-static/resources/foxhole/shell.html',import.meta.url),'utf8');
  const dialog=html.slice(html.indexOf('<dialog id="modal-shell"'),html.indexOf('</dialog>'));
- assert.doesNotMatch(dialog,/data-action="open-help"/);
+ assert.match(dialog,/<header class="modal-header">[\s\S]*data-action="open-help" data-settings-help-entry hidden[\s\S]*<\/header>/);
  assert.equal((html.match(/data-action="open-help"/g)||[]).length,1);
- assert.ok(html.indexOf('data-main-help-entry')<html.indexOf('<dialog id="modal-shell"'));
+ assert.ok(!html.includes('about.description'));
+ for (const lang of ['en','ru','de','es','fr','ja','zh','ar']) {
+  const values=JSON.parse(readFileSync(new URL(`../package/foxhole-openwrt-client/htdocs/luci-static/resources/foxhole/locales/${lang}.json`,import.meta.url)));
+  assert.ok(!('about.description' in values) && values['action.open_profile'] && values['updates.required']);
+ }
 });

@@ -12,10 +12,7 @@ confirmation lists changes, storage, required space and whether reconnection is
 required. Every BASE replacement requires reconnection. CHECK_FAILED does not
 mean that the installed version is current.
 
-Direct CLI/backend installations leave automatic updating off by default.
-A fresh Android phone Setup shows a separate automatic-update checkbox enabled
-with an explicit opt-out; its policy is written after installation and pairing.
-Pairing an existing router preserves its policy. Later changes use Settings.
+Fresh installations enable automatic package updates after the owner sets a PIN. Clear the checkbox during setup or pass `--no-auto-update` to the installer to opt out. Pairing an existing router preserves its update setting. You can change it later in Settings.
 The authenticated choice persists on the router, including after an ordinary
 phone unpair. The existing router history scheduler starts at most one attempt
 per24h, recording the attempt before
@@ -32,19 +29,37 @@ different body under the same version is refused. The signed metadata fixes
 OpenWrt 25.12.5 or 25.12.6, x86/64 or mediatek/filogic, and the state/transaction ABI. Any
 required unrelated dependency change is refused.
 
-BASE 1.0.8 uses update-policy schema2 with the exact `supportedOpenWrt` list
-`["25.12.5","25.12.6"]`. Schema1 remains a legacy singleton for 25.12.5;
-new readers admit both formats and compare the observed firmware release
-against the candidate's declared compatibility. Artifact descriptors and Core
-feeds still bind one exact firmware release; a 25.12.5 artifact cannot inherit
-25.12.6 compatibility from the package policy. Kernel/package identities and
-platform/architecture checks remain independent.
+The v1.0.12 source builds two independently identified BASE packages.
+The FLASH updater reads one signed row in `base.adb` and selects
+`1.0.12-r1`. Its primary schema 2 policy lists 25.12.5 and 25.12.6,
+including for the older 1.0.8 FLASH reader. The managed RAM updater
+selects the highest matching BASE filename in the release and checks
+its SHA256SUMS entry and native signature. That package is `1.0.12-r2`.
+Its primary schema 1 record admits 25.12.5 for old readers. The schema 2
+companion has the same revision. The fresh RAM catalog binds its separate
+single-row `base-ram.adb`. Both versioned APKs belong in the same tagged
+release. Each artifact still requires its exact kernel and architecture.
 
-Old BASE 1.0.6/1.0.7 candidate readers refuse schema2. This release does not add
-a migration bridge or masquerade its policy as a legacy artifact. A fresh
-installation uses the separately verified exact-firmware package closure.
-Supporting the policy format does not qualify a RAM recovery bank or any
-unpublished package/feed for another firmware release.
+FLASH updates also need the installed version's original signed rollback
+index at its previous tag. Managed RAM updates need the previous active
+generation, mount ledger and a reachable, authenticated recovery source.
+Use the fresh installer on routers without an existing FoxHole configuration.
+The authenticated Cudy
+catalog selects one board, firmware and package storage mode. WR3000 v1
+on 25.12.5 requires an isolated RAM package root. Selecting FLASH stops
+the installer. Automatic selection cannot fall back to a host package
+installation. WR3000S v1 on 25.12.6 uses FLASH. Pairing with an already
+installed router continues to use its existing authentication checks.
+
+For these boards, the Hysteria2 installation check compares installed
+package records and files with an inventory derived from the signed OpenWrt
+factory image. The offline publisher checks the upstream signature on the
+firmware checksums, the exact board image and its SquashFS contents. The
+router reads the inventory bound by the release manifest and verifies
+package ownership, hashes, modes, symlink targets and the native APK
+audit. Router configuration can differ from factory defaults. A fresh
+installation preserves existing settings and refuses an unqualified
+replacement of the DNS service or upgrades to existing system packages.
 
 Downloads reuse the existing uclient-fetch transport: fixed initial HTTPS
 official repository, normal certificate validation, bounded time and size, and

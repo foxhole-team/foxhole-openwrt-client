@@ -10,6 +10,7 @@ import * as runtime from '/usr/share/foxhole/runtime-model.uc';
 import * as core from '/usr/share/foxhole/core-model.uc';
 import * as adapter from '/usr/share/foxhole/core-adapter.uc';
 import * as store from '/usr/share/foxhole/private-store.uc';
+import * as logs from '/usr/share/foxhole/log-model.uc';
 import * as digest from 'digest';
 
 const STATE_PATH = '/etc/foxhole/state.json';
@@ -286,10 +287,14 @@ function effective_sites(state) {
 	return state.settings.localRules ? state.sites : [];
 };
 
-function policy_files(state, emergency) {
+function policy_files(state, emergency, connected) {
 	let sites = emergency ? [] : effective_sites(state);
-	if (length(sites) && !dnsmasq_has_nftset())
-		fail('dnsmasq_nftset_required');
+	let games = !emergency && connected == true && state.settings.gamesDirect == true && runtime.games_enabled(state)
+		? runtime.game_targets() : null;
+	if ((length(sites) || length(games?.latency || [])) && !dnsmasq_has_nftset()) {
+		if (length(sites)) fail('dnsmasq_nftset_required');
+		games.latency = [];
+	}
 	let countries = emergency ? { v4: [], v6: [] } :
 		country_prefixes(state);
 	let cursor = uci.cursor();
@@ -299,16 +304,17 @@ function policy_files(state, emergency) {
 		interfaces: lan_interfaces(),
 		dnsUid: dns_uid(),
 		bootstrap: emergency == true,
+		connected, games,
 		dnsViaTunnel,
 		country4: countries.v4,
 		country6: countries.v6
 	});
-	let dns = runtime.dnsmasq_config(sites);
+	let dns = runtime.dnsmasq_config(sites, games?.latency);
 	write_file(POLICY_PATH, nft, 0o600);
 	write_file(DNSMASQ_PATH, dns, 0o640);
 	command([NFT, '-c', '-f', POLICY_PATH], 15000,
 		'policy_invalid');
-	return { sites: length(sites) };
+	return { sites: length(sites) + length(games?.latency || []) };
 };
 
 function probe() {
@@ -389,7 +395,7 @@ function apply_policy(state, connected, emergency) {
 	if (connected && fs.writefile('/proc/sys/net/ipv4/conf/' +
 	    runtime.constants().tunName + '/rp_filter', '2\n') != 2)
 		fail('route_apply_failed');
-	let policy = policy_files(state, emergency);
+	let policy = policy_files(state, emergency, connected);
 	command([ NFT, '-f', POLICY_PATH ], 15000,
 		'policy_apply_failed');
 	apply_routes(connected);
@@ -460,6 +466,15 @@ function cleanup_secret() {
 	unlink(adapter.policy_path);
 };
 
+function record_recent(event, engine, exit_status) {
+ let marker = fs.lstat('/tmp/foxhole-ram-active.json');
+ if (marker?.type != 'file' || marker.uid != 0 || marker.nlink != 1 || (marker.mode & 0o022)) return;
+ try {
+  let raw = store.read(logs.recent_path, 4096), rows = raw ? json(raw) : [];
+  store.write(logs.recent_path, sprintf('%J', logs.append_recent(rows, event, engine, time() * 1000, exit_status)));
+ } catch (_) {}
+};
+
 function apply(mode) {
 	let state = state_record();
 	let connected = mode == 'connected';
@@ -511,6 +526,7 @@ function apply(mode) {
 	}
 	write_status(state, connected ? 'connected' : 'blocked',
 		connected, true, null);
+	if (connected) record_recent('tunnel_connected', native ? 'core' : 'hysteria', null);
 };
 
 function cleanup() {
@@ -581,7 +597,13 @@ try {
 	case 'probe': probe(); break;
 	case 'apply': apply(ARGV[1]); break;
 	case 'cleanup': cleanup(); break;
-	case 'down': down(ARGV[1] || 'tunnel_exited'); break;
+	case 'down':
+		let reason = ARGV[1] || 'tunnel_exited';
+		down(reason);
+		let exit_status = reason == 'tunnel_exited' && match(ARGV[3] || '', /^[0-9]{1,3}$/) ? +ARGV[3] : null;
+		if (reason != 'runtime_stopped' || ARGV[2] != 'unknown')
+			record_recent(reason, ARGV[2], exit_status);
+		break;
 	case 'status': status(); break;
 	default: fail('invalid_state');
 	}

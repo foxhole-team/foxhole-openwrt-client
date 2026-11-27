@@ -211,8 +211,9 @@ function initialize_destination(path,document) {
 function fetch_artifact(artifact,expected,role) {
  for(let attempt=1;attempt<=6;attempt++) {
   memory(artifact.bytes+8388608);
-  let result=capture('fetch',[artifact.url,expected.caFileSha256==null?'system':'pinned'],artifact.bytes,65000);
-  if(model.accepted_download(result.stderr,result.code)&&result.bytes==artifact.bytes)return result;
+  let mode=expected.schema==2?'github-release':expected.caFileSha256==null?'system':'pinned';
+  let result=capture('fetch',[artifact.url,mode],artifact.bytes,65000);
+  if(model.accepted_download(result.stderr,result.code,expected.schema==2)&&result.bytes==artifact.bytes)return result;
   if(!model.retryable_download(result.stderr,result.code,attempt))fail();
   replace(model.stage+'/download-last.json',{schema:1,role,attempt,exitCode:result.code,partialBytes:result.bytes,
    stderrPath:result.path+'.err',stderrSha256:digest.sha256(result.stderr)},4096);
@@ -330,8 +331,9 @@ function overlay_load(expected,bank,journal) {
  let effective={baseVersion:expected.baseVersion,baseSha256:expected.baseSha256,stageDbSha256:bank.stageDbSha256};
  if(expected.overlay==null)return effective;
  let overlay=expected.overlay;memory(overlay.artifact.bytes+8388608);
- let download=capture('fetch',[overlay.artifact.url,expected.caFileSha256==null?'system':'pinned'],overlay.artifact.bytes,65000);
- if(!model.accepted_download(download.stderr,download.code)||download.bytes!=overlay.artifact.bytes||
+ let mode=expected.schema==2?'github-release':expected.caFileSha256==null?'system':'pinned';
+ let download=capture('fetch',[overlay.artifact.url,mode],overlay.artifact.bytes,65000);
+ if(!model.accepted_download(download.stderr,download.code,expected.schema==2)||download.bytes!=overlay.artifact.bytes||
   !fs.rename(download.path,model.stage+'/overlay.apk'))fail();
  if(hash_files([model.stage+'/overlay.apk'])[model.stage+'/overlay.apk']!=overlay.baseSha256)fail();
  native('verify-overlay',[],4096,30000);
@@ -348,7 +350,9 @@ function overlay_load(expected,bank,journal) {
  let after=json(native('query',[expected.arch],1048576,30000));model.package_fence(before,after,expected);
  model.world_fence(world,raw(model.stage+'/root/etc/apk/world',65536,false));
  base_payload(document);retained_files(bank,document);
- model.base_policy(decode(model.stage+'/root/usr/share/foxhole/update-policy.json',8192),overlay.baseVersion);
+ let compatibility=model.stage+'/root/usr/share/foxhole/update-policy-v2.json';
+ model.base_policy(decode(model.stage+'/root/usr/share/foxhole/update-policy.json',8192),overlay.baseVersion,
+  fs.lstat(compatibility)?decode(compatibility,8192):null);
  if(digest.sha256(raw(model.stage+'/root/usr/share/foxhole/foxhole-openwrt-apk.pem',32768,false))!=expected.signerPemSha256)fail();
  let mounts=[],hashes=[];for(let target in model.overlay_targets(document)) {
   let source=model.stage+'/root'+target,s=fs.lstat(source);parents(fs.dirname(source));

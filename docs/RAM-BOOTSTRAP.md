@@ -98,9 +98,18 @@ From a protected, root-owned directory, Root runs:
   --ca /protected/actual-public-ca.pem
 ```
 
-`boot.json` is bounded to 8192 bytes. `recoveryOrigin` is a required direct-HTTPS
-feed prefix ending in `/`, with the same URL restrictions. It is configured by Root
-from a real feed; it is never invented from a candidate URL. The optional `overlay`
+`boot.json` is bounded to 8192 bytes. Schema 1 retains a direct HTTPS feed
+prefix ending in `/`. Schema 2 (`foxhole-ram-bootstrap-github-v1`) uses the
+official GitHub release download prefix in `tools/ram-bootstrap-github-descriptor.template.json`.
+The bank filename is `foxhole-ram-bootstrap-bank-VERSION-ARCH.apk` under
+the corresponding `vMAJOR.MINOR.PATCH` tag. A BASE overlay uses its own
+version's tag and the filename `foxhole-openwrt-client-VERSION.apk`.
+Record the actual published signed archive's size and digest. The GitHub
+transport resolves that tag's metadata on the official GitHub API. It checks the
+release and asset URLs, tag, numeric asset ID, uploader state and filename, then
+requests the asset by ID. Each download receives a fresh CDN location. The helper
+uses system CA and hostname validation at each stage. Recovery verifies the
+pinned APK signature, SHA-256 and byte count. The optional `overlay`
 may be absent/null or exactly:
 
 ```
@@ -109,7 +118,8 @@ may be absent/null or exactly:
 
 Its BASE version must be strictly newer than the pinned bank BASE. Archive bytes
 are at most 8 MiB, `artifact.sha256` equals `baseSha256`, and its URL is exactly
-`recoveryOrigin + "foxhole-openwrt-client-" + baseVersion + ".apk"`. The same pinned
+`recoveryOrigin + "foxhole-openwrt-client-" + baseVersion + ".apk"` for the
+direct feed, or the exact tagged GitHub BASE URL for schema 2. The same pinned
 CA and signer apply. Bank artifact/version/baseVersion/baseSha256 stay immutable.
 No flash APK or binary delta is stored; only bounded overlay metadata is committed.
 

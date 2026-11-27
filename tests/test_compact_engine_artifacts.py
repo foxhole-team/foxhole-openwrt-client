@@ -3,9 +3,10 @@ from pathlib import Path
 
 SOURCE=Path(__file__).resolve().parents[1]/'tools/compact-install-bundle.py'
 TREE=ast.parse(SOURCE.read_bytes())
-NAMES={'sha','asset','document','assets','engine_artifact_rows','catalog_release_version'}
+NAMES={'sha','asset','document','assets','engine_artifact_rows','catalog_release_version','fresh_modes'}
 FUNCTIONS=[v for v in TREE.body if isinstance(v,ast.FunctionDef)and v.name in NAMES]
-NS={'Path':Path,'hashlib':hashlib,'json':json,'re':re,'NAME':re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,159}')}
+NS={'Path':Path,'hashlib':hashlib,'json':json,'re':re,'NAME':re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,159}'),
+    'HEX':re.compile(r'[a-f0-9]{64}')}
 NS['INSTALLERS']=dict.fromkeys(('install.sh','install-core.sh','install-compact.sh','install-plan.uc','install-plan-model.uc','install-compact-plan.uc','engine-package-layout.uc','register-compact-engines.uc','indexed-install.uc'))
 exec(compile(ast.Module(body=FUNCTIONS,type_ignores=[]),'actual-public-compact-asset-functions','exec'),NS)
 
@@ -29,6 +30,18 @@ def fixture(root):
     return catalog,ec,xname,aname
 
 class EngineArtifactUniverseTests(unittest.TestCase):
+    def test_fresh_router_profile_requires_known_board_mode_and_factory_witness(self):
+        for firmware, board, mode in [('25.12.5','cudy,wr3000-v1','ram'),('25.12.6','cudy,wr3000s-v1','flash')]:
+            row={'supportedTargets':['mediatek/filogic'],'architecture':'aarch64_cortex-a53',
+                 'supportedOpenWrt':[firmware],'clients':[{'storage':'ram'},{'storage':'flash'}],
+                 'freshInstallBoard':{'boardName':board,'storageMode':mode},
+                 'stockFactoryInventory':{'file':'stock-factory-'+board.replace(',','-')+'.json','sha256':'a'*64}}
+            self.assertEqual(NS['fresh_modes'](row),[mode])
+            for delta in [{'freshInstallBoard':None},{'stockFactoryInventory':None},
+                          {'freshInstallBoard':{'boardName':board,'storageMode':'auto'}},
+                          {'supportedOpenWrt':['25.12.7']},{'architecture':'x86_64'}]:
+                with self.subTest(board=board,delta=delta), self.assertRaises(ValueError):
+                    NS['fresh_modes']({**row,**delta})
     def test_global_catalog_requires_all_artifacts_without_inventing_arm_platform(self):
         with tempfile.TemporaryDirectory()as tmp:
             root=Path(tmp);catalog,ec,xname,aname=fixture(root)

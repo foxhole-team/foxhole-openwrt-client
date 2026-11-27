@@ -1,6 +1,7 @@
 'use strict';
 
 import * as fs from 'fs';
+import * as fresh from './fresh-install-accounting.uc';
 
 const protocols = ['anytls', 'http', 'hysteria2', 'naive', 'shadowsocks', 'shadowtls',
  'socks', 'trojan', 'tuic', 'vless', 'vmess', 'wireguard'];
@@ -36,7 +37,8 @@ function coreIndexBinding(repo, item) {
 };
 let compact_authentication;
 export function authentication(value) {
- if (value.schema == 2 && value.kind == 'compact-selected-budget-v1') return compact_authentication(value);
+ if ((value.schema == 2 && value.kind == 'compact-selected-budget-v1') ||
+     (value.schema == 3 && value.kind == 'compact-selected-budget-v2')) return compact_authentication(value);
  if (value.verification?.signatureModel != 'canonical-apk-and-upstream-index-v1' ||
      !hash(value.verification.factorySourceSha256) ||
      type(value.repositoryIndexes) != 'array' || !length(value.repositoryIndexes) ||
@@ -111,6 +113,7 @@ export function read(path) {
  let value = json(raw);
  if (type(value) != 'object' || type(value.schema) != 'int') reject();
  if (value.schema == 2 && index(['compact-client-engines-v1', 'compact-package-universe-v1', 'compact-selected-budget-v1'], value.kind) >= 0) return value;
+ if (value.schema == 3 && value.kind == 'compact-selected-budget-v2') return fresh.validate_budget(value);
  if (value.schema != 1) reject();
  return value;
 };
@@ -170,6 +173,21 @@ function compact_client(value, architecture) {
      compact_asset(value.slotManifest).sha256 != item.manifestSha256) compact_reject();
  return value;
 };
+export function fresh_board_mode(platform, release, board, requested) {
+ if (index(['ram','flash','auto'], requested) < 0) compact_reject();
+ let declared = platform.freshInstallBoard;
+ if (join(',', platform.supportedTargets) != 'mediatek/filogic') {
+  if (declared != null) compact_reject();
+  return requested;
+ }
+ let required = { '25.12.5': ['cudy,wr3000-v1','ram'], '25.12.6': ['cudy,wr3000s-v1','flash'] }[release];
+ if (!required || !declared || platform.architecture != 'aarch64_cortex-a53' ||
+     join(',',platform.supportedOpenWrt) != release) compact_reject();
+ compact_exact(declared, ['boardName','storageMode']);
+ if (declared.boardName != required[0] || board != declared.boardName ||
+     declared.storageMode != required[1] || (requested != 'auto' && requested != declared.storageMode)) compact_reject();
+ return declared.storageMode;
+};
 export function compact_selection(catalog, architecture, release, requested, development, target, include_server) {
  compact_exact(catalog, ['schema', 'kind', 'development', 'defaultProtocols', 'allProtocols', 'platforms']);
  if (type(catalog.schema) != 'int' || catalog.schema != 2 || catalog.kind != 'compact-client-engines-v1' || type(catalog.development) != 'bool' ||
@@ -179,7 +197,7 @@ export function compact_selection(catalog, architecture, release, requested, dev
  let wanted = requested == 'all' ? null : compact_ids(requested), platform = null, router_release = null;
  for (let value in catalog.platforms) {
   compact_exact(value, ['id', 'architecture', 'supportedTargets', 'supportedOpenWrt', 'basePackage',
-   'engineCatalog', 'packageUniverse', 'clients', 'server']);
+   'engineCatalog', 'packageUniverse', 'clients', 'server', 'freshInstallAccounting', 'freshInstallBoard', 'stockFactoryInventory']);
   if (type(value.clients) != 'array' || !length(value.clients) || length(value.clients) > 24) compact_reject();
   for (let client in value.clients) {
    let current_release = compact_release(client?.entry).base;
@@ -202,6 +220,7 @@ export function compact_selection(catalog, architecture, release, requested, dev
   if (value.basePackage.name != 'foxhole-openwrt-client' || !name(value.basePackage.file) ||
       !hash(value.basePackage.sha256) || !hash(value.basePackage.packageIdentity)) compact_reject();
   compact_asset(value.engineCatalog); compact_asset(value.packageUniverse);
+  if (value.freshInstallAccounting != null) compact_asset(value.freshInstallAccounting);
   let unique = {}, available = {};
   for (let client in value.clients) {
    compact_client(client, architecture);
@@ -226,6 +245,8 @@ export function compact_selection(catalog, architecture, release, requested, dev
  if (!platform) compact_reject();
  let modes = [];
  for (let mode in ['flash', 'ram']) {
+  if (platform.freshInstallBoard != null && mode != fresh_board_mode(platform,release,platform.freshInstallBoard.boardName,'auto')) continue;
+  if (platform.freshInstallAccounting != null && mode != 'flash') continue;
   let available = !include_server || platform.server.modes[mode] != null;
   for (let id in wanted) if (!length(filter(platform.clients, row => row.id == id && row.storage == mode))) available = false;
   if (available) push(modes, mode);
@@ -246,11 +267,14 @@ export function compact_metadata(selected) {
   add(client.producer); add(client.capabilities); add(client.slotManifest);
  }
  if (selected.includeServer) add(platform.server.producer);
+ if (platform.freshInstallAccounting != null) add(platform.freshInstallAccounting);
+ if (platform.stockFactoryInventory != null) add(platform.stockFactoryInventory);
  return result;
 };
 
 function compact_own(value) {
- if (type(value.schema) != 'int' || value.schema != 2 || value.kind != 'compact-selected-budget-v1' ||
+ if (type(value.schema) != 'int' ||
+     !((value.schema == 2 && value.kind == 'compact-selected-budget-v1') || (value.schema == 3 && value.kind == 'compact-selected-budget-v2')) ||
      index(['flash', 'ram'], value.mode) < 0 || type(value.includeServer) != 'bool' ||
      type(value.modules) != 'array' || !length(value.modules) || length(value.modules) > 12 ||
      type(value.protocols) != 'array' || !length(value.protocols) || length(value.protocols) > 12 ||
@@ -460,6 +484,7 @@ export function readInstalled(path) {
 
 compact_authentication = function(value) {
  let allowed_own = compact_own(value);
+ if (value.schema == 3) fresh.validate_budget(value);
  if (value.verification?.signatureModel != 'canonical-apk-and-upstream-index-v1' ||
      !hash(value.verification.factorySourceSha256) ||
      type(value.repositoryIndexes) != 'array' || !length(value.repositoryIndexes) ||
@@ -592,8 +617,9 @@ function compact_server(selected, universe, directory, mode) {
  if (mode == 'ram' && (!name(server.volatileFile) || !number(server.binaryBytes) || !server.binaryBytes || server.binaryBytes > 67108864)) compact_reject();
  return server;
 };
-export function compact_budget(selected, directory, mode, development) {
- if (index(['flash', 'ram'], mode) < 0) compact_reject();
+export function compact_budget(selected, directory, mode, development, conservative_factory) {
+ if (index(['flash', 'ram'], mode) < 0 || (selected.platform.freshInstallBoard != null &&
+     selected.platform.freshInstallBoard.storageMode != mode)) compact_reject();
  let platform = selected.platform, universe = compact_read(directory + '/' + platform.packageUniverse.file, 2097152);
  compact_exact(universe, ['schema', 'kind', 'architecture', 'supportedTargets', 'supportedOpenWrt', 'verification',
   'packages', 'packageAuthentications', 'repositoryIndexes', 'trustKeys', 'filesSha256', 'requires',
@@ -690,5 +716,13 @@ export function compact_budget(selected, directory, mode, development) {
  for (let key in ['compressedBytes', 'installedFlashBytes', 'installedRamBytes', 'dependencyInstalledBytes', 'stagingBytes',
   'runtimeMemoryBytes', 'flashReserveBytes', 'ramReserveBytes', 'requiredFlashBytes', 'requiredRamBytes', 'repositoryIndexBytes', 'trustKeyBytes'])
   if (!number(value[key])) compact_reject();
+ if (platform.freshInstallAccounting != null) {
+  let qualified = fresh.profile(compact_read(directory + '/' + platform.freshInstallAccounting.file, 65536));
+  if (mode != 'flash') compact_reject();
+  if (!conservative_factory) {
+   let state = fresh.snapshot(fresh.protected_bytes(directory + '/installed-before.db', 1048576));
+   value = fresh.apply(value, state, platform.freshInstallAccounting, qualified);
+  }
+ }
  return authentication(value);
 };

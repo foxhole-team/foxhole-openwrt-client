@@ -5,9 +5,9 @@ const source=readFileSync(new URL('../package/foxhole-openwrt-client/root/usr/sh
 const bindings={type:v=>v==null?'null':Array.isArray(v)?'array':Number.isInteger(v)?'int':typeof v==='boolean'?'bool':typeof v,
  length:v=>typeof v==='string'?Buffer.byteLength(v):v.length,split:(v,s)=>v.split(s),match:(v,r)=>v.match(r),
  index:(v,x)=>v.indexOf(x),push:(v,x)=>v.push(x),shift:v=>v.shift(),substr:(v,a,n)=>v.substr(a,n),int:v=>Math.trunc(Number(v)),min:Math.min,max:Math.max,
- die:()=>{throw Error('invalid_log_data');}};
+ keys:Object.keys,die:()=>{throw Error('invalid_log_data');}};
 const code=source.replace(/^export /gm,'').replace(/for \(let (\w+) in /g,'for (let $1 of ');
-const model=new Function(...Object.keys(bindings),code+';return {package_events,kernel_events,core_status,runtime_status};')(...Object.values(bindings));
+const model=new Function(...Object.keys(bindings),code+';return {package_events,kernel_events,core_status,runtime_status,recent_events,append_recent};')(...Object.values(bindings));
 test('package logs retain only fixed lifecycle metadata, never raw secrets',()=>{
  const raw='Mon Nov  2 11:20:30 2026 daemon.warn foxhole: tunnel_exited engine=core stage=running exit_status=137\n'+
   'Mon Nov  2 11:20:31 2026 daemon.warn foxhole: secret token=private-password server=https://private.test\n';
@@ -34,4 +34,13 @@ test('Core state exposes recorded counters and protocol without private identity
 test('runtime error messages are a fixed enum rather than arbitrary exception text',()=>{
  assert.equal(model.runtime_status({phase:'error',error:'tunnel_exited'}).error,'tunnel_exited');
  assert.equal(model.runtime_status({phase:'error',error:'https://user:password@private.test'}).error,null);
+});
+
+test('RAM diagnostic ring retains only the ten most recent typed events', () => {
+ let rows = [];
+ for (let n = 1; n <= 12; n++) rows = model.append_recent(rows, 'tunnel_exited', 'hysteria', n, 137);
+ assert.deepEqual(rows.map(row => row.observedAtUnixMs), [12, 11, 10, 9, 8, 7, 6, 5, 4, 3]);
+ assert.deepEqual(model.recent_events(rows), rows);
+ assert.throws(() => model.recent_events([{ ...rows[0], credential: 'sensitive' }]));
+ assert.throws(() => model.append_recent(rows, 'tunnel_connected', 'core', 13, 137));
 });

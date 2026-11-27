@@ -1,0 +1,93 @@
+{
+  "synthetic": true,
+  "raw": "C:Q1AQEBAQEBAQEBAQEBAQEBAQEBAQE=\nP:libc\nV:1-r1\nA:aarch64_cortex-a53\nI:999999\nf:S\n\n",
+  "otherIdentity": "0202020202020202020202020202020202020202020202020202020202020202",
+  "otherCid": "C:Q1AgICAgICAgICAgICAgICAgICAgI=\nP:libc\nV:1-r1\nA:aarch64_cortex-a53\nI:999999\nf:S\n\n",
+  "packages": [
+    {
+      "name": "libc",
+      "version": "1-r1",
+      "arch": "aarch64_cortex-a53",
+      "file": "libc.apk",
+      "installedBytes": 123,
+      "archiveBytes": 10
+    }
+  ],
+  "authentications": [
+    {
+      "name": "libc",
+      "version": "1-r1",
+      "architecture": "aarch64_cortex-a53",
+      "file": "libc.apk",
+      "packageIdentity": "0101010101010101010101010101010101010101010101010101010101010101"
+    }
+  ],
+  "asset": {
+    "file": "fresh-install-accounting.json",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "profile": {
+    "schema": 1,
+    "kind": "fresh-flash-installed-delta-v1",
+    "requiredMode": "flash",
+    "databaseFormat": "apk-v3-q1-sha256-160",
+    "nativeApkVersion": "3.0.5",
+    "nativeApkPath": "/sbin/apk",
+    "nativeApkSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "guardStagingBytes": 6291456,
+    "configs": [
+      {
+        "path": "/etc/apk/config",
+        "sha256": null
+      },
+      {
+        "path": "/lib/apk/config",
+        "sha256": null
+      }
+    ],
+    "hookDirectories": [
+      {
+        "path": "/etc/apk/commit_hooks.d",
+        "present": false,
+        "files": []
+      },
+      {
+        "path": "/lib/apk/commit_hooks.d",
+        "present": false,
+        "files": []
+      }
+    ]
+  },
+  "budget": {
+    "schema": 2,
+    "kind": "compact-selected-budget-v1",
+    "mode": "flash",
+    "packages": [
+      {
+        "name": "libc",
+        "version": "1-r1",
+        "arch": "aarch64_cortex-a53",
+        "file": "libc.apk",
+        "installedBytes": 123,
+        "archiveBytes": 10
+      }
+    ],
+    "packageAuthentications": [
+      {
+        "name": "libc",
+        "version": "1-r1",
+        "architecture": "aarch64_cortex-a53",
+        "file": "libc.apk",
+        "packageIdentity": "0101010101010101010101010101010101010101010101010101010101010101"
+      }
+    ],
+    "installedFlashBytes": 123,
+    "compressedBytes": 10,
+    "installedRamBytes": 0,
+    "repositoryIndexBytes": 20,
+    "trustKeyBytes": 5,
+    "runtimeMemoryBytes": 134217728,
+    "flashReserveBytes": 33554432,
+    "ramReserveBytes": 33554432
+  }
+}

@@ -81,12 +81,17 @@ export function profile(base, client) {
 		uri, config: uri, inactive: false, warning: null };
 };
 
+export function listener_users(id, clients, legacy) {
+	let users = id == 'shared' ? { ...(legacy || {}) } : {};
+	for (let client in clients)
+		if (id == 'shared' || id == client.id) users[client.id] = client.secret;
+	return users;
+};
+
 export function shared_config(base, state, clients, connected, prefixes, stats, managementBindings) {
 	if (!length(clients) || length(clients) > limit(base)) die('invalid_config');
 	let seed = { ...clients[0], port: 443, allowLan: base.sharedAllowLan == true };
 	let result = config(base, state, seed, connected, prefixes, stats, managementBindings);
-	let users = { ...(base.legacyUsers || {}) };
-	for (let client in clients) users[client.id] = client.secret;
-	result.auth.userpass = users;
+	result.auth.userpass = listener_users('shared', clients, base.legacyUsers);
 	return result;
 };

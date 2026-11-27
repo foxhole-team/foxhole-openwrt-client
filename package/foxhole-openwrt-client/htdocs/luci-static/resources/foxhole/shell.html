@@ -5,21 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="color-scheme" content="dark light">
   <meta name="theme-color" content="#000000">
-  <meta name="application-name" content="FoxHole OpenWRT">
-  <meta name="apple-mobile-web-app-title" content="FoxHole OpenWRT">
+  <meta name="application-name" content="FOXHOLE OPENWRT">
+  <meta name="apple-mobile-web-app-title" content="FOXHOLE OPENWRT">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
-  <title>FoxHole OpenWRT</title>
+  <title>FOXHOLE OPENWRT</title>
   <base href="/luci-static/resources/foxhole/">
   <link rel="icon" href="./assets/foxhole-32.png" sizes="32x32" type="image/png">
   <link rel="apple-touch-icon" href="./assets/foxhole-180.png" sizes="180x180">
-  <link rel="manifest" href="./manifest.json?v=1.0.8-r2">
-  <link rel="preload" href="./assets/foxhole.png?v=1.0.8-r2" as="image" type="image/png">
+  <link rel="manifest" href="./manifest.json?v=1.0.13-r1-ui16">
+  <link rel="preload" href="./assets/foxhole.png?v=1.0.13-r1-ui16" as="image" type="image/png">
   <link rel="preload" href="./assets/JetBrainsMono-Regular.ttf" as="font" type="font/ttf" crossorigin>
   <link rel="preload" href="./assets/JetBrainsMono-Medium.ttf" as="font" type="font/ttf" crossorigin>
   <link rel="preload" href="./assets/Tiny5-Regular.ttf" as="font" type="font/ttf" crossorigin>
-  <link rel="stylesheet" href="./app.css?v=1.0.8-r2">
+  <link rel="stylesheet" href="./pixel-loader.css?v=1.0.13-r1-ui16">
+  <link rel="stylesheet" href="./app.css?v=1.0.13-r1-ui16">
 </head>
 <body>
   <svg class="svg-sprite" aria-hidden="true">
@@ -58,6 +59,10 @@
       <circle cx="12" cy="12" r="9"/>
       <path d="M12 10v6M12 7h.01"/>
     </symbol>
+    <symbol id="icon-question" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9.5"/>
+      <path d="M9.3 9a2.8 2.8 0 1 1 4.3 2.4c-1.1.7-1.6 1.2-1.6 2.6M12 17h.01"/>
+    </symbol>
     <symbol id="icon-mobile" viewBox="0 0 24 24">
       <rect x="7" y="2.5" width="10" height="19" rx="2"/>
       <path d="M10.5 5h3M11 18.5h2"/>
@@ -86,10 +91,10 @@
       <path d="M4 8a2 2 0 0 1 2-2h2l1-2h6l1 2h2a2 2 0 0 1 2 2v10H4V8Z"/>
       <circle cx="12" cy="12" r="3"/>
     </symbol>
-    <symbol id="icon-chevron" viewBox="0 0 24 24">
+    <symbol id="icon-chevron" viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter">
       <path d="m9 6 6 6-6 6"/>
     </symbol>
-    <symbol id="icon-back" viewBox="0 0 24 24">
+    <symbol id="icon-back" viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter">
       <path d="M5 12h14M5 12l6 6M5 12l6-6"/>
     </symbol>
     <symbol id="icon-close" viewBox="0 0 24 24">
@@ -99,8 +104,11 @@
       <rect x="8" y="8" width="11" height="11" rx="2"/>
       <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>
     </symbol>
-    <symbol id="icon-refresh" viewBox="0 0 24 24">
-      <path d="M20 7v5h-5M4 17v-5h5M6.1 6.1A8 8 0 0 1 20 12M4 12a8 8 0 0 0 13.9 5.9"/>
+    <symbol id="icon-refresh" viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter">
+      <path d="M20 6v5h-5M20 11l-5-5H8l-4 4v6l4 4h8l4-4"/>
+    </symbol>
+    <symbol id="icon-reinstall" viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter">
+      <path d="M4 11V7h15m-3-3 3 3-3 3M20 13v4H5m3-3-3 3 3 3"/>
     </symbol>
     <symbol id="icon-check" viewBox="0 0 24 24">
       <path d="m5 12 4 4 10-10"/>
@@ -136,21 +144,21 @@
     <symbol id="icon-language" viewBox="0 0 24 24">
       <path d="M9 6.371C9 10.789 6.761 13 4 13M4 6.371h7M5 9c0 2.144 2.252 3.908 6 4M12 20l4-9 4 9M19.1 18h-6.2M6.694 3l.793.582"/>
     </symbol>
-    <symbol id="icon-download" viewBox="0 0 24 24">
-      <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2M7 11l5 5 5-5M12 4v12"/>
+    <symbol id="icon-download" viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter">
+      <path d="M4 17v4h16v-4M7 11l5 5 5-5M12 4v12"/>
     </symbol>
     <symbol id="icon-memory" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1"/><path d="M8 9v6M12 9v6M16 9v6M7 3v3M12 3v3M17 3v3M7 18v3M12 18v3M17 18v3"/></symbol>
     <symbol id="icon-floppy" viewBox="0 0 24 24">
       <path d="M5 3h12l4 4v14H3V3h2ZM7 3v6h10V3M7 21v-8h10v8M14 5v2"/>
     </symbol>
-    <symbol id="icon-upload" viewBox="0 0 24 24">
-      <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2M7 9l5-5 5 5M12 4v12"/>
+    <symbol id="icon-upload" viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter">
+      <path d="M4 17v4h16v-4M7 9l5-5 5 5M12 4v12"/>
     </symbol>
     <symbol id="icon-clock" viewBox="0 0 24 24">
       <circle cx="12" cy="12" r="9"/>
       <path d="M12 7v5l3 2"/>
     </symbol>
-    <symbol id="icon-play" viewBox="0 0 24 24">
+    <symbol id="icon-play" viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter">
       <path d="m8 5 11 7-11 7Z"/>
     </symbol>
     <symbol id="icon-stop" viewBox="0 0 24 24">
@@ -160,11 +168,12 @@
 
   <section id="pin-gate" class="pin-gate" data-view="pin" aria-labelledby="pin-prompt">
     <div class="pin-card">
-      <img class="pin-logo" src="./assets/foxhole.png?v=1.0.8-r2" width="512" height="512" alt="FoxHole OpenWRT">
-      <strong class="pin-brand">FoxHole OpenWRT</strong>
+      <img class="pin-logo" src="./assets/foxhole.png?v=1.0.13-r1-ui16" width="512" height="512" alt="">
+      <strong class="pin-brand">FOXHOLE <b class="brand-platform">OPENWRT</b></strong>
       <p id="pin-prompt" class="muted pin-prompt" data-i18n="auth.pin_prompt"></p>
       <form id="pin-form" data-pin-form autocomplete="off">
         <div class="pin-entry" role="group" aria-labelledby="pin-prompt">
+          <i class="foxhole-pixels" aria-hidden="true"></i>
           <div class="pin-dots" aria-hidden="true">
             <span data-pin-dot></span>
             <span data-pin-dot></span>
@@ -173,7 +182,7 @@
             <span data-pin-dot></span>
             <span data-pin-dot></span>
           </div>
-          <input id="pin-input" class="pin-input" name="pin" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" aria-labelledby="pin-prompt">
+          <input id="pin-input" autofocus class="pin-input" name="pin" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" aria-labelledby="pin-prompt">
         </div>
       </form>
       <a class="icon-button pin-router-link" href="/cgi-bin/luci/" data-i18n-title="action.open_luci">
@@ -185,9 +194,9 @@
 
   <div id="app-shell" class="app-shell" data-view="dashboard" hidden>
     <header id="topbar" class="topbar" data-topbar>
-      <a class="brand" href="#dashboard" data-action="scroll-top" aria-label="FoxHole OpenWRT">
-        <img src="./assets/foxhole.png?v=1.0.8-r2" width="512" height="512" alt="">
-        <span>FoxHole OpenWRT</span>
+      <a class="brand" href="#dashboard" data-action="scroll-top" aria-label="FOXHOLE OPENWRT">
+        <img src="./assets/foxhole.png?v=1.0.13-r1-ui16" width="512" height="512" alt="">
+        <span>FOXHOLE <b class="brand-platform">OPENWRT</b></span>
       </a>
       <nav class="topbar-actions" data-i18n-aria-label="nav.primary">
         <button class="icon-button paired-phone-button" type="button" data-action="open-pairings" data-paired-phone-button data-i18n-title="pairing.title" data-i18n-aria-label="pairing.title">
@@ -206,9 +215,6 @@
           <svg aria-hidden="true"><use href="#icon-router"/></svg>
           <span class="visually-hidden" data-i18n="action.open_luci"></span>
         </a>
-        <button class="icon-button" type="button" data-action="open-help" data-main-help-entry data-i18n-title="help.title" data-i18n-aria-label="help.title">
-          <svg aria-hidden="true"><use href="#icon-info"/></svg>
-        </button>
         <button id="settings-button" class="icon-button" type="button" data-action="open-settings" data-i18n-title="action.settings">
           <svg aria-hidden="true"><use href="#icon-settings"/></svg>
           <span class="visually-hidden" data-i18n="action.settings"></span>
@@ -242,6 +248,7 @@
 
       <div id="status-section-body" class="section-collapse-body" data-section-body="status" data-router-status>
         <section class="chart-grid section-collapse-inner" data-chart-grid data-i18n-aria-label="chart.group">
+        <p class="telemetry-notice muted" data-telemetry-notice hidden></p>
         <article class="chart-card" data-chart-card="wrt">
           <header class="card-heading">
             <button class="chart-toggle" type="button" data-chart-toggle="wrt" aria-expanded="true" aria-controls="chart-panel-wrt">
@@ -363,8 +370,8 @@
           </div>
         </div>
       </section>
-      <footer class="app-footer">FoxHole OpenWRT</footer>
     </main>
+    <footer class="app-footer">© <time data-footer-year>2026</time> FOXHOLE <b class="brand-platform">OPENWRT</b>. <span data-i18n="footer.rights"></span></footer>
   </div>
 
   <dialog id="modal-shell" class="modal" aria-labelledby="modal-title">
@@ -372,6 +379,12 @@
       <span class="modal-heading-icon" aria-hidden="true"><svg><use data-modal-icon href="#icon-shield"/></svg></span>
       <h2 id="modal-title" tabindex="-1" data-modal-title data-i18n="modal.title"></h2>
       <span class="inline-country" data-modal-country hidden></span>
+      <button class="modal-header-tool" type="button" data-action="open-help" data-settings-help-entry hidden data-i18n-title="help.title" data-i18n-aria-label="help.title">
+        <svg aria-hidden="true"><use href="#icon-question"/></svg>
+      </button>
+      <button class="modal-header-tool" type="button" data-action="logs-refresh" data-log-refresh hidden data-i18n-title="logs.refresh" data-i18n-aria-label="logs.refresh">
+        <svg aria-hidden="true"><use href="#icon-refresh"/></svg>
+      </button>
     </header>
     <div id="modal-stage" class="modal-stage" data-modal-stage></div>
     <footer class="modal-footer" data-modal-footer></footer>
@@ -407,7 +420,7 @@
       <form id="server-config-form" class="form-stack" data-server-form autocomplete="off">
         <input type="hidden" name="serverId" data-server-id>
         <label for="server-name-input" data-i18n="server.name_label"></label>
-        <input id="server-name-input" class="text-input" name="name" type="text" maxlength="13" autocomplete="off" data-server-name required>
+        <input id="server-name-input" class="text-input" name="name" type="text" maxlength="13" autocomplete="off" data-server-name>
         <label for="server-config-input" data-i18n="server.config_label"></label>
         <textarea id="server-config-input" class="config-input" name="config" rows="11" spellcheck="false" autocapitalize="off" autocomplete="off" data-server-config data-i18n-placeholder="server.config_placeholder" required></textarea>
       </form>
@@ -430,6 +443,11 @@
 
   <template id="tpl-client-device" data-template="client-device">
     <div class="modal-panel" data-modal-view="client-device" data-title-key="client.add_title">
+      <p class="foxhole-loading client-pending" data-client-pending role="status" data-i18n="auth.loading" hidden></p>
+      <div class="client-read-error" data-client-failure hidden>
+        <p role="status" data-client-failure-message></p>
+        <button type="button" class="outline-button" data-action="retry-client" data-i18n="logs.refresh"></button>
+      </div>
       <form id="client-device-form" class="form-stack" data-client-form autocomplete="off" novalidate>
         <div class="client-name-line">
           <input id="client-name" class="text-input" name="name" type="text" maxlength="48" autocomplete="off" data-client-name data-i18n-placeholder="client.name_placeholder" required>
@@ -525,12 +543,7 @@
 
   <template id="tpl-updates" data-template="updates">
     <div class="modal-panel" data-modal-view="updates" data-title-key="updates.title">
-      <div class="settings-list" data-update-detail aria-live="polite"></div>
-    </div>
-  </template>
-  <template id="tpl-update-plan" data-template="update-plan">
-    <div class="modal-panel" data-modal-view="update-plan" data-title-key="updates.confirm_title">
-      <div class="engine-plan" data-update-plan></div>
+      <div class="update-details" data-update-detail aria-live="polite"></div>
     </div>
   </template>
 
@@ -558,8 +571,10 @@
     <div class="modal-panel" data-modal-view="settings-home" data-title-key="settings.title">
       <form id="settings-form" class="settings-list" data-settings-form>
         <div class="setting-row">
-          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-globe"/></svg></span>
-          <span class="setting-copy"><strong data-i18n="settings.local_scope"></strong></span>
+          <span class="setting-copy with-icon">
+            <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-globe"/></svg></span>
+            <strong data-i18n="settings.local_scope"></strong>
+          </span>
           <span class="setting-picker" data-setting-picker data-popup>
             <select id="local-scope" name="localScope" data-setting="localScope" hidden>
               <option value="all" data-i18n="scope.all"></option>
@@ -578,76 +593,96 @@
         </div>
 
         <div class="setting-row">
-          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-network"/></svg></span>
-          <label class="setting-copy" for="local-rules">
+          <label class="setting-copy with-icon" for="local-rules">
+            <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-network"/></svg></span>
             <strong data-i18n="settings.local_rules"></strong>
           </label>
           <span class="switch"><input id="local-rules" name="localRules" type="checkbox" data-setting="localRules"><i aria-hidden="true"></i></span>
         </div>
 
         <div class="setting-row">
-          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-mobile"/></svg></span>
-          <label class="setting-copy" for="client-rules">
+          <label class="setting-copy with-icon" for="games-direct" data-i18n-title="manual.games.scope">
+            <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-gamepad"/></svg></span>
+            <strong data-i18n="settings.games_direct"></strong>
+          </label>
+          <span class="switch"><input id="games-direct" name="gamesDirect" type="checkbox" data-setting="gamesDirect"><i aria-hidden="true"></i></span>
+        </div>
+
+        <div class="setting-row">
+          <label class="setting-copy with-icon" for="client-rules">
+            <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-mobile"/></svg></span>
             <strong data-i18n="settings.client_rules"></strong>
           </label>
           <span class="switch"><input id="client-rules" name="clientRules" type="checkbox" data-setting="clientRules"><i aria-hidden="true"></i></span>
         </div>
 
         <div class="setting-row">
-          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-shield"/></svg></span>
-          <label class="setting-copy" for="kill-switch">
+          <label class="setting-copy with-icon" for="kill-switch">
+            <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-shield"/></svg></span>
             <strong data-i18n="settings.kill_switch"></strong>
           </label>
           <span class="switch"><input id="kill-switch" name="killSwitch" type="checkbox" data-setting="killSwitch"><i aria-hidden="true"></i></span>
         </div>
 
         <div class="setting-row">
-          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-server"/></svg></span>
-          <label class="setting-copy" for="vpn-server-enabled"><strong data-i18n="vpn_server.toggle"></strong></label>
+          <label class="setting-copy with-icon" for="vpn-server-enabled">
+            <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-server"/></svg></span>
+            <strong data-i18n="vpn_server.toggle"></strong>
+          </label>
           <span class="switch"><input id="vpn-server-enabled" type="checkbox" data-vpn-server-toggle><i aria-hidden="true"></i></span>
         </div>
 
-        <button class="setting-row is-link" type="button" data-action="open-exceptions">
-          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-globe"/></svg></span>
-          <span class="setting-copy"><strong data-i18n="settings.exceptions"></strong></span>
-          <svg class="row-chevron" aria-hidden="true"><use href="#icon-chevron"/></svg>
-        </button>
-
-
-
         <button class="setting-row is-link" type="button" data-action="open-engines">
-          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-network"/></svg></span>
-          <span class="setting-copy"><strong data-i18n="engines.title"></strong></span>
+          <span class="setting-copy with-icon">
+            <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-network"/></svg></span>
+            <strong data-i18n="engines.title"></strong>
+          </span>
           <svg class="row-chevron" aria-hidden="true"><use href="#icon-chevron"/></svg>
         </button>
 
-        <button class="setting-row is-link" type="button" data-action="open-backup" data-backup-entry hidden>
-          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-floppy"/></svg></span>
-          <span class="setting-copy"><strong data-i18n="backup.title"></strong></span>
+        <button class="setting-row is-link" type="button" data-action="open-backup" data-backup-entry disabled aria-busy="true">
+          <span class="setting-copy with-icon">
+            <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-floppy"/></svg></span>
+            <strong data-i18n="backup.title"></strong>
+          </span>
           <svg class="row-chevron" aria-hidden="true"><use href="#icon-chevron"/></svg>
         </button>
 
         <button class="setting-row is-link" type="button" data-action="open-logs">
-          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-logs"/></svg></span>
-          <span class="setting-copy"><strong data-i18n="logs.title"></strong></span>
+          <span class="setting-copy with-icon">
+            <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-logs"/></svg></span>
+            <strong data-i18n="logs.title"></strong>
+          </span>
           <svg class="row-chevron" aria-hidden="true"><use href="#icon-chevron"/></svg>
         </button>
 
         <button class="setting-row is-link" type="button" data-action="open-interface-settings">
-          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-moon"/></svg></span>
-          <span class="setting-copy"><strong data-i18n="settings.interface"></strong></span>
+          <span class="setting-copy with-icon">
+            <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-moon"/></svg></span>
+            <strong data-i18n="settings.interface"></strong>
+          </span>
           <svg class="row-chevron" aria-hidden="true"><use href="#icon-chevron"/></svg>
         </button>
 
         <button class="setting-row is-link" type="button" data-action="open-updates">
-          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-download"/></svg></span>
-          <span class="setting-copy"><strong><span data-i18n="updates.title"></span><sup class="update-badge" data-update-summary hidden></sup></strong></span>
+          <span class="setting-copy with-icon">
+            <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-download"/></svg></span>
+            <strong>
+              <span data-i18n="updates.title"></span>
+              <span class="update-summary-slot" aria-busy="true">
+                <span class="update-badge-sizer" data-i18n="updates.badge_available" aria-hidden="true"></span>
+                <sup class="update-badge" data-update-summary hidden></sup>
+              </span>
+            </strong>
+          </span>
           <svg class="row-chevron" aria-hidden="true"><use href="#icon-chevron"/></svg>
         </button>
 
         <button class="setting-row is-link" type="button" data-action="open-about">
-          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-info"/></svg></span>
-          <span class="setting-copy"><strong data-i18n="about.title"></strong></span>
+          <span class="setting-copy with-icon">
+            <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-info"/></svg></span>
+            <strong data-i18n="about.title"></strong>
+          </span>
           <svg class="row-chevron" aria-hidden="true"><use href="#icon-chevron"/></svg>
         </button>
 
@@ -657,20 +692,28 @@
 
   <template id="tpl-engines" data-template="engines">
     <div class="modal-panel" data-modal-view="engines" data-title-key="engines.title">
-      <label class="setting-row"><span data-i18n="engines.storage"></span>
+      <div class="engine-analysis foxhole-loading" role="status" data-engine-analysis><span data-i18n="engines.analyzing"></span></div>
+      <label class="setting-row" data-engine-storage-row hidden><span data-i18n="engines.storage"></span>
         <select class="compact-select" data-engine-storage>
           <option value="AUTO" data-i18n="engines.auto"></option>
           <option value="FLASH">FLASH</option><option value="RAM">RAM</option>
         </select>
       </label>
-      <div class="settings-list" data-engine-list></div>
+      <div class="settings-list" data-engine-list hidden></div>
     </div>
   </template>
 
   <template id="tpl-logs" data-template="logs">
-    <div class="modal-panel" data-modal-view="logs" data-title-key="logs.title">
-      <p class="muted" data-log-status role="status" aria-live="polite"></p>
-      <div data-log-content>
+    <div class="modal-panel log-panel" data-modal-view="logs" data-title-key="logs.title">
+      <p class="muted log-status" data-log-status role="status" aria-live="polite" hidden></p>
+      <section data-log-recent hidden>
+        <div class="log-recent-note" role="note"><svg aria-hidden="true"><use href="#icon-info"/></svg><p data-i18n="logs.ram_unavailable"></p></div>
+        <table class="log-recent-events">
+          <caption data-i18n="logs.recent"></caption>
+          <tbody data-log-recent-rows></tbody>
+        </table>
+      </section>
+      <div data-log-content hidden>
       <p class="muted" data-i18n="logs.flash_policy"></p>
       <p class="muted" data-log-summary></p>
       <p class="muted" data-log-runtime></p>
@@ -684,7 +727,6 @@
 
   <template id="tpl-backup" data-template="backup">
     <div class="modal-panel" data-modal-view="backup" data-title-key="backup.title">
-      <p class="muted" data-i18n="backup.description"></p>
       <div class="settings-list">
         <button class="setting-row is-link" type="button" data-action="backup-save">
           <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-download"/></svg></span>
@@ -720,8 +762,10 @@
     <div class="modal-panel" data-modal-view="interface-settings" data-title-key="settings.interface">
       <div class="settings-list">
         <div class="setting-row">
-          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-language"/></svg></span>
-          <span class="setting-copy"><strong data-i18n="settings.language"></strong></span>
+          <span class="setting-copy with-icon">
+            <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-language"/></svg></span>
+            <strong data-i18n="settings.language"></strong>
+          </span>
           <span class="setting-picker" data-setting-picker data-popup>
             <select id="language-select" name="language" data-language hidden>
               <option value="en" data-i18n="language.en"></option>
@@ -751,8 +795,10 @@
           </span>
         </div>
         <div class="setting-row">
-          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-moon"/></svg></span>
-          <span class="setting-copy"><strong data-i18n="settings.theme"></strong></span>
+          <span class="setting-copy with-icon">
+            <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-moon"/></svg></span>
+            <strong data-i18n="settings.theme"></strong>
+          </span>
           <span class="setting-picker" data-setting-picker data-popup>
             <select id="theme-select" name="theme" data-setting="theme" hidden>
               <option value="dark" data-i18n="theme.dark"></option>
@@ -770,18 +816,24 @@
           </span>
         </div>
         <div class="setting-row">
-          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-activity"/></svg></span>
-          <label class="setting-copy" for="dark-charts"><strong data-i18n="settings.monochrome_charts"></strong></label>
+          <label class="setting-copy with-icon" for="dark-charts">
+            <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-activity"/></svg></span>
+            <strong data-i18n="settings.monochrome_charts"></strong>
+          </label>
           <span class="switch"><input id="dark-charts" name="darkCharts" type="checkbox" data-setting="darkCharts"><i aria-hidden="true"></i></span>
         </div>
         <div class="setting-row">
-          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-router"/></svg></span>
-          <label class="setting-copy" for="hide-router-status"><strong data-i18n="settings.hide_router_status"></strong></label>
+          <label class="setting-copy with-icon" for="hide-router-status">
+            <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-router"/></svg></span>
+            <strong data-i18n="settings.hide_router_status"></strong>
+          </label>
           <span class="switch"><input id="hide-router-status" name="hideRouterStatus" type="checkbox" data-setting="hideRouterStatus"><i aria-hidden="true"></i></span>
         </div>
         <div class="setting-row">
-          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-monitor"/></svg></span>
-          <span class="setting-copy"><strong data-i18n="settings.font"></strong></span>
+          <span class="setting-copy with-icon">
+            <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-monitor"/></svg></span>
+            <strong data-i18n="settings.font"></strong>
+          </span>
           <span class="setting-picker" data-setting-picker data-popup>
             <select id="font-select" name="plainHeadings" data-setting="plainHeadings" data-value-type="boolean" hidden>
               <option value="false" data-i18n="font.tiny5"></option>
@@ -798,8 +850,10 @@
           </span>
         </div>
         <button class="setting-row is-link" type="button" data-action="open-pin-change">
-          <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-key"/></svg></span>
-          <span class="setting-copy"><strong data-i18n="settings.change_pin"></strong></span>
+          <span class="setting-copy with-icon">
+            <span class="setting-icon" aria-hidden="true"><svg><use href="#icon-key"/></svg></span>
+            <strong data-i18n="settings.change_pin"></strong>
+          </span>
           <svg class="row-chevron" aria-hidden="true"><use href="#icon-chevron"/></svg>
         </button>
       </div>
@@ -1040,8 +1094,7 @@
 
   <template id="tpl-about" data-template="about">
     <div class="modal-panel" data-modal-view="about" data-title-key="about.title">
-      <h3 class="about-product">FoxHole OpenWRT</h3>
-      <p class="muted" data-i18n="about.description"></p>
+      <h3 class="about-product">FOXHOLE <b class="brand-platform">OPENWRT</b></h3>
       <dl class="about-details">
         <dt data-i18n="about.version"></dt><dd data-about-version></dd>
         <dt data-i18n="about.storage"></dt><dd data-about-storage></dd>
@@ -1093,6 +1146,6 @@
     </div>
   </template>
 
-  <script src="./app.js?v=1.0.8-r2" type="module"></script>
+  <script src="./app.js?v=1.0.13-r1-ui16" type="module"></script>
 </body>
 </html>

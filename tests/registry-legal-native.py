@@ -110,7 +110,8 @@ def run_cases(output, ucode):
         for name, text in {'state.uc': state, 'fs.uc': FS, 'store.uc': STORE, 'system.uc': SYSTEM}.items():
             (root / name).write_text(text)
         for original, target in [('engine-model.uc', 'engine-model.actual.uc'),
-                                 ('engine-package-layout.uc', 'engine-package-layout.uc')]:
+                                 ('engine-package-layout.uc', 'engine-package-layout.uc'),
+                                 ('core-update-model.uc', 'core-update-model.uc')]:
             (root / target).write_bytes((ROOT / MODULE / original).read_bytes())
         original = (ROOT / MODULE / 'engine-registry.uc').read_bytes()
         (root / 'registry.actual.uc').write_text(transform(original, root))

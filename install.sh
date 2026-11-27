@@ -32,6 +32,7 @@ include_server=0
 server_intent=0
 apk_key=foxhole-openwrt-apk.pem
 public_sha256=fa220a28fd8662fc5f617f46594bafe2415b4f605136570dc3c446caeb7d1ef1
+initial_auto=1
 while [ "$#" -gt 0 ]; do
  case "$1" in
   --base-url) base_url=${2:?}; shift 2 ;;
@@ -45,6 +46,7 @@ while [ "$#" -gt 0 ]; do
    mode=$next_mode
    requested_mode=$next_mode
    shift ;;
+  --no-auto-update) initial_auto=0; shift ;;
   --apply) apply=1; shift ;;
   --accept-license) license_accepted=1; shift ;;
   --license) show_license; exit 0 ;;
@@ -57,7 +59,7 @@ while [ "$#" -gt 0 ]; do
    protocols="$protocols${1#--},"; shift ;;
   --all) all_protocols=1; shift ;;
   --help|-h)
-   echo 'Usage: sh install.sh --bundle DIR|--base-url HTTPS_URL --manifest-sha256 HASH [--hy2 --vless --wg|--all] [--flash|--ram|--auto] [--server] [--apply --accept-license]'
+   echo 'Usage: sh install.sh --bundle DIR|--base-url HTTPS_URL --manifest-sha256 HASH [--hy2 --vless --wg|--all] [--flash|--ram|--auto] [--server] [--apply --accept-license] [--no-auto-update]'
    echo 'Default: Hysteria2 only, persistent flash. Exact verified release variant required.'
    echo 'Read the license agreement with --license. Installation requires explicit acceptance.'
    exit 0 ;;
@@ -83,7 +85,18 @@ if [ "$apply" = 1 ] && [ "$license_accepted" != 1 ]; then
  [ "$license_accepted" = 1 ] || { echo 'License agreement not accepted; read --license, then use --accept-license to install' >&2; exit 2; }
 fi
 stage=$(mktemp -d /tmp/foxhole-bootstrap.XXXXXX)
-trap 'rm -rf "$stage"' EXIT
+choice_lock=/var/run/foxhole-initial-auto-update
+choice_owned=0
+cleanup() {
+ if [ "$choice_owned" = 1 ]; then
+  if [ "$initial_auto" = 0 ] && [ -d "$choice_lock/off" ]; then rmdir "$choice_lock/off" || return 1; fi
+  rmdir "$choice_lock" || return 1
+ fi
+ rm -rf "$stage"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 fetch_small() {
  name=$1
  case "$name" in SHA256SUMS|package-catalog.json|install-core.sh|install-compact.sh) ;; *) exit 1 ;; esac
@@ -130,6 +143,11 @@ verify_small "$script"
 protocols=${protocols%,}
 [ "$all_protocols" = 0 ] || protocols=all
 protocols=${protocols:-hysteria2}
+if [ "$apply" = 1 ]; then
+ mkdir -m 700 "$choice_lock" || { echo 'Another initial setup is active' >&2; exit 1; }
+ choice_owned=1
+ if [ "$initial_auto" = 0 ]; then mkdir -m 700 "$choice_lock/off"; fi
+fi
 if [ "$contract" = compact ]; then
  sh "$stage/$script" --bundle "$bundle" --base-url "$base_url" \
   --manifest-sha256 "$manifest_hash" --mode "$mode" --protocols "$protocols" \

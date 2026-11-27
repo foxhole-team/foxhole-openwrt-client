@@ -132,9 +132,31 @@ function resources(budget, context) {
 	    context.flashAvailableBytes < budget.flashRequiredBytes || context.ramAvailableBytes < budget.ramRequiredBytes)
 		reject('no_space');
 };
+function same_slot(a,b) {
+    if(!a||!b)return false;
+    for(let key in ENTRY_FIELDS)if(a[key]!=b[key])return false;
+    return true;
+};
+function repairable(id,context) {
+    if(context.activeEngineId==id || context.activeProfileId!=null && context.activeEngineId==null)reject('in_use');
+};
+export function reinstall_scope(value,installed,context) {
+    let wanted=ids(value.engineIds);
+    if(value.operation!='REINSTALL'||value.impact!='KEEP_ACTIVE'||type(value.removals)!='array'||length(value.removals)!=0||
+       type(value.artifacts)!='array'||length(wanted)!=length(value.artifacts)||
+       type(value.changes)!='array'||length(wanted)!=length(value.changes)||value.planSha256!=fingerprint(value))reject('stale_plan');
+    for(let i=0;i<length(wanted);i++) {
+        let id=wanted[i],old=selected(installed,id),candidate=entry(value.artifacts[i]),change=value.changes[i];
+        repairable(id,context);
+        if(!same_slot(old,candidate)||change?.id!=id||change.storage!=old.storage||
+           change.fromVersion!=old.version||change.toVersion!=old.version||
+           change.archiveBytes!=old.archiveBytes||change.installedBytes!=old.installedBytes)reject('stale_plan');
+    }
+    return true;
+};
 export function plan(request, raw_catalog, raw_registry, context, owner, nonce, now) {
 	exact(request, ['operation', 'engineIds', 'storage', 'expectedRevision', 'catalogSha256'], 'invalid_request');
-	if (index(['ADD', 'UPDATE', 'REMOVE'], request.operation) < 0 ||
+	if (index(['ADD', 'UPDATE', 'REMOVE', 'REINSTALL'], request.operation) < 0 ||
 	    index(['AUTO', 'FLASH', 'RAM'], request.storage) < 0 ||
 	    !number(request.expectedRevision, 0x7ffffffe) || !sha(owner) || !sha(nonce) || !number(now, 9007198954740991))
 		reject('invalid_request');
@@ -155,14 +177,19 @@ export function plan(request, raw_catalog, raw_registry, context, owner, nonce, 
 			if (!length(same)) reject('not_released');
 			let matching = filter(same, row => row.architecture == context.architecture);
 			if (!length(matching)) reject('unsupported_target');
-			if (request.storage != 'AUTO') next = filter(matching, row => row.storage == request.storage)[0];
+			if (request.operation == 'REINSTALL') {
+                repairable(id,context);
+                if (!old || request.storage != 'AUTO' && request.storage != old.storage) reject('invalid_request');
+                next=filter(matching,row=>row.storage==old.storage)[0];
+                if (!same_slot(old,next)) reject('package_verification_failed');
+            } else if (request.storage != 'AUTO') next = filter(matching, row => row.storage == request.storage)[0];
 			else {
 				let fixed = filter(matching, row => row.storage == 'FLASH')[0];
 				next = fixed && context.flashAvailableBytes >= flash + fixed.installedBytes + reserve ?
 					fixed : filter(matching, row => row.storage == 'RAM')[0];
 			}
 			if (!next) reject('unsupported_target');
-			if (old && old.binarySha256 == next.binarySha256 && old.storage == next.storage && old.packageVersion == next.packageVersion)
+			if (request.operation != 'REINSTALL' && old && old.binarySha256 == next.binarySha256 && old.storage == next.storage && old.packageVersion == next.packageVersion)
 				reject('invalid_request');
 			push(artifacts, next); download += next.archiveBytes + next.indexBytes;
 			staging += next.archiveBytes * 3 + next.indexBytes * 3; flash += next.installedBytes;
@@ -170,7 +197,7 @@ export function plan(request, raw_catalog, raw_registry, context, owner, nonce, 
 			volatile += next.storage == 'RAM' ? next.binaryBytes : 0;
 			reserve = max(reserve, next.reserveBytes);
 			if (next.storage == 'RAM' && index(warnings, 'RAM_DOWNLOAD_REQUIRED') < 0) push(warnings, 'RAM_DOWNLOAD_REQUIRED');
-			if ((old || index(context.legacyProtocols || [], id) >= 0) && index(warnings, 'OLD_SLOT_RETAINED') < 0) push(warnings, 'OLD_SLOT_RETAINED');
+			if (request.operation != 'REINSTALL' && (old || index(context.legacyProtocols || [], id) >= 0) && index(warnings, 'OLD_SLOT_RETAINED') < 0) push(warnings, 'OLD_SLOT_RETAINED');
 			if (context.activeEngineId == id) impact = 'RECONNECT_REQUIRED';
 		}
 		push(changes, { id, fromVersion: old?.version, toVersion: next?.version,
@@ -205,8 +232,33 @@ export function admit_apply(value, request, raw_registry, context, owner, now) {
 	    value.revision != installed.revision || sprintf('%J', value.binding) != sprintf('%J', binding(context)) ||
 	    !number(now, 9007199254740991) || now < value.createdAtUptimeMs || now > value.expiresAtUptimeMs)
 		reject('stale_plan');
+	if(value.operation=='REINSTALL')reinstall_scope(value,installed,context);
 	resources(value.budget, context);
 	return true;
+};
+export function reinstall_bound(value,previous,current,context) {
+    reinstall_scope(value,previous,context);
+    if(sprintf('%J',binding(context))!=sprintf('%J',value.binding)||
+       previous.revision!=value.revision||(current.revision!=previous.revision&&current.revision!=previous.revision+1)||
+       sprintf('%J',{...current,revision:previous.revision})!=sprintf('%J',previous))reject('stale_plan');
+    return true;
+};
+export function reinstall_only(raw,artifacts) {
+    if(type(raw)!='string'||length(raw)>65536||type(artifacts)!='array'||!length(artifacts))return false;
+    let wanted={},seen={},count=0,done=false;
+    for(let slot in artifacts) {
+        if(!slot.packageName||wanted[slot.packageName])return false;
+        wanted[slot.packageName]=slot.packageVersion;
+    }
+    for(let line in split(raw,'\n')) {
+        line=trim(line);if(!length(line))continue;
+        if(done)return false;
+        if(match(line,/^OK: [0-9]+(\.[0-9]+)? (B|KiB|MiB|GiB) in [0-9]+ packages?$/)) {done=true;continue;}
+        let row=match(line,/^\( *([0-9]+)\/([0-9]+)\) Reinstalling ([a-zA-Z0-9][a-zA-Z0-9_.+-]*) \(([^()]+)\)$/);
+        if(!row||+row[1]!=count+1||+row[2]!=length(artifacts)||seen[row[3]]||wanted[row[3]]!=row[4])return false;
+        seen[row[3]]=true;count++;
+    }
+    return done&&count==length(artifacts);
 };
 export function add_only_delta(delta, artifacts) {
 	if (type(delta) != 'array' || length(delta) != length(artifacts)) return false;

@@ -122,11 +122,21 @@ function fixture() {
     if(operation==='dependencies')return {code:environment.missingDependency?1:0,stdout:JSON.stringify([{name:'libc',status:['installed']}]),stderr:''};
     if(operation==='extract') {for(const [path,body]of bodies){memory.dir(`${args[2]}/${dirname(path)}`,0o755);memory.files.get(`${args[2]}/${dirname(path)}`).mode=0o755;memory.put(`${args[2]}/${path}`,body,0o644);}return {code:0,stdout:'',stderr:''};}
     if(operation==='fetch') {
-      if(args[0]===model.release_api)return {code:0,stdout:JSON.stringify([{draft:false,prerelease:true,tag_name:'v1.0.2',assets:[{name:'SHA256SUMS',size:100},{name:'foxhole-openwrt-client-1.0.2-r1.apk',size:apk.length}]}]),stderr:''};
+      if(args[0]===model.release_api){
+        const tag='v1.0.2',id=42,repo='foxhole-team/foxhole-openwrt-client';
+        const files=[['SHA256SUMS',100],['foxhole-openwrt-client-1.0.2-r1.apk',apk.length]];
+        return {code:0,stdout:JSON.stringify([{id,draft:false,prerelease:true,tag_name:tag,url:`https://api.github.com/repos/${repo}/releases/${id}`,
+          html_url:`https://github.com/${repo}/releases/tag/${tag}`,assets:files.map(([name,size])=>({name,size,browser_download_url:model.origin+tag+'/'+name}))}]),stderr:''};
+      }
       return {code:0,stdout:args[0].endsWith('SHA256SUMS')?`${sha(apk)}  foxhole-openwrt-client-1.0.2-r1.apk\n`:apk,stderr:''};
     }
     if(operation==='switch') {
       const job=memory.json(JOB),candidate=job.candidate;
+      if (environment.rolledBack) {
+        memory.put(`/etc/foxhole/ram-update/switches/${job.jobId}.json`,JSON.stringify({schema:1,kind:'foxhole-ram-switch-journal-v1',
+          jobId:job.jobId,bootId:job.bootId,owner:sha(JSON.stringify(job.worker)),phase:'ROLLED_BACK'}));
+        return {code:1,stdout:'',stderr:''};
+      }
       if(environment.switched){environment.nativeVersion=candidate.version;memory.put(`${candidate.root}/lib/apk/db/installed`,'new-stage-db',0o644);}
       memory.put(MARKER,JSON.stringify({schema:1,storage:'RAM',phase:'active',stage:dirname(candidate.root),version:'1.0.2',baseSha256:candidate.sha256}));
       environment.afterSwitch?.();
@@ -209,6 +219,21 @@ test('switch success requires the real isolated native package version, not a ma
     assert.equal(f.service.job(job.jobId,f.principal).state,works?'SUCCEEDED':'RECOVERY_REQUIRED',f.environment.lastError);
     assert.equal(f.memory.get('/lib/apk/db/installed'),'host-db-185');}
 });
+test('RAM failure with a bound rollback receipt preserves the original package and owner data',()=>{
+  const f=fixture(),begun=f.begin();
+  f.service.device_chunk(f.chunk(begun.uploadId),f.principal);
+  f.service.device_finish({uploadId:begun.uploadId},f.principal);
+  const plan=f.service.plan({expectedRevision:f.service.status(f.principal).revision},f.principal);
+  const job=f.service.apply({expectedRevision:plan.revision,planId:plan.planId,planSha256:plan.planSha256,confirmed:true},f.principal);
+  const protectedBefore=[MARKER,PROFILE,'/etc/foxhole/auth.json','/etc/foxhole/pairing.json','/lib/apk/db/installed'].map(path=>[path,f.memory.get(path)]);
+  f.environment.rolledBack=true;
+  f.service.run(job.jobId);
+  const result=f.service.job(job.jobId,f.principal);
+  assert.equal(result.state,'FAILED');
+  assert.equal(result.failureReason,'PACKAGE_VERIFICATION_FAILED');
+  assert.equal(f.service.deployment().version,'1.0.1-r1');
+  for (const [path, expected] of protectedBefore) assert.equal(f.memory.get(path),expected);
+});
 test('automatic updates default off and an explicit opt-in queues the same verified apply path',()=>{
   const f=fixture();f.environment.probe={code:0,stdout:'',stderr:''};assert.equal(f.service.tick(),null);
   f.service.settings({expectedRevision:0,autoUpdateEnabled:true},f.principal);
@@ -258,4 +283,19 @@ test('CORE relay evidence cannot authorize an old BASE upload request',()=>{
  const f=fixture();f.checkOffline();
  const value=f.memory.json(STATE);value.relayEvidence.cohortKind='CORE';f.memory.put(STATE,JSON.stringify(value));
  assert.throws(()=>f.service.device_begin({...f.manifest,expectedRevision:value.revision,requestId:'b'.repeat(32)},f.principal));
+});
+
+test('verified GitHub list with only older BASE reports the installed RAM version and offers no install',()=>{
+ const f=fixture();
+ f.environment.probe={code:0,stdout:'',stderr:''};
+ f.environment.nativeVersion='1.0.9-r2';
+ const marker=f.memory.json(MARKER);marker.version='1.0.9-r2';f.memory.put(MARKER,JSON.stringify(marker));
+ const check=f.service.check({expectedRevision:0},f.principal);
+ f.service.run(check.jobId);
+ const status=f.service.status(f.principal);
+ assert.equal(f.service.job(check.jobId,f.principal).state,'SUCCEEDED',f.environment.lastError);
+ assert.equal(status.currentVersion,'1.0.9-r2');assert.equal(status.availability,'CURRENT');
+ assert.equal(status.availableVersion,status.currentVersion);assert.equal(status.failureReason,null);
+ assert.ok(status.lastCheckedAtUnixMs>0);assert.equal(f.environment.captures.includes('verify'),false);
+ assert.throws(()=>f.service.plan({expectedRevision:status.revision},f.principal));
 });

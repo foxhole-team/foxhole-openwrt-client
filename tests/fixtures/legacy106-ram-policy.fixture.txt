@@ -1,0 +1,9 @@
+function policy(value,wanted,release) {
+ if(type(value)!='object'||length(keys(value))!=7)fail('PACKAGE_VERIFICATION_FAILED');
+ for(let key in keys(value))if(index(['schema','transactionAbi','stateAbi','osRelease','packageVersion','releaseTag','targets'],key)<0)
+  fail('PACKAGE_VERIFICATION_FAILED');
+ if(type(value)!='object'||value.schema!=1||value.transactionAbi!=1||value.stateAbi!=1||
+  value.osRelease!='25.12.5'||value.packageVersion!=wanted||value.releaseTag!=release||
+  sprintf('%J',value.targets)!=sprintf('%J',['x86/64','mediatek/filogic']))fail('PACKAGE_VERIFICATION_FAILED');
+ return value;
+}

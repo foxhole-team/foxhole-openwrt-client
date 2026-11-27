@@ -1,0 +1,15 @@
+{
+  "schema": 2,
+  "kind": "foxhole-ram-bootstrap-github-v1",
+  "artifact": { "url": null, "bytes": null, "sha256": null },
+  "version": null,
+  "baseVersion": null,
+  "arch": "aarch64_cortex-a53",
+  "target": "mediatek/filogic",
+  "osRelease": "25.12.5",
+  "baseSha256": null,
+  "signerPemSha256": "fa220a28fd8662fc5f617f46594bafe2415b4f605136570dc3c446caeb7d1ef1",
+  "caFileSha256": null,
+  "recoveryOrigin": "https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/",
+  "overlay": null
+}

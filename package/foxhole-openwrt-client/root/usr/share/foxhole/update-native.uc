@@ -1,6 +1,8 @@
 'use strict';
 
+import * as ram_metadata from './ram-update-model.uc';
 import * as fs from 'fs';
+import * as ubus from 'ubus';
 import * as digest from 'digest';
 import * as guard from './update-model.uc';
 import * as engines from './engine-model.uc';
@@ -37,9 +39,24 @@ export function target() {
 };
 export function policy(path, version) {
  let value = decode(public_raw(path, 8192));
- try { ram_updates.policy(value,version,value.releaseTag,target().release); }
+ let companion=match(path,/\/update-policy\.json$/)?replace(path,/update-policy\.json$/,'update-policy-v2.json'):null;
+ let modern=companion && fs.lstat(companion)?decode(public_raw(companion,8192)):null;
+ try { return ram_updates.policy_records(value,modern,version,value.releaseTag,target().release); }
  catch (_) { guard.fail('UNSUPPORTED_TARGET'); }
- return value;
+};
+export function require_package_ready(storage, version) {
+ for (let attempt = 0; attempt < 4; attempt++) {
+  let connection = null, result = null;
+  try {
+   connection = ubus.connect(null, 2);
+   result = connection?.call('foxhole', 'package.status', {});
+  } catch (_) {}
+  try { if (connection) connection.disconnect(); } catch (_) {}
+  if (result?.schema == 1 && result.product == 'foxhole' && result.installed == true &&
+      result.storage == storage && result.version == version && result.packageUpdates == true) return true;
+  if (attempt < 3 && sleep(250) != true) break;
+ }
+ guard.fail('PACKAGE_VERIFICATION_FAILED');
 };
 export function prepare_keys(directory) {
 	store.directory(directory); store.directory(directory + '/keys');
@@ -68,7 +85,9 @@ export function latest(directory) {
 	store.target(path);
 	if (fs.lstat(path) || system(['/usr/libexec/foxhole-update-hint',path],25000) != 0) guard.fail('RELEASE_UNAVAILABLE');
 	release_memory();
-	return guard.release_tag(decode(public_raw(path,RELEASE_METADATA_BYTES)));
+	let document=decode(public_raw(path,RELEASE_METADATA_BYTES));
+	ram_metadata.official_base_release(document);
+	return guard.release_tag(document);
 };
 export function compare(a,b) {
 	return trim(packages.apk(['--no-network','--repositories-file','/dev/null','version','-t',a,b]));

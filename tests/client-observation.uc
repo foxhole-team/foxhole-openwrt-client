@@ -1,3 +1,5 @@
+import * as digest from 'digest';
+import * as server_mode from '/workspace/package/foxhole-openwrt-client/root/usr/share/foxhole/server-mode.uc';
 import * as observation from '/workspace/package/foxhole-openwrt-client/root/usr/share/foxhole/client-observation.uc';
 import * as inbound from '/workspace/package/foxhole-openwrt-client/root/usr/share/foxhole/inbound.uc';
 
@@ -44,17 +46,25 @@ function session(request) {
 };
 function locked(fn) { return fn(); };
 function state_record() { return status_state; };
-let store = { read: (path, limit) => records[path] };
-function fixture_read_online(listener, users) {
+let store = { read: (path, limit) => {
+	if (length(records[path] || '') > limit) die('fixture_read_limit');
+	return records[path];
+} };
+function fixture_config_hash(id) {
+	let raw = records['/tmp/foxhole/inbound/' + id + '.json'];
+	return raw ? digest.sha256(raw) : null;
+};
+function fixture_read_online(listener, users, legacy) {
 	read_count++;
 	if (change_generation) records['/tmp/foxhole/inbound/generation'] = 'changed';
-	return online_values;
+	return observation.online_map(sprintf('%J', online_values), users, legacy);
 };
 // The authenticated observer implementation is injected here.
 function reset() {
-	status_state = { revision: 7, clients: [
+	status_state = { revision: 7, settings: { vpnServerEnabled: true }, clients: [
 		{ id: ID, inbound: true, secret: SECRET }, { id: OTHER, inbound: false }] };
 	records = {
+		'/etc/foxhole/inbound.json': '{}',
 		'/tmp/foxhole/inbound/generation': GEN,
 		'/tmp/foxhole/inbound/observations.json': sprintf('%J', { schema: 1,
 			generation: GEN, revision: 7, listeners: [ { id: 'shared',
@@ -77,6 +87,12 @@ test('RPC status requires authentication and current runtime observation', () =>
 	online_values = null;
 	equal(observe().clients[0].online, null);
 });
+test('disabled Home Server never reports old authenticated sessions as online', () => {
+ reset(); status_state.settings.vpnServerEnabled = false;
+ equal(observe(), { schema: 1, revision: 7, clients: [
+  { id: ID, online: null }, { id: OTHER, online: null }] });
+ equal(read_count, 0);
+});
 test('missing or stale listener revision cannot infer online from configuration', () => {
 	reset(); delete records['/tmp/foxhole/inbound/observations.json'];
 	equal(observe().clients[0].online, null); equal(read_count, 0);
@@ -95,7 +111,10 @@ test('a malformed later listener cannot retain a partial online result', () => {
 	status_state.clients[1].secret = SECRET;
 	let value = json(records['/tmp/foxhole/inbound/observations.json']);
 	value.listeners[0].id = ID;
-	records['/tmp/foxhole/inbound/' + ID + '.json'] = records['/tmp/foxhole/inbound/shared.json'];
+	value.listeners[0].listen = '127.0.0.1:902';
+	let first = json(records['/tmp/foxhole/inbound/shared.json']);
+	first.trafficStats.listen = value.listeners[0].listen;
+	records['/tmp/foxhole/inbound/' + ID + '.json'] = sprintf('%J', first);
 	push(value.listeners, value.listeners[0]);
 	records['/tmp/foxhole/inbound/observations.json'] = sprintf('%J', value);
 	equal(observe().clients[0].online, null); equal(read_count, 1);
@@ -190,7 +209,7 @@ test('socket exceptions close the already acquired connection', () => {
 	equal(read_online({ listen: '127.0.0.1:901', secret: SECRET }, [ID]), null);
 	equal(connect_count, 1); equal(close_count, 1);
 });
-let metadata_writes = 0, metadata_locks = 0, metadata_unlocks = 0, metadata_closes = 0;
+let config_writes = 0, metadata_writes = 0, metadata_locks = 0, metadata_unlocks = 0, metadata_closes = 0;
 const directory = '/tmp/foxhole/inbound';
 let fs = {
 	open: () => ({ lock: mode => {
@@ -203,12 +222,23 @@ let model = { validate_state: value => value };
 store.target = () => {};
 store.file_metadata = value => value.uid == 0 && value.nlink == 1;
 store.write = (path, raw) => {
-	if (path != directory + '/observations.json') die('unexpected_metadata_write');
-	metadata_writes++; records[path] = raw;
+	if (path == directory + '/shared.json') config_writes++;
+	else if (path == directory + '/observations.json') metadata_writes++;
+	else die('unexpected_metadata_write');
+	records[path] = raw;
+};
+function fresh_stats(slot) { return observation.stats_config(slot, GEN); };
+function reset_bound() {
+	reset();
+	let config = json(records[directory + '/shared.json']);
+	let meta = json(records[directory + '/observations.json']);
+	meta.schema = 2;
+	meta.listeners[0].witness = observation.witness('shared', fixture_config_hash('shared'), config.trafficStats, config.auth.userpass);
+	records[directory + '/observations.json'] = sprintf('%J', meta);
 };
 // The unchanged-generation metadata rebind is injected here.
 test('metadata-only state revision refreshes observer without restarting listeners', () => {
-	reset(); metadata_writes = 0; metadata_locks = 0;
+	reset_bound(); metadata_writes = 0; metadata_locks = 0;
 	let before_config = records[directory + '/shared.json'];
 	status_state.revision = 8; status_state.devices = [{ route: 'direct' }];
 	records['/etc/foxhole/state.json'] = sprintf('%J', status_state);
@@ -219,7 +249,7 @@ test('metadata-only state revision refreshes observer without restarting listene
 	equal(observe().revision, 8); equal(observe().clients[0].online, true);
 });
 test('metadata rebind rejects a changed generation or config binding', () => {
-	reset(); metadata_writes = 0;
+	reset_bound(); metadata_writes = 0;
 	records['/etc/foxhole/state.json'] = sprintf('%J', status_state);
 	equal(rebind_observations(status_state, SECRET, {}, [status_state.clients[0]]), false);
 	equal(metadata_writes, 0);
@@ -230,7 +260,7 @@ test('metadata rebind rejects a changed generation or config binding', () => {
 	equal(metadata_writes, 0);
 });
 test('metadata rebind cannot preserve a revoked listener credential', () => {
-	reset(); metadata_writes = 0;
+	reset_bound(); metadata_writes = 0;
 	records['/etc/foxhole/state.json'] = sprintf('%J', status_state);
 	let config = json(records[directory + '/shared.json']);
 	config.auth.userpass[ID] = GEN;
@@ -240,11 +270,51 @@ test('metadata rebind cannot preserve a revoked listener credential', () => {
 });
 test('metadata rebind releases its lock after a state change or read exception', () => {
 	for (let raw in ['broken', sprintf('%J', { revision: 8 })]) {
-		reset(); metadata_writes = 0; metadata_unlocks = 0; metadata_closes = 0;
+		reset_bound(); metadata_writes = 0; metadata_unlocks = 0; metadata_closes = 0;
 		records['/etc/foxhole/state.json'] = raw;
 		equal(rebind_observations(status_state, GEN, {}, [status_state.clients[0]]), false);
 		equal(metadata_writes, 0); equal(metadata_unlocks, 1); equal(metadata_closes, 1);
 	}
+});
+test('large shared ACL is hashed without decoding it on observer polls or unchanged generation checks', () => {
+	reset(); metadata_writes = 0;
+	let path = directory + '/shared.json', config = json(records[path]);
+	config.acl = { inline: [] };
+	for (let i = 0; i < 15000; i++) push(config.acl.inline, 'direct(192.0.2.1/32)');
+	let legacy = { 'old-phone': 'legacy-only' };
+	config.auth.userpass['old-phone'] = legacy['old-phone'];
+	records[path] = sprintf('%J', config);
+	equal(length(records[path]) > 290127, true);
+	let meta = json(records[directory + '/observations.json']);
+	let old = meta.listeners[0];
+	config_writes = 0;
+	let upgrade = write_listener('shared', 0, old, stats => ({ ...config, trafficStats:stats }));
+	equal(upgrade.changed, false); equal(config_writes, 0);
+	equal(upgrade.listener.secret, old.secret);
+	meta.schema = 2; meta.listeners = [upgrade.listener];
+	records[directory + '/observations.json'] = sprintf('%J', meta);
+	records['/etc/foxhole/inbound.json'] = sprintf('%J', { legacyUsers:legacy });
+	records['/etc/foxhole/state.json'] = sprintf('%J', status_state);
+	online_values = { [ID]: 1, 'old-phone': 4 };
+	equal(observe().clients, [{id:ID, online:true}, {id:OTHER, online:null}]);
+	equal(rebind_observations(status_state, GEN, {legacyUsers:legacy}, [status_state.clients[0]]), true);
+	equal(metadata_writes, 0);
+	records[path] = replace(records[path], '192.0.2.1', '192.0.2.2');
+	equal(observe().clients[0].online, null);
+	equal(rebind_observations(status_state, GEN, {legacyUsers:legacy}, [status_state.clients[0]]), false);
+});
+test('shared authentication gives managed credentials priority and hides legacy-only users', () => {
+	reset();
+	let path = directory + '/shared.json', config = json(records[path]);
+	let legacy = { [ID]:'superseded', 'old-phone':'legacy-only' };
+	records['/etc/foxhole/inbound.json'] = sprintf('%J', {legacyUsers:legacy});
+	config.auth.userpass['old-phone'] = legacy['old-phone'];
+	records[path] = sprintf('%J', config);
+	online_values = { [ID]:2, 'old-phone':3 };
+	equal(observe().clients, [{id:ID, online:true}, {id:OTHER, online:null}]);
+	config.auth.userpass[ID] = 'superseded'; records[path] = sprintf('%J', config);
+	equal(observe().clients[0].online, null);
+	equal(observation.online_map('{"stranger":1}', [ID], legacy), null);
 });
 print('1..', passed + failed, '\n');
 print('# client observation tests: ', passed, ' passed, ', failed, ' failed\n');

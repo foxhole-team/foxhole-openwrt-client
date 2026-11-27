@@ -38,6 +38,7 @@ export async function runUpdateBadgeUiChecks(browser, baseURL) {
             const strings = await fetch(`./locales/${language}.json`).then(r => r.json());
             document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr';
             title.textContent = strings['updates.title'];
+            document.querySelector('.update-badge-sizer').textContent = strings['updates.badge_available'];
             for (const availability of ['AVAILABLE', 'CURRENT', 'NOT_CHECKED', 'CHECK_FAILED']) {
               const value = { ...status, availability,
                 availableVersion: availability === 'CURRENT' ? status.currentVersion
@@ -45,7 +46,7 @@ export async function runUpdateBadgeUiChecks(browser, baseURL) {
                 failureReason: availability === 'CHECK_FAILED' ? 'RELEASE_UNAVAILABLE' : null };
               const panel = new UpdatePanel({ call: async () => value, text: key => strings[key], scope: () => 1 });
               await panel.summary();
-              const visible = ['AVAILABLE', 'CURRENT'].includes(availability);
+              const visible = availability === 'AVAILABLE';
               const check = (ok, reason) => { if (!ok) throw new Error(`${language}/${availability}/${scale}: ${reason}`); };
               check(badge.hidden !== visible, 'incorrect badge visibility');
               if (visible) {
@@ -58,7 +59,7 @@ export async function runUpdateBadgeUiChecks(browser, baseURL) {
                 check(b.left >= c.left - .5 && b.right <= c.right + .5
                   && b.top >= row.top && b.bottom <= row.bottom, 'badge overlaps row bounds');
                 if (scale === 1) {
-                  check(b.top < last.top && b.bottom >= last.top, 'badge detached from the final title line');
+                  check(b.top < last.top && b.bottom >= last.top, `badge detached from the final title line at ${innerWidth}: badge ${b.top}..${b.bottom}, text ${last.top}..${last.bottom}`);
                   check(language === 'ar' ? b.right <= last.left + .5 : b.left >= last.right - .5,
                     'badge overlaps title');
                 } else {
@@ -119,7 +120,7 @@ export async function runMobileUiChecks(browser, baseURL, screenshots = '.') {
       await page.locator('#pin-input').fill('123456');
       await page.waitForSelector('#pin-gate[hidden]', { state: 'attached' });
       await page.waitForFunction(() => document.querySelector('[data-chart-card="wrt"]').classList.contains('has-data'));
-      check(await page.title() === 'FoxHole OpenWRT', 'Browser title');
+      check(await page.title() === 'FOXHOLE OPENWRT', 'Browser title');
       const dimensions = await page.evaluate(() => ({ viewport: innerWidth,
         overflow: document.documentElement.scrollWidth > innerWidth || document.body.scrollWidth > innerWidth,
         cards: [...document.querySelectorAll('[data-chart-card]')].map(e => e.getBoundingClientRect().toJSON()),
@@ -156,20 +157,15 @@ export async function runMobileUiChecks(browser, baseURL, screenshots = '.') {
       await helpEntry.click();
       await page.waitForSelector('dialog.view-help[open]');
       check(await page.locator('dialog details[data-help-topic]').count() === 11, 'Help topics missing');
-      await page.locator('dialog details[data-help-topic="diagnostics"] summary').click();
+      const diagnostics = page.locator('dialog details[data-help-topic="diagnostics"]');
+      await diagnostics.locator('summary').focus();
+      await page.keyboard.press('Enter');
+      check(await diagnostics.evaluate(e=>e.open), 'Keyboard activation must open diagnostics');
       await page.locator('dialog [data-action="modal-back"]').click();
       await page.waitForSelector('dialog.view-settings-home[open]');
-      await page.locator('dialog [data-action="open-updates"]').click();
-      await page.waitForSelector('dialog.view-updates[open]');
-      await page.locator('dialog .modal-footer [data-action="open-help"]').click();
+      await page.locator('dialog [data-settings-help-entry]').click();
       await page.waitForSelector('dialog.view-help[open]');
-      const selectedHelp = page.locator('dialog details[data-help-topic="updates"]');
-      check(await selectedHelp.evaluate(e => e.open && document.activeElement === e.querySelector('summary')),
-        'Context Help must open and focus its topic');
-      check(await page.locator('dialog details[data-help-topic="diagnostics"]').evaluate(e => e.open),
-        'Help lost disclosure state after navigation');
-      await page.locator('dialog [data-action="modal-back"]').click();
-      await page.waitForSelector('dialog.view-updates[open]');
+      check(await diagnostics.evaluate(e=>e.open), 'Help lost disclosure state after navigation');
       await page.locator('dialog [data-action="modal-back"]').click();
       await page.waitForSelector('dialog.view-settings-home[open]');
       await page.locator('dialog [data-action="open-exceptions"]').click();
@@ -232,7 +228,7 @@ export async function runPwaUiChecks(browser, baseURL) {
           apple: document.querySelector('meta[name="apple-mobile-web-app-title"]').content,
           manifest, urls, type: response.headers.get('content-type'), images };
       });
-      check([metadata.title, metadata.app, metadata.apple, metadata.manifest.name, metadata.manifest.short_name].every(value => value === 'FoxHole OpenWRT'), 'PWA name differs');
+      check([metadata.title, metadata.app, metadata.apple, metadata.manifest.name, metadata.manifest.short_name].every(value => value === 'FOXHOLE OPENWRT'), 'PWA name differs');
       check(metadata.urls.start === shellURL && metadata.urls.id === shellURL, 'PWA launches wrong entry');
       check(metadata.urls.scope === `${baseURL}/luci-static/resources/foxhole/`, 'PWA scope exceeds panel directory');
       check(/application\/(?:manifest\+)?json/.test(metadata.type), 'Manifest MIME');
@@ -263,8 +259,8 @@ export async function runPwaUiChecks(browser, baseURL) {
         manifest: document.querySelector('link[rel="manifest"]').href,
         apple: document.querySelector('link[rel="apple-touch-icon"]').href };
     });
-    check(host.title === 'FoxHole OpenWRT' && host.left === 0 && host.width === 390, 'LuCI mobile frame keeps outer gutters');
-    check(host.manifest === `${baseURL}/luci-static/resources/foxhole/manifest.json?v=1.0.6`, 'LuCI manifest points at admin path');
+    check(host.title === 'FOXHOLE OPENWRT' && host.left === 0 && host.width === 390, 'LuCI mobile frame keeps outer gutters');
+    check(new URL(host.manifest).pathname === '/luci-static/resources/foxhole/manifest.json' && new URL(host.manifest).search === new URL(await page.locator('iframe').getAttribute('src'), baseURL).search, 'LuCI manifest points at admin path');
     const frame = page.frameLocator('iframe');
     await frame.locator('#pin-prompt:not(:empty)').waitFor();
     await frame.locator('#pin-input').fill('123456');

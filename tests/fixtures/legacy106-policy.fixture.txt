@@ -1,0 +1,7 @@
+function legacy_policy(path, version) {
+	let value = decode(public_raw(path, 8192));
+	if (value.schema != 1 || value.transactionAbi != 1 || value.stateAbi != 1 || value.packageVersion != version ||
+	    value.osRelease != '25.12.5' || !match(value.releaseTag || '', /^v[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}$/) ||
+	    sprintf('%J', value.targets) != sprintf('%J', ['x86/64','mediatek/filogic'])) guard.fail('UNSUPPORTED_TARGET');
+	return value;
+};

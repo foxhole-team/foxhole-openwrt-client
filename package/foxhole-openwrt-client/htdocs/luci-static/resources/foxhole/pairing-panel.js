@@ -81,9 +81,10 @@ export class PairingPanel {
     if (refresh) refresh.disabled = this.loading;
     status.textContent = this.loading ? this.text('auth.loading') : this.failed ? this.text('error.unavailable')
       : !this.devices?.length ? this.text('pairing.empty') : '';
+    status.className = this.loading ? 'muted foxhole-loading' : 'muted';
     status.hidden = !status.textContent;
-    root.replaceChildren();
-    if (!this.devices?.length || this.loading || this.failed) return;
+    root.hidden = !this.devices?.length || this.loading || this.failed;
+    if (root.hidden) { root.replaceChildren(); return; }
     const table = this.element('table', 'pairing-table');
     const head = this.element('thead'), header = this.element('tr');
     for (const key of ['device', 'client', 'version', 'authorized', 'actions']) {
@@ -104,6 +105,6 @@ export class PairingPanel {
       button.addEventListener('click', () => { void this.confirm(device); });
       action.append(button); row.append(action); body.append(row);
     }
-    table.append(body); root.append(table);
+    table.append(body); root.replaceChildren(table);
   }
 }

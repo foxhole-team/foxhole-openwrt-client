@@ -60,44 +60,13 @@ OpenWrt ルーター向けの VPN プロファイル、ルーティングルー�
 
 <a id="whats-new"></a>
 
-> **🆕 更新内容 - 1.0.8 Beta**
+> **🆕 新機能 - 1.0.13 Beta (FLASH r1 · RAM r2)**
 >
-> - OpenWrt 25.12.6への対応を追加
-> - インターフェースを最適化しました
-> - 検証済みの Hysteria2 サーバーパッケージを追加（固定のパブリック IP が必要）
-> - ヘルプ、更新確認、アプリ情報を更新しました
-> - ジャーナルはFLASHのみで利用でき、容量を制限しながら最大30日間の記録を循環保存します
-> - VPN経由のルーター管理とRAMパッケージの再インストールを改善しました
->
-> 関連アプリ：FoxHole VPN 1.0.6とGuard 1.0.7でルーターの初回インストールと設定を修正しました。GuardではTorトランスポートのLyrebirdとconjure-clientも更新しました
->
-> 永続的なbootstrap登録は無効のままです。コールドブート後の復旧は未検証であり、ELFライブラリのパスを検証する際の問題も未解決です
-
-<a id="features"></a>
-
-## 🔌 対応 VPN プロトコル
-
-ルーター向けに現在利用できる FoxHole VPN モジュール：
-
-| プロトコル | インストールオプション | 説明 |
-| --- | --- | --- |
-| VLESS | `--vless` | VPNプロファイルで指定した設定を使い、互換性のあるVLESSサーバーへ接続するプロキシ型のクライアントです。 |
-| Hysteria2 | `--hy2` | QUIC（UDP）を使ってHysteria2サーバーに接続します。選択したプロトコル専用のクライアントモジュールを使用します。 |
-| WireGuard | `--wg` | WireGuardの対向ノードとのL3 IPトンネルです。プロファイルに鍵、アドレス、ネットワーク設定を指定します。 |
-
-## 📋 必要条件
-
-- apkパッケージマネージャーを備えたOpenWrt 25.12.5または25.12.6とroot権限。直接ダウンロードにはルーターのインターネット接続が必要ですが、ローカル`--bundle`は信頼できるLANで利用できます。
-- 正確なファームウェア、対象、アーキテクチャ、選択したプロトコルに対応する公開済みパッケージ。現在のパッケージ・更新ポリシーは `x86/64` と `mediatek/filogic` を許可します。SDK ビルドや ARM アーキテクチャ名だけでは、すべてのルーターモデルとの互換性を証明できません。
-- 検証済みパッケージ全体の予算に十分なフラッシュと RAM。パッケージを変更する前に、インストーラーが依存関係、カーネル ABI、一時領域を確認します。
-- 信頼できるローカルネットワークからのアクセス。Androidでの検出と初期設定では、電話をルーターのWi-Fiに接続してください。
-
-[v1.0.6リリース](https://github.com/foxhole-team/foxhole-openwrt-client/releases/tag/v1.0.6)にはBASE 1.0.6-r1とFoxHole Core 1.0.4のクライアントモジュールが含まれます。互換性のあるCore更新は個別にインストールできます。パッケージの提供と互換性はリリース、ファームウェア、ターゲットによって異なります。
-
-ソースでの対応とクロスコンパイル済みバイナリだけでは、ルーターとの互換性を確認したことにはなりません。
-真正性を確認済みのリリースカタログに含まれるパッケージだけをインストールできます。
-着信接続用サーバーには、未使用の S2/OpenPGP パッケージに関する、精査済みの依存関係の指摘が 2 件残っています。
-対象の厳密なビルド条件と例外の有効期限は、[リリース](RELEASE.md)に記載しています。
+> - Bash インストーラーを使い、macOS、Linux、Windows から SSH でインストールできます。新規セットアップ後はパッケージの自動更新が有効になり、無効化もできます。
+> - パッケージ更新ではルーターの API を確認し、失敗した場合は以前のバージョンの復元を試みます。ホーム VPN サーバーの管理と最初のクライアントの作成を修正しました。
+> - 対応する Hysteria 2、VLESS、WireGuard のサブスクリプションを LuCI でインポートするか、Guard または VPN から送信できます。ルーターが対応サブスクリプションを自動更新します。
+> - 「ゲームを VPN 対象外にする」は設定の標準スイッチで切り替えます。「ルーティング」は「追加」から開きます。展開・折りたたみの矢印の角をはっきり表示します。
+> - ログの更新アイコンが変わり、RAM では直近 10 件の VPN イベントを表示します。単体でインストールした Hysteria 2 がソフトウェアの状態に表示されます。
 
 <a id="quickstart"></a>
 
@@ -105,21 +74,34 @@ OpenWrt ルーター向けの VPN プロファイル、ルーティングルー�
 
 自分のVPNサーバーやプロバイダーへ接続するクライアントです。利用可能なVPNサーバーやそのアクセス権は付属しません。
 
-公開済みで検証されたリリースを選び、`RELEASE_TAG`をそのタグ、`MANIFEST_SHA256`を信頼できる`SHA256SUMS`のSHA-256、`INSTALLER_SHA256`を同じリリースの`install.sh`のSHA-256に置き換えてください。値の真正性は独立した方法で確認します。実行前にインストーラーを検証します：
+公開済みで検証されたリリースを選び、`RELEASE_TAG`をそのタグ、`MANIFEST_SHA256`を信頼できる`SHA256SUMS`のSHA-256、`INSTALLER_SHA256`を同じリリースの`install.sh`のSHA-256に置き換えてください。値の真正性は独立した方法で確認します。実行前にインストーラーを検証します。
+
+### コンピューターから
+
+ルーターの LAN に接続したコンピューターで、検証済みリリースのソースを開きます。インストーラーは Bash と OpenSSH を使います。Windows では Git for Windows を使います。
+
+**macOS / Linux / Git Bash**
 
 ```sh
-(
-  set -eu
-  release_tag='RELEASE_TAG'
-  manifest_sha256='MANIFEST_SHA256'
-  installer_sha256='INSTALLER_SHA256'
-  url="https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/$release_tag"
-  installer=$(mktemp /tmp/foxhole-install.XXXXXX)
-  trap 'rm -f "$installer"' EXIT
-  uclient-fetch -q -T 60 -O "$installer" "$url/install.sh"
-  printf '%s  %s\n' "$installer_sha256" "$installer" | sha256sum -c -
-  sh "$installer" --base-url "$url" --manifest-sha256 "$manifest_sha256" --apply
-)
+bash tools/foxhole-openwrt-install.sh --release RELEASE_TAG --manifest-sha256 MANIFEST_SHA256 --installer-sha256 INSTALLER_SHA256 --auto
+```
+
+**Windows PowerShell**
+
+```powershell
+& "$env:ProgramFiles\Git\bin\bash.exe" ./tools/foxhole-openwrt-install.sh --release RELEASE_TAG --manifest-sha256 MANIFEST_SHA256 --installer-sha256 INSTALLER_SHA256 --auto
+```
+
+同じリリースから `foxhole-openwrt-install.sh` をダウンロードして実行することもできます。署名済みのチェックサムで SHA-256 を確認し、コマンドから `tools/` を省きます。PowerShell の例は Git for Windows の既定のインストール先を使います。
+
+インストーラーは既定の IPv4 ゲートウェイを使います。LAN 上の別のルーターを選ぶには `--host ROUTER_IP` を追加します。確認を求められたら SSH ホスト鍵を照合し、ログインしてルーター上でライセンスを確認します。
+
+### ルーターの端末から
+
+ルーター上で root として実行します。
+
+```sh
+( set -eu; release_tag='RELEASE_TAG'; manifest_sha256='MANIFEST_SHA256'; installer_sha256='INSTALLER_SHA256'; url="https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/$release_tag"; installer=$(mktemp /tmp/foxhole-install.XXXXXX); trap 'rm -f "$installer"' EXIT; uclient-fetch -q -T 60 -O "$installer" "$url/install.sh"; printf '%s  %s\n' "$installer_sha256" "$installer" | sha256sum -c -; sh "$installer" --base-url "$url" --manifest-sha256 "$manifest_sha256" --apply )
 ```
 
 `--apply` を使う対話式インストーラーは同意事項を表示し、`[y/N]` で確認します。既定は「いいえ」です。`sh install.sh --license` で内容を確認できます。非対話式インストールには、明示的に同意した後で `--accept-license` を指定する必要があります。電話の設定ウィザードでは、独立した同意欄は最初は未選択です。
@@ -147,6 +129,41 @@ sh install.sh --bundle /tmp/bundle --manifest-sha256 HASH --hy2 --ram --apply
 
 `--apply`を省くと、インストールせずにバンドルを検査できます。互換性のないバンドルに合わせてカーネルパッケージを更新することはありません。コンパクトカタログの`--server`は、選択したカタログに互換性のある検証済み着信Hysteriaサーバーパッケージがある場合のみ利用でき、その場合に必要リソースへ加算されます。リモートアクセスを設定するまでは無効です。
 
+<a id="features"></a>
+
+## 🔌 対応 VPN プロトコル
+
+ルーター向けに現在利用できる FoxHole VPN モジュール：
+
+| プロトコル | インストールオプション | 説明 |
+| --- | --- | --- |
+| VLESS | `--vless` | VPNプロファイルで指定した設定を使い、互換性のあるVLESSサーバーへ接続するプロキシ型のクライアントです。 |
+| Hysteria2 | `--hy2` | QUIC（UDP）を使ってHysteria2サーバーに接続します。選択したプロトコル専用のクライアントモジュールを使用します。 |
+| WireGuard | `--wg` | WireGuardの対向ノードとのL3 IPトンネルです。プロファイルに鍵、アドレス、ネットワーク設定を指定します。 |
+
+## 📋 必要条件
+
+- apkパッケージマネージャーを備えたOpenWrt 25.12.5または25.12.6とroot権限。直接ダウンロードにはルーターのインターネット接続が必要ですが、ローカル`--bundle`は信頼できるLANで利用できます。
+- 正確なファームウェア、対象、アーキテクチャ、選択したプロトコルに対応する公開済みパッケージ。現在のパッケージ・更新ポリシーは `x86/64` と `mediatek/filogic` を許可します。SDK ビルドや ARM アーキテクチャ名だけでは、すべてのルーターモデルとの互換性を証明できません。
+- 検証済みパッケージ全体の予算に十分なフラッシュと RAM。パッケージを変更する前に、インストーラーが依存関係、カーネル ABI、一時領域を確認します。
+- 信頼できるローカルネットワークからのアクセス。Androidでの検出と初期設定では、電話をルーターのWi-Fiに接続してください。
+
+[v1.0.6リリース](https://github.com/foxhole-team/foxhole-openwrt-client/releases/tag/v1.0.6)にはBASE 1.0.6-r1とFoxHole Core 1.0.4のクライアントモジュールが含まれます。互換性のあるCore更新は個別にインストールできます。パッケージの提供と互換性はリリース、ファームウェア、ターゲットによって異なります。
+
+ソースでの対応とクロスコンパイル済みバイナリだけでは、ルーターとの互換性を確認したことにはなりません。
+真正性を確認済みのリリースカタログに含まれるパッケージだけをインストールできます。
+着信接続用サーバーには、未使用の S2/OpenPGP パッケージに関する、精査済みの依存関係の指摘が 2 件残っています。
+対象の厳密なビルド条件と例外の有効期限は、[リリース](RELEASE.md)に記載しています。
+
+## 対応ルーター
+
+| モデル | RAM | Flash | OpenWrt | パッケージのインストール先 |
+|---|---|---|---|---|
+| [Cudy WR3000 v1](https://www.cudy.com/products/wr3000-1-0) | 256 MB | 16 MB NOR | 25.12.5 | RAM のみ |
+| [Cudy WR3000S v1](https://www.cudy.com/products/wr3000s-1-0) | 256 MB | 128 MB NAND | 25.12.6 | FLASH |
+
+表には総容量を記載しています。インストール前に機種と空き容量を確認します。
+
 <p align="center">
   <img src="../media/dashboard.png" width="100%" alt="FoxHole OpenWrt Client dashboard">
 </p>
@@ -157,7 +174,7 @@ sh install.sh --bundle /tmp/bundle --manifest-sha256 HASH --hy2 --ram --apply
 
 PINを変更するとペアリングがリセットされ、端末の再接続が必要になります。VPNプロファイルと設定は保持されます。
 
-**LuCI → Services → FoxHole** を開き、PIN を決めて VPN プロファイルを追加します。
+**LuCI → Services → FoxHole OpenWRT Client → Panel** を開き、PIN を決めて VPN プロファイルを追加します。
 ルールにより、端末、ドメイン、国別のトラフィックを VPN または直接接続へ振り分けられます。
 
 `ACCESS_LOCAL_NETWORK` - ルーターの検索、設定、管理に使用します。Android 17（API 37）以降でアプリの対象 API も 37 以降の場合、LAN 操作の前にシステム権限を要求します。拒否すると該当する操作は行えません。
@@ -205,7 +222,7 @@ Wi-Fi アイコンは物理的な Wi-Fi 接続のみを示し、SSID や位置�
 
 ウェブパネルまたはペアリング済みアプリの **設定 → FoxHole 更新** で、同じ認証付きトランザクションによる確認とインストールを行います。FoxHole パネル/runtime と選択済みのインストール済みクライアントプロトコルモジュールが対象で、FLASH/RAM の選択を保持します。新しいプロトコルは別途インストールします。プロファイルとペアリングは保持され、OpenWrt ファームウェアや他のシステムパッケージは更新しません。
 
-CLI／バックエンドからの直接インストールでは、自動更新は既定で無効です。WebまたはAndroidで新規設定する際は、独立した自動更新チェックボックスが有効になっています。不要な場合はオフにしてください。無効化を含む既存のルーターポリシーは、ペアリング時や設定を開く際も保持されます。後から設定画面で変更できます。
+新規インストールでは、所有者が PIN を設定するとパッケージの自動更新が有効になります。無効にするには、設定時にチェックを外すか、インストーラーに `--no-auto-update` を指定します。再ペアリング時は以前の選択が保持されます。後から設定で変更できます。
 
 有効にすると、ルーターは毎日確認し、検証済み FoxHole パッケージ更新をインストールします。電話のペアリング解除でもこの設定は無効になりません。更新機能がない古いパッケージには、個別に検証した移行が必要です。[ソフトウェア更新](UPDATES.md)を参照してください。
 
@@ -218,6 +235,16 @@ CLI／バックエンドからの直接インストールでは、自動更新�
 - **利用手順:** [CLI](CLI.md) · [Updates](UPDATES.md) · [Rollback](ROLLBACK.md)
 - **アーキテクチャ:** [Architecture](ARCHITECTURE.md) · [Mobile networks](MOBILE-NETWORKS.md) · [Backup](BACKUP-ARCHITECTURE.md) · [Profile origin](PROFILE-ORIGIN.md)
 - **保守:** [Release](RELEASE.md) · [Bundle transport](BUNDLE-TRANSPORT.md) · [RAM install](RAM-INSTALL.md) · [Bootstrap](RAM-BOOTSTRAP.md) · [Prerequisites](RAM-PREREQUISITES.md) · [RAM updates](RAM-UPDATE-CONTROLLER.md) · [Engine origin](engine-release-origin.md) · [Security](../SECURITY.md)
+
+### FoxHole のアンインストール
+
+LuCI の **サービス → FoxHole OpenWRT Client → Uninstall FoxHole** を開き、対象を確認してください。ルーターの root 端末では次のコマンドを実行します。
+
+```sh
+/usr/libexec/foxhole-uninstall
+```
+
+コマンドは削除内容を表示して確認を求めます。FLASH 版では VPN を切断して基本パッケージを削除します。管理対象の RAM 版では、自動起動を無効にした後で OpenWrt を再起動してください。再起動後も FLASH 版が残る場合は別途削除してください。ネットワーク設定、プロファイル、ペアリングは保持されます。FLASH に保存済みの復元用キャッシュは保持されます。
 
 ## 🤝 開発への参加
 

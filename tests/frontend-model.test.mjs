@@ -11,8 +11,8 @@ import {
 
 test('installed package metadata preserves unknown version and authentic storage', () => {
   const value = { schema: 1, product: 'foxhole', installed: true, storage: 'RAM', version: '1.0.6-r1' };
-  assert.deepEqual(packageMetadata(value), { storage: 'RAM', version: '1.0.6-r1', installedModules: null });
-  assert.deepEqual(packageMetadata({ ...value, storage: 'FLASH', version: null }), { storage: 'FLASH', version: null, installedModules: null });
+  assert.deepEqual(packageMetadata(value), { storage: 'RAM', version: '1.0.6-r1', installedModules: null, hysteriaComponent: null, routerInfo: null, homeServerEnabled: null });
+  assert.deepEqual(packageMetadata({ ...value, storage: 'FLASH', version: null }), { storage: 'FLASH', version: null, installedModules: null, hysteriaComponent: null, routerInfo: null, homeServerEnabled: null });
   for (const bad of [{ ...value, storage: 'ram' }, { ...value, installed: false },
     { ...value, product: 'another' }, { ...value, version: '<script>' }])
     assert.throws(() => packageMetadata(bad));

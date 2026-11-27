@@ -18,11 +18,11 @@ async function command() {
     const blocks = [...(await read(path)).matchAll(/```sh\n([\s\S]*?)\n```/g)]
       .map(match => match[1]).filter(block => block.includes('uclient-fetch'));
     assert.equal(blocks.length, 1, path + ' must contain one installation command');
-    assert.equal(blocks[0].split('\n').length, 1, path + ' must use one shell line');
+    assert.ok(blocks[0].split('\n').length <= 32, path + ' must use a bounded shell script');
     return blocks[0];
   }));
   assert.equal(commands[0], commands[1], 'README commands must remain identical');
-  assert.match(commands[0], /; sh "\$f" /);
+  assert.match(commands[0], /sh "\$installer" /);
   assert.doesNotMatch(commands[0], /\/bin\/(?:ba)?sh/);
   return commands[0];
 }
@@ -103,7 +103,8 @@ async function fixture(t, download) {
     await chmod(path, 0o755);
   }
   const source = (await command()).replaceAll('RELEASE_TAG', 'v0.1.0-test')
-    .replaceAll('MANIFEST_SHA256', manifest);
+    .replaceAll('MANIFEST_SHA256', manifest)
+    .replaceAll('INSTALLER_SHA256', sha(await readFile(join(root, 'install.sh'))));
   const result = spawnSync('/bin/sh', ['-c', source], {
     cwd: directory, encoding: 'utf8', timeout: 10000,
     env: { PATH: bin, MOCK_ROOT: directory, MOCK_DOWNLOAD: download,
@@ -112,10 +113,10 @@ async function fixture(t, download) {
   return { directory, result };
 }
 
-test('README installation commands match and pin the current installer', async () => {
+test('README installation commands match and require explicit release anchors', async () => {
   const source = await command();
-  const hashes = source.match(/\b[a-f0-9]{64}\b/g);
-  assert.deepEqual(hashes, [sha(await readFile(join(root, 'install.sh')))]);
+  for (const anchor of ['RELEASE_TAG', 'MANIFEST_SHA256', 'INSTALLER_SHA256'])
+    assert.equal(source.split(anchor).length - 1, 1);
 });
 
 test('README installation verifies the download before passing release options', async t => {

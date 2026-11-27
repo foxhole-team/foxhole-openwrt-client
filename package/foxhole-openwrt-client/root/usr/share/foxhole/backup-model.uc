@@ -76,6 +76,7 @@ export function validate_document(value) {
 };
 export function export_document(current,panel_value,enabled,now) {
  let checked=state(current);checked.settings.standaloneAccess=panel_value.standalone!='0';
+ for(let server in checked.servers) { delete server.subscription; delete server.subscriptionPending; }
  return validate_document({schema:1,kind:'foxhole-settings-backup-v1',createdAtUnixMs:now,
   state:checked,panel:panel_value,autoUpdate:{enabled}});
 };

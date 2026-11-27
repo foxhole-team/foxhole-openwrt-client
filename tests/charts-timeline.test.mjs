@@ -66,8 +66,8 @@ test('traffic rates never average across known reboot, counter reset or device r
 });
 test('desktop settings uses content height bounded by the viewport and preserves mobile overflow', () => {
   const css = readFileSync(new URL('../package/foxhole-openwrt-client/htdocs/luci-static/resources/foxhole/app.css', import.meta.url), 'utf8');
-  assert.match(css, /@media \(min-width: 721px\)[^]*?\.modal:is\(\.view-settings-home, \.view-interface-settings, \.view-pairings\)\[open\] \{ height: fit-content; max-height: calc\(var\(--viewport-height\) - 48px\); \}/);
-  assert.match(css, /\.modal:is\(\.view-settings-home, \.view-interface-settings, \.view-pairings\) \.modal-stage \{ flex: 0 1 auto; \}/);
+  assert.match(css, /@media \(min-width: 721px\)[^]*?\.modal:is\(\.view-settings-home, \.view-interface-settings\)\[open\] \{ height: fit-content; max-height: calc\(var\(--viewport-height\) - 48px\); \}/);
+  assert.match(css, /\.modal:is\(\.view-settings-home, \.view-interface-settings\) \.modal-stage \{ flex: 0 1 auto; \}/);
   assert.match(css, /\.modal-stage \{[^}]*min-height: 0;[^}]*overflow-y: auto;/);
   assert.match(css, /@media \(max-width: 720px\)/);
 });
@@ -75,6 +75,7 @@ test('paired desktop modal fits the table within bounded viewport margins', () =
   const css = readFileSync(new URL('../package/foxhole-openwrt-client/htdocs/luci-static/resources/foxhole/app.css', import.meta.url), 'utf8');
   const rule = css.match(/\.modal\.view-pairings \{ width: min\(calc\(100% - ([0-9]+)px\), ([0-9]+)px\); \}/);
   assert.ok(rule);
+  assert.match(css, /\.modal:is\(\.view-pairings, \.view-client-device\.has-client-export\)\[open\] \{ height: min\(32rem, calc\(var\(--viewport-height\) \* \.8\)\)/);
   const margin = Number(rule[1]), maximum = Number(rule[2]);
   const minimumTable = Number(css.match(/\.pairing-table \{[^}]*min-width: ([0-9]+)rem/)[1]) * 16;
   for (const viewport of [721, 800, 1024, 1440, 2560]) {

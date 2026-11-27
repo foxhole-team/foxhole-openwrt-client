@@ -22,6 +22,9 @@ if [ "${1-}" = --owned-child ]; then
    operation=$1; shift
    case "$operation" in
     fetch)
+     if [ "$2" = github-release ]; then
+      exec /etc/foxhole/ram-update/bootstrap/foxhole-ram-fetch --github-release "$1"
+     fi
      if [ "$2" = pinned ]; then
       exec /etc/foxhole/ram-update/bootstrap/foxhole-ram-fetch --ca-certificate /etc/foxhole/ram-update/bootstrap/ca.pem "$1"
      fi

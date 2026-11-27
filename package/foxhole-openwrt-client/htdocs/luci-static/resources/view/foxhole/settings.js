@@ -2,6 +2,7 @@
 'require form';
 'require request';
 'require view';
+'require foxhole.loader as pixelLoader';
 
 function loadLocale(name) {
 	return request.get(L.resource('foxhole/locales/' + name + '.json'), {
@@ -13,6 +14,7 @@ const languages = ['ru', 'en', 'ja', 'de', 'fr', 'es', 'zh'];
 
 return view.extend({
 	load: function() {
+  pixelLoader.mount();
 		return Promise.all(languages.map(loadLocale));
 	},
 

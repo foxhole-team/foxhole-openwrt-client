@@ -23,8 +23,13 @@ const bindings = {
 };
 const model = new Function(...Object.keys(bindings), `${adapted}\nreturn {${exported.join(',')}};`)(...Object.values(bindings));
 const begin = () => ({ expectedRevision: 3, requestId: 'a'.repeat(32), releaseTag: 'v1.0.2', version: '1.0.2-r1', fileSha256: 'b'.repeat(64), fileBytes: 1234 });
-const release = (version, flags = {}) => ({ draft: false, prerelease: true, tag_name: `v${version.split('-r')[0]}`,
-  assets: [{ name: `foxhole-openwrt-client-${version}.apk`, size: 2000 }, { name: 'SHA256SUMS', size: 300 }], ...flags });
+const release = (version, flags = {}) => {
+ const tag='v'+version.split('-r')[0], repo='foxhole-team/foxhole-openwrt-client';
+ const names=[[`foxhole-openwrt-client-${version}.apk`,2000],['SHA256SUMS',300]];
+ return {id:42,draft:false,prerelease:true,tag_name:tag,url:`https://api.github.com/repos/${repo}/releases/42`,
+  html_url:`https://github.com/${repo}/releases/tag/${tag}`,
+  assets:names.map(([name,size])=>({name,size,browser_download_url:`https://github.com/${repo}/releases/download/${tag}/${name}`})),...flags};
+};
 
 test('native-style numeric version order is bounded to supported package versions', () => {
   assert.equal(model.compare('1.10.0-r1', '1.2.0-r9'), 1);
@@ -53,9 +58,12 @@ test('only known network-connect or timeout exit4 enables device fallback', () =
     [4, 'SSL error: invalid peer\nConnection error: Connection failed'], [4, 'certificate rejected\nConnection error: Connection timed out'],
     [4, 'Connection reset prematurely'], [1, 'signature verification failed']]) assert.equal(model.network_unreachable(code, text), false);
 });
-test('selector includes prereleases, excludes drafts, ignores supplied asset URLs and chooses highest complete BASE', () => {
+test('selector includes eligible prereleases, excludes drafts and selects only canonical package assets', () => {
   const rows = [release('1.0.9-r1', { draft: true }), release('1.0.2-r1'), release('1.0.3-r2')];
+  const canonical=rows[2].assets[0].browser_download_url;
   rows[2].assets[0].browser_download_url = 'https://attacker.invalid/payload';
+  assert.throws(()=>model.select_release(rows,'1.0.1-r1'),/RELEASE_UNAVAILABLE/);
+  rows[2].assets[0].browser_download_url=canonical;
   const selected = model.select_release(rows, '1.0.1-r1');
   assert.equal(selected.version, '1.0.3-r2'); assert.equal('url' in selected, false);
   assert.equal(model.select_release([release('1.0.1-r1')], '1.0.1-r1'), null);
@@ -103,4 +111,17 @@ test('108 policy uses the exact two-version list while legacy policy remains a s
     assert.throws(() => model.policy({ ...value, ...patch }, '1.0.8-r1', 'v1.0.8'));
   }
   assert.throws(() => model.policy(value, '1.0.8-r1', 'v1.0.8', '25.12.7'), /UNSUPPORTED_TARGET/);
+});
+
+test('local package ahead of a valid official release is current; malformed current/newer release cannot certify it',()=>{
+ assert.equal(model.select_release([release('1.0.8-r2',{prerelease:false})],'1.0.9-r2'),null);
+ const missing=release('1.0.10-r1',{prerelease:false}); missing.assets=missing.assets.filter(x=>x.name!=='SHA256SUMS');
+ const old=release('1.0.8-r2',{prerelease:false});
+ assert.throws(()=>model.select_release([missing,old],'1.0.9-r2'),/RELEASE_UNAVAILABLE/);
+ assert.throws(()=>model.select_release([{...missing,tag_name:'v1.0.9'},old],'1.0.9-r2'),/RELEASE_UNAVAILABLE/);
+ const foreign=release('1.0.8-r2');foreign.html_url='https://github.com/other/project/releases/tag/v1.0.8';
+ assert.throws(()=>model.select_release([foreign],'1.0.9-r2'),/RELEASE_UNAVAILABLE/);
+ const wrongAsset=release('1.0.8-r2');wrongAsset.assets[0].browser_download_url='https://example.invalid/file.apk';
+ assert.throws(()=>model.select_release([wrongAsset],'1.0.9-r2'),/RELEASE_UNAVAILABLE/);
+ assert.equal(model.select_release([release('1.0.9-r3',{prerelease:false})],'1.0.9-r2').version,'1.0.9-r3');
 });

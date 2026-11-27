@@ -147,6 +147,23 @@ traffic acceptance remain separate gates.
 
 ## APK build and firmware acceptance
 
+For v1.0.12 the package role selects the firmware record and APK revision.
+Build the same source into separate output roots with `tools/build-openwrt.sh
+--base-role flash` and `--base-role managed-ram`. The resulting BASE artifacts
+are `foxhole-openwrt-client-1.0.12-r1.apk` (FLASH) and
+`foxhole-openwrt-client-1.0.12-r2.apk` (managed RAM). Both canonical names must
+appear in the release checksum manifest.
+
+The release's `base.adb` has one signed row for the FLASH package.
+`base-ram.adb` has one signed row for the RAM package. After both native
+signatures are available, `tools/bind-base-release.py` takes a trusted
+previous `--input` family and its `--manifest-sha256`, the four
+`--signed-bases` assets as a directory, a native `--apk` and a new
+`--output` directory. It checks both signed indexes, performs native fetch
+readback and verifies the actual compatibility records before emitting the
+changed catalog and universes. Update the RAM-root capacity descriptor for
+those actual inputs and run the full compact-family validator before delivery.
+
 On a non-root Linux x86_64 builder, use Ubuntu 24.04 and the prerequisites
 listed in the [APK lab recipe](../.github/lab-workflows/build-apk.yml):
 

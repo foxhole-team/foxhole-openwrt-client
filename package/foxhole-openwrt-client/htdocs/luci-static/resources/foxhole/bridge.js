@@ -73,6 +73,14 @@ function directRequest(action, payload) {
 
 export function request(action, payload = {}) {
   if (!hasHost) return Promise.reject(new PanelError('host_required'));
+  if (action === 'package.status') {
+    // This public method accepts no arguments on either transport. Prefer the same-origin CGI even inside LuCI.
+    if (!direct) return frameRequest(action, {});
+    return directRequest(action, {}).catch(error => {
+      if (!embedded || error.code !== 'unavailable') throw error;
+      return frameRequest(action, {});
+    });
+  }
   return embedded ? frameRequest(action, payload) : directRequest(action, payload);
 }
 

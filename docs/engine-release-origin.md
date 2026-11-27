@@ -42,3 +42,13 @@ Neither adds a minimum BASE version dependency to
 the host APK database: that database can describe an older BASE beneath an
 active verified RAM overlay. Compatibility is checked against the active
 consumer and the complete signed catalog; failure remains explicit.
+
+### Repair an installed module
+
+An authenticated `engines.plan` request with `operation: "REINSTALL"` uses the existing confirmation and `engines.apply` flow. It requires an inactive selected registry slot and the exact same catalog entry, including its package, signed index, manifest, architecture and storage. `AUTO` keeps the selected storage. The public plan has identical source and target versions and `KEEP_ACTIVE` impact. An active module, an unidentified active provider, and an independent built-in provider cannot be reinstalled by this operation.
+
+Before any package mutation, the worker verifies the signed index, archive, closed package layout and installed native package identity. It records missing or damaged payload files and requires the simulated `apk fix --reinstall` transaction to contain precisely the expected reinstall records. Network and repository fallbacks are disabled for apk. It verifies the actual transaction output, all signed package files, native package identities, world pins, selected registry and executable capabilities. A RAM slot also verifies its volatile executable against the approved binary digest. Repairing that executable uses the launcher lock and an atomic rename.
+
+If a worker stops during mutation, recovery checks the original owner, boot, plan binding, installed identities and selection before reconciling or attempting one repeat of the same signed repair. Unexpected changes remain visible as `RECOVERY_REQUIRED`. A repeat with a healthy payload but no confirmed command result can leave the job `FAILED` without claiming success. Repair never stops or restarts an active tunnel.
+
+On an active BASE RAM overlay, `engines.status` adds the optional top-level field `managementSupported: false`; generic engine plan and apply remain unavailable. A verified independent provider is reported as installed with no managed slot hash, storage or version. This observation does not grant management rights. A previously supported legacy migration remains available only when the authenticated catalog provides a suitable replacement.

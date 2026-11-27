@@ -6,7 +6,8 @@ const STEPS = new Set(["PREPARING", "DOWNLOADING_INDEX", "DOWNLOADING_PACKAGE", 
 const sha = (value) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 
 export function engineStatus(value) {
-  if (!value || value.schema !== 1 || typeof value.busy !== 'boolean' || !sha(value.routerId) || !sha(value.catalogSha256) ||
+  if (!value || value.schema !== 1 || typeof value.busy !== 'boolean' ||
+      ('managementSupported' in value && typeof value.managementSupported !== 'boolean') || !sha(value.routerId) || !sha(value.catalogSha256) ||
       !Number.isInteger(value.revision) || value.revision < 0 ||
       !Array.isArray(value.entries) || value.entries.length > 12) throw new Error('invalid-engine-status');
   const seen = new Set();
@@ -59,12 +60,31 @@ export class EnginePanel {
 
   async open() {
     const sequence = ++this.sequence, scope = this.scope();
+    const loading = document.querySelector('[data-engine-analysis]');
+    const storage = document.querySelector('[data-engine-storage-row]');
+    const list = document.querySelector('[data-engine-list]');
+    this.current = null;
+    if (loading) loading.hidden = false;
+    if (storage) storage.hidden = true;
+    if (list) { list.hidden = true; list.replaceChildren(); }
     try {
       const value = engineStatus(await this.call('engines.status'));
       if (!this.fresh(sequence, scope)) return;
       this.current = value;
+      if (storage) storage.hidden = value.managementSupported === false;
       this.renderList();
-    } catch (error) { if (this.fresh(sequence, scope)) this.error(error); }
+    } catch (error) {
+      if (this.fresh(sequence, scope)) {
+        if (list) list.append(this.element('p', 'muted', this.text('engines.read_failed')),
+          this.button('engine-refresh', 'pairing.refresh'));
+        this.error(error);
+      }
+    } finally {
+      if (this.fresh(sequence, scope)) {
+        if (loading) loading.hidden = true;
+        if (list) list.hidden = false;
+      }
+    }
   }
 
   button(action, label, id, operation) {
@@ -75,6 +95,17 @@ export class EnginePanel {
     if (operation) node.dataset.operation = operation;
     node.disabled = this.pending || this.current?.busy;
     return node;
+  }
+
+  protocolAction(row, operation, key, symbol, reason) {
+    const button = this.button('engine-plan', key, row.id, operation);
+    button.className = 'icon-button' + (operation === 'REMOVE' ? ' is-danger' : '');
+    const label = this.text(key) + ' · ' + this.text(`protocol.${row.id}`);
+    button.setAttribute('aria-label', label);
+    button.title = reason ? label + ' · ' + this.text(reason) : label;
+    button.disabled ||= this.current.managementSupported === false || Boolean(reason);
+    button.replaceChildren(this.icon(symbol));
+    return button;
   }
 
   renderList() {
@@ -95,26 +126,33 @@ export class EnginePanel {
       copy.append(this.element('strong', '', this.text(`protocol.${row.id}`)),
         this.element('small', '', this.text(row.installed ? 'engines.installed' : 'engines.available')));
       node.append(this.icon('network'), copy);
-      if (row.availability === 'AVAILABLE' && (!row.installed || row.updateAvailable))
-        node.append(this.button('engine-plan', row.installed ? 'action.update' : 'action.add', row.id,
-          row.installed ? 'UPDATE' : 'ADD'));
-      if (row.installed && row.binarySha256) {
-        const remove = this.button('engine-plan', 'action.delete', row.id, 'REMOVE');
-        remove.classList.add('is-danger');
-        remove.disabled ||= row.active;
-        node.append(remove);
+      const actions = this.element('span', 'engine-actions');
+      if (row.installed) {
+        const operation = row.updateAvailable || !row.binarySha256 ? 'UPDATE' : 'REINSTALL';
+        actions.append(this.protocolAction(row, operation, 'engines.reinstall', 'reinstall',
+          row.availability !== 'AVAILABLE' ? 'error.engine_unsupported_target' :
+            !row.binarySha256 && !row.updateAvailable ? 'engines.bundled' :
+            row.active && operation === 'REINSTALL' ? 'error.engine_in_use' : null));
+        actions.append(this.protocolAction(row, 'REMOVE', 'action.delete', 'trash',
+          !row.binarySha256 ? 'engines.bundled' : row.active ? 'error.engine_in_use' : null));
+      } else if (row.availability === 'AVAILABLE') {
+        actions.append(this.protocolAction(row, 'ADD', 'action.add', 'download'));
       }
+      node.append(actions);
       list.append(node);
     }
   }
 
   async prepare(id, operation) {
-    if (!this.current || this.pending || this.current.busy) return;
+    if (!this.current || this.pending || this.current.busy || this.current.managementSupported === false) return;
     const scope = this.scope(), sequence = this.sequence;
     this.pending = true;
     this.renderList();
     try {
-      const storage = document.querySelector('[data-engine-storage]')?.value || 'AUTO';
+      const row = this.current.entries.find(entry => entry.id === id);
+      if (!row || (operation === 'REMOVE' && (!row.installed || !row.binarySha256 || row.active)) ||
+          (operation === 'REINSTALL' && (!row.installed || !row.binarySha256 || row.active))) return;
+      const storage = operation === 'REINSTALL' ? row.storage : document.querySelector('[data-engine-storage]')?.value || 'AUTO';
       const value = await this.call('engines.plan', { operation, engineIds: [id], storage,
         expectedRevision: this.current.revision, catalogSha256: this.current.catalogSha256 });
       if (!this.fresh(sequence, scope)) return;

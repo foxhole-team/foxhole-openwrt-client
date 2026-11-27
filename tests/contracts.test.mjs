@@ -19,7 +19,7 @@ test('LuCI declarations match RPC names, arguments and ACL scopes', async () => 
   const methods = await rpcMethods();
   const acl = JSON.parse(await read(`${packageRoot}/root/usr/share/rpcd/acl.d/luci-app-foxhole.json`));
   const scope = acl['luci-app-foxhole'];
-  assert.deepEqual(Object.keys(acl), ['luci-app-foxhole', 'luci-app-foxhole-pin']);
+  assert.deepEqual(Object.keys(acl), ['luci-app-foxhole', 'luci-app-foxhole-pin', 'luci-app-foxhole-remove']);
   assert.deepEqual(acl['luci-app-foxhole-pin'].write.ubus,
     { 'foxhole.admin': ['set_pin'] });
   assert.deepEqual([...host.declarations.keys()].sort(), Object.keys(methods)
@@ -192,6 +192,10 @@ test('package root entry and browser cache key follow the release', async () => 
   assert.match(defaults, /panel_index='foxhole\.html'/);
   assert.match(defaults, /legacy_index='luci-static\/resources\/foxhole\/shell\.html'/);
   assert.doesNotMatch(postinst, /uci-defaults/);
+  const frontendEntries = [shell, app, await read(`${panelRoot}/charts.js`), await read(`${panelRoot}/loader.js`),
+    await read(`${packageRoot}/htdocs/luci-static/resources/view/foxhole/client.js`)];
+  const keys = frontendEntries.flatMap(source => Array.from(source.matchAll(/\?v=([A-Za-z0-9.-]+)/g), match => match[1]));
+  assert.equal(new Set(keys).size, 1, 'LuCI, the standalone shell and all versioned module imports share one cache key');
   assert.match(shell, new RegExp(`app\\.css\\?v=${cacheKey}`));
   assert.match(shell, new RegExp(`app\\.js\\?v=${cacheKey}`));
   assert.match(shell, new RegExp(`foxhole\\.png\\?v=${cacheKey}`));
@@ -316,9 +320,18 @@ test('help uses the shared modal without another overlay', async () => {
   assert.doesNotMatch(app, /openHelp|closeHelp|helpButton/);
   assert.doesNotMatch(css, /\.help-(?:backdrop|button|dialog)/);
   assert.match(shell, /id="tpl-help"/);
-  assert.match(shell, /data-action="open-help"[^>]*data-main-help-entry/);
+  assert.match(shell, /data-action="open-help"[^>]*data-settings-help-entry/);
   assert.match(shell, /data-help-content/);
   assert.doesNotMatch(shell, /data-i18n="[^"]*_copy"/);
+});
+
+test('updates, protocols and backup size to content while log refresh has one accessible header control', async()=>{
+ const html=await read(`${panelRoot}/shell.html`), css=await read(`${panelRoot}/app.css`), app=await read(`${panelRoot}/app.js`);
+ assert.match(css,/\.modal:is\(\.view-updates, \.view-engines, \.view-backup\)\[open\] \{ height: fit-content/);
+ assert.doesNotMatch(html,/data-i18n="backup.description"/);
+ assert.match(html,/data-action="logs-refresh" data-log-refresh hidden data-i18n-title="logs.refresh" data-i18n-aria-label="logs.refresh"/);
+ assert.equal((html.match(/data-action="logs-refresh"/g)||[]).length,1);
+ assert.match(app,/'logs': \{ icon: 'logs', actions: \(\) => \[backAction, closeAction\]/);
 });
 
 test('DHCP picker and native LuCI access setting are packaged', async () => {
@@ -376,8 +389,8 @@ test('FoxHole themes, WAN metadata and section controls are explicit', async () 
     /\.route-picker-trigger \{[^}]*padding: 8px 0 8px 12px/);
   assert.match(css,
     /\.rule-inline-route \.route-picker-trigger \{[^}]*padding: 4px 6px/);
-  assert.doesNotMatch(css,
-    /\.setting-icon svg \{[^}]*height:/);
+  assert.match(css,
+    /\.setting-copy\.with-icon > \.setting-icon > svg \{[^}]*width: 15px; height: 15px/);
   assert.doesNotMatch(css, /html\.theme-ui-gray/);
   assert.match(css, /--primary-bg: #fff/);
   assert.match(css, /html\.theme-light[\s\S]*--primary-bg: #303842/);
@@ -410,6 +423,9 @@ test('FoxHole themes, WAN metadata and section controls are explicit', async () 
   assert.match(shell, /data-section-toggle="servers"/);
   assert.match(shell, /data-section-toggle="clients"/);
   assert.match(app, /function setSectionCollapsed\(id, collapsed\)/);
+  assert.match(css, /\.section-collapse-button \{[^}]*height: 27px/);
+  assert.match(css, /\.section-collapse-button svg \{[^}]*transform: rotate\(-90deg\)[^}]*transition: transform/);
+  assert.match(css, /\[data-section-toggle\]\[aria-expanded="false"\] \.section-collapse-button svg \{ transform: rotate\(90deg\); \}/);
   assert.match(app, /function sizeCompactSelect\(select\)/);
   assert.doesNotMatch(css, /\.compact-select\.is-expanded/);
   assert.doesNotMatch(app, /classList\.add\('is-expanded'\)/);
@@ -666,8 +682,8 @@ test('settings views share one bounded modal height with scrollable help', async
   const shell = await read(`${panelRoot}/shell.html`);
   const css = await read(`${panelRoot}/app.css`);
   const views = [
-    ['settings-home', ['localScope', 'localRules', 'clientRules', 'killSwitch'],
-      ['open-exceptions', 'open-engines', 'open-backup', 'open-logs', 'open-interface-settings', 'open-updates', 'open-about'], 0],
+    ['settings-home', ['localScope', 'localRules', 'gamesDirect', 'clientRules', 'killSwitch'],
+      ['open-engines', 'open-backup', 'open-logs', 'open-interface-settings', 'open-updates', 'open-about'], 0],
     ['interface-settings', ['theme', 'darkCharts', 'hideRouterStatus', 'plainHeadings'],
       ['open-pin-change'], 1]
   ];

@@ -11,6 +11,8 @@ import * as pairing from './pairing.uc';
 import * as backup_service from './backup-service.uc';
 import * as store from './private-store.uc';
 import * as packages from './package-operations.uc';
+import * as native_identity from './update-native.uc';
+import * as protocol_facts from './protocol-facts.uc';
 
 const JOB = '/etc/foxhole/engine-job.json';
 const LOCK = '/etc/foxhole/engine.lock';
@@ -215,6 +217,13 @@ export function status(principal) {
 		row.installed = true; row.version = null; row.storage = null;
 		row.updateAvailable = row.availability == 'AVAILABLE';
 	}
+    let facts=protocol_facts.installed();
+    for(let id in (facts?.schema==1&&type(facts.protocols)=='array'?facts.protocols:[])) {
+        for(let row in value.entries)if(row.id==id&&!row.installed) {
+            row.installed=true;row.storage=null;row.version=null;row.binarySha256=null;row.updateAvailable=false;
+        }
+    }
+    if(fs.lstat('/tmp/foxhole-ram-active.json'))value.managementSupported=false;
 	return value;
 };
 export function plan(request, principal) {
@@ -264,6 +273,94 @@ export function apply(request, principal) {
 	return job(result.jobId, principal);
 };
 
+function prepare_packages(job,directory,recovery) {
+    store.directory(directory);store.directory(directory+'/keys');
+    if(registry.hash_file(KEY)!=PUBLIC_RELEASE_PEM_DIGEST||
+       system(['/bin/cp',KEY,directory+'/keys/foxhole.pem'],3000)!=0)fail('PACKAGE_VERIFICATION_FAILED');
+    let items=[],indexes=[],roots=[];
+    for(let v in job.plan.artifacts) {
+        if(!principal_current(job.principal))fail('AUTHENTICATION_FAILED');
+        if(!recovery&&now()>job.plan.expiresAtUptimeMs)fail('STALE_PLAN');
+        progress(job,'DOWNLOADING','DOWNLOADING_PACKAGE',10);
+        let item=packages.candidate(v,directory,directory+'/keys'),idx=directory+'/index-'+v.indexSha256+'.adb';
+        if(!fs.lstat(idx)&&system(['/bin/cp',item.index,idx],3000)!=0)fail('PACKAGE_VERIFICATION_FAILED');
+        if(index(indexes,idx)<0)push(indexes,idx);
+        push(roots,v.packageName);push(items,item);
+    }
+    write(directory+'/repositories.json',indexes);
+    store.write(directory+'/repositories',join('\n',indexes)+'\n');
+    return {items,roots,common:['--no-network','--no-cache','--repositories-file',directory+'/repositories','--keys-dir',directory+'/keys']};
+};
+function reinstall_identity(prepared,directory) {
+    let installed=native_identity.installed_identities(),identity=[];
+    for(let item in prepared) {
+        let v=item.value,row=installed[v.packageName];
+        if(row?.version!=v.packageVersion||row.arch!=v.architecture||row.cas!=native_identity.native_cas(item.nativeId)||
+           registry.hash_file(item.package)!=v.packageSha256||registry.hash_file(directory+'/index-'+v.indexSha256+'.adb')!=v.indexSha256)
+            fail('PACKAGE_VERIFICATION_FAILED');
+    }
+    for(let name in sort(keys(installed))) {
+        let row=installed[name];push(identity,[name,row.version,row.arch,row.cas,row.flags]);
+    }
+    return digest.sha256(sprintf('%J',identity));
+};
+function repair_state(job,old) {
+    if(fs.lstat('/tmp/foxhole-ram-active.json')||!principal_current(job.principal))fail('STALE_PLAN');
+    if(job.owner!=owner(job.principal)||job.plan.owner!=job.owner||job.planId!=job.plan.planId||
+       job.bootId!=job.plan.binding.bootId)fail('STALE_PLAN');
+    let ctx=registry.snapshot_context(state()),current=registry.read();
+    engines.reinstall_bound(job.plan,old,current,ctx);
+    if(current.revision!=old.revision&&job.reinstallCommitStarted!=true)fail('STALE_PLAN');
+    if(!engines.world_pins(job.worldBefore,packages.world(),[],[]))fail('PACKAGE_VERIFICATION_FAILED');
+    return current;
+};
+function reinstall(job,old,batch,directory,recovery) {
+    let items=batch.items,roots=batch.roots,current=repair_state(job,old);
+    let identity=reinstall_identity(items,directory),diagnosis=packages.repair_diagnosis(items);
+    let damaged=length(filter(diagnosis,row=>row.damagedPackageFiles||row.ramBinaryVerified==false));
+    if(!recovery) {
+        job.reinstallInstalledSha256=identity;job.reinstallDiagnosis=diagnosis;write(JOB,job);
+    } else if(job.reinstallInstalledSha256!=identity)fail('RECOVERY_REQUIRED');
+    let unconfirmed=recovery&&job.reinstallRecoveryAttempted&&!job.reinstallNativeDone&&!damaged;
+    if(!unconfirmed&&(!recovery||!job.reinstallNativeDone||damaged)) {
+        if(recovery&&job.reinstallRecoveryAttempted)fail('RECOVERY_REQUIRED');
+        let simulation=packages.apk([...batch.common,'fix','--simulate','--reinstall',...roots]);
+        if(!engines.reinstall_only(simulation,job.plan.artifacts))fail('PACKAGE_VERIFICATION_FAILED');
+        repair_state(job,old);
+        if(reinstall_identity(items,directory)!=identity)fail('PACKAGE_VERIFICATION_FAILED');
+        if(!recovery)engines.admit_apply(job.plan,{planId:job.planId,planSha256:job.plan.planSha256,
+            expectedRevision:old.revision,confirmed:true},registry.read(),registry.snapshot_context(state()),job.owner,now());
+        job.mutationStarted=true;if(recovery)job.reinstallRecoveryAttempted=true;
+        progress(job,'INSTALLING','INSTALLING_PACKAGE',45);
+        let result=packages.apk([...batch.common,'fix','--reinstall',...roots],120000);
+        if(!engines.reinstall_only(result,job.plan.artifacts))fail('PACKAGE_VERIFICATION_FAILED');
+        for(let item in items)packages.repair_ram(item.value,nonce());
+        job.reinstallNativeDone=true;write(JOB,job);
+    }
+    progress(job,'CHECKING','CHECKING_ENGINE',75);
+    if(reinstall_identity(items,directory)!=identity||
+       length(filter(packages.repair_diagnosis(items),row=>row.damagedPackageFiles||row.ramBinaryVerified==false)))
+        fail('PACKAGE_VERIFICATION_FAILED');
+    for(let item in items) {
+        let v=item.value,path=registry.verify_slot(v),cap=packages.decode(registry.capture([path,'capabilities'],131072,130000));
+        if(cap.platform!='linux'||cap.router_contract_version!=1||cap.core_version!=v.version||
+           sprintf('%J',cap.protocols)!=sprintf('%J',[v.id]))fail('CANDIDATE_CHECK_FAILED');
+    }
+    current=repair_state(job,old);
+    if(current.revision==old.revision) {
+        job.reinstallCommitStarted=true;write(JOB,job);
+        registry.write({...old,revision:old.revision+1});
+    }
+    let published=registry.read();
+    if(published.revision!=old.revision+1||sprintf('%J',published)!=sprintf('%J',{...old,revision:old.revision+1}))
+        fail('RECOVERY_REQUIRED');
+    job.revision=published.revision;
+    if(unconfirmed) {
+        job.failureReason='ROUTER_UNAVAILABLE';progress(job,'FAILED','FAILED',job.progressPercent);
+    } else {
+        job.failureReason=null;progress(job,'SUCCEEDED','COMPLETED',100);
+    }
+};
 export function recover(id) {
 	backup_service.guard();
 	return locked(() => {
@@ -271,6 +368,15 @@ export function recover(id) {
 		if (!job || job.jobId != id || job.state != 'RECOVERY_REQUIRED') fail('STALE_PLAN');
 		job.worker = self_worker(); write(JOB, job);
 		try {
+            if(job.mutationStarted&&job.plan.operation=='REINSTALL') {
+                if(fs.lstat('/tmp/foxhole-ram-active.json')||job.bootId!=boot()||!principal_current(job.principal))fail('RECOVERY_REQUIRED');
+                let old=job.previousRegistry;
+                repair_state(job,old);
+                // Revalidate the original private stage without allocating a second set of archives.
+                let directory='/tmp/foxhole/'+id;
+                reinstall(job,old,prepare_packages(job,directory,true),directory,true);
+                return public_job(job);
+            }
 			database_lock = apk_idle();
 			let before = job.installedBefore, before_world = job.worldBefore;
 			if (!job.mutationStarted) {
@@ -332,24 +438,13 @@ export function run(id) {
 				expectedRevision: old.revision, confirmed: true };
 			engines.admit_apply(job.plan, apply_request, registry.read(), registry.snapshot_context(state()), job.owner, now());
 			let directory = '/tmp/foxhole/' + id;
-			store.directory(directory); store.directory(directory + '/keys');
-			if (registry.hash_file(KEY) != PUBLIC_RELEASE_PEM_DIGEST) fail('PACKAGE_VERIFICATION_FAILED');
-			if (system(['/bin/cp', KEY, directory + '/keys/foxhole.pem'], 3000) != 0) fail('PACKAGE_VERIFICATION_FAILED');
-			let before = packages.installed(), before_world = packages.world(), prepared = [], repositories = [], roots = [], removed_packages = [];
-			job.installedBefore = before; job.worldBefore = before_world; write(JOB, job);
-			for (let value in job.plan.artifacts) {
-				if (!principal_current(job.principal)) fail('AUTHENTICATION_FAILED');
-				if (now() > job.plan.expiresAtUptimeMs) fail('STALE_PLAN');
-				progress(job, 'DOWNLOADING', 'DOWNLOADING_PACKAGE', 10);
-				let item = packages.candidate(value, directory, directory + '/keys');
-				push(prepared, item); push(roots, value.packageName);
-				let index = directory + '/index-' + value.indexSha256 + '.adb';
-				if (!fs.lstat(index) && system(['/bin/cp', item.index, index], 3000) != 0) fail('PACKAGE_VERIFICATION_FAILED');
-				push(repositories, index);
-			}
-			write(directory + '/repositories.json', repositories);
-			store.write(directory + '/repositories', join('\n', repositories) + '\n');
-			let common = ['--no-network', '--no-cache', '--repositories-file', directory + '/repositories', '--keys-dir', directory + '/keys'];
+            let before=packages.installed(),before_world=packages.world(),removed_packages=[];
+            job.installedBefore=before;job.worldBefore=before_world;write(JOB,job);
+            let batch=prepare_packages(job,directory,false),prepared=batch.items,roots=batch.roots,common=batch.common;
+            if(job.plan.operation=='REINSTALL') {
+                reinstall(job,old,batch,directory,false);
+                return public_job(job);
+            }
 			if (length(roots)) {
 				let selected = packages.decode(packages.apk([...common, 'query', '--format', 'json', '--world', '--recursive', ...roots]));
 				let delta = [];

@@ -1,8 +1,15 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=foxhole-openwrt-client
-PKG_VERSION:=1.0.8
+PKG_VERSION:=1.0.13
+FOXHOLE_BASE_ROLE?=flash
+ifeq ($(FOXHOLE_BASE_ROLE),flash)
+PKG_RELEASE:=1
+else ifeq ($(FOXHOLE_BASE_ROLE),managed-ram)
 PKG_RELEASE:=2
+else
+$(error Unsupported FOXHOLE_BASE_ROLE)
+endif
 PKG_LICENSE:=GPL-3.0-or-later GPL-2.0-only Zlib
 PKG_MAINTAINER:=FoxHole Team
 
@@ -41,6 +48,7 @@ define Package/foxhole-openwrt-client/postinst
 if [ -z "$${IPKG_INSTROOT}" ]; then
 	if /usr/libexec/foxhole-update-job hooks >/dev/null 2>&1; then exit 0; fi
 	/usr/libexec/foxhole-license --show en || exit 1
+	if [ "$${PKG_UPGRADE:-0}" = 0 ] && [ -z "$$2" ]; then /usr/libexec/foxhole-initial-update-policy || exit 1; fi
 	printf '%s\n' 'Accept the agreement when setting up FoxHole OpenWRT Client through the web panel, CLI or phone.'
 	/etc/init.d/foxhole-runtime enable
 	/etc/init.d/foxhole-runtime restart
@@ -101,6 +109,7 @@ define Package/foxhole-openwrt-client/install
 	$(INSTALL_BIN) ./root/usr/libexec/foxhole-ram-update-job ./root/usr/libexec/foxhole-ram-update-command $(1)/usr/libexec/
 	$(INSTALL_BIN) ./root/usr/libexec/foxhole-ram-switch ./root/usr/libexec/foxhole-ram-switch-command $(1)/usr/libexec/
 	$(INSTALL_BIN) ./root/usr/libexec/foxhole-ram-recovery-command $(1)/usr/libexec/
+	$(INSTALL_BIN) ./root/usr/libexec/foxhole-initial-update-policy ./root/usr/libexec/foxhole-uninstall $(1)/usr/libexec/
 	$(INSTALL_BIN) ./root/usr/libexec/foxhole-update-job ./root/usr/libexec/foxhole-update-hint $(1)/usr/libexec/
 	$(INSTALL_BIN) ./root/usr/libexec/foxhole-core-update-hint $(1)/usr/libexec/
 	$(INSTALL_BIN) ./root/usr/libexec/foxhole-transaction-stage-v1 ./root/usr/libexec/foxhole-transaction-command-v1 $(1)/usr/libexec/
@@ -113,6 +122,7 @@ define Package/foxhole-openwrt-client/install
 	$(INSTALL_BIN) ./root/usr/libexec/foxhole-license $(1)/usr/libexec/
 	$(INSTALL_BIN) ./root/usr/libexec/foxhole-private-file $(1)/usr/libexec/
 	$(INSTALL_BIN) ./root/usr/libexec/foxhole-provider-resolve $(1)/usr/libexec/
+	$(INSTALL_BIN) ./root/usr/libexec/foxhole-subscriptions ./root/usr/libexec/foxhole-subscription-fetch $(1)/usr/libexec/
 	$(INSTALL_BIN) ./root/usr/libexec/foxhole-country-fetch $(1)/usr/libexec/
 	$(INSTALL_BIN) ./root/etc/init.d/foxhole-inbound $(1)/etc/init.d/
 	$(INSTALL_BIN) ./root/etc/init.d/foxhole-inbound-services $(1)/etc/init.d/
@@ -140,6 +150,7 @@ define Package/foxhole-openwrt-client/install
 	$(INSTALL_BIN) ./root/usr/share/rpcd/ucode/foxhole.uc \
 		$(1)/usr/share/rpcd/ucode/foxhole.uc
 	$(INSTALL_DIR) $(1)/usr/share/foxhole
+	$(INSTALL_DATA) ./root/usr/share/foxhole/subscriptions.uc $(1)/usr/share/foxhole/
 	$(INSTALL_DATA) ./root/usr/share/foxhole/log-model.uc ./root/usr/share/foxhole/log-service.uc $(1)/usr/share/foxhole/
 	$(INSTALL_DATA) ./root/usr/share/foxhole/journal-model.uc ./root/usr/share/foxhole/journal-service.uc $(1)/usr/share/foxhole/
 	$(INSTALL_DATA) ./root/usr/share/foxhole/backup-model.uc ./root/usr/share/foxhole/backup-service.uc $(1)/usr/share/foxhole/
@@ -157,7 +168,10 @@ define Package/foxhole-openwrt-client/install
 		--x86-gzip "$(FOXHOLE_TRANSACTION_X86_GZIP_INPUT)" \
 		--arm64-gzip "$(FOXHOLE_TRANSACTION_ARM64_GZIP_INPUT)" \
 		--install-dir "$(1)/usr/share/foxhole"
-	$(INSTALL_DATA) ./root/usr/share/foxhole/update-model.uc ./root/usr/share/foxhole/update-native.uc ./root/usr/share/foxhole/update-service.uc ./root/usr/share/foxhole/update-policy.json $(1)/usr/share/foxhole/
+	$(INSTALL_DATA) ./root/usr/share/foxhole/initial-update-choice.uc ./root/usr/share/foxhole/package-removal.uc $(1)/usr/share/foxhole/
+	$(INSTALL_DATA) ./root/usr/share/foxhole/update-model.uc ./root/usr/share/foxhole/update-native.uc ./root/usr/share/foxhole/update-service.uc $(1)/usr/share/foxhole/
+	python3 $(CURDIR)/../../tools/install-base-policies.py --role "$(FOXHOLE_BASE_ROLE)" --version "$(PKG_VERSION)" \
+		--revision "$(PKG_RELEASE)" --source ./root/usr/share/foxhole --output "$(1)/usr/share/foxhole"
 	$(INSTALL_DATA) ./root/usr/share/foxhole/core-update-model.uc ./root/usr/share/foxhole/core-update-native.uc ./root/usr/share/foxhole/core-update-service.uc ./root/usr/share/foxhole/core-update-transaction.uc $(1)/usr/share/foxhole/
 	$(INSTALL_DATA) ./root/usr/share/foxhole/update-capture.uc $(1)/usr/share/foxhole/
 	$(INSTALL_DATA) ./root/usr/share/foxhole/core-update-upload.uc $(1)/usr/share/foxhole/
@@ -193,6 +207,7 @@ define Package/foxhole-openwrt-client/install
 		$(1)/usr/share/foxhole/model.uc
 	$(INSTALL_DATA) ./root/usr/share/foxhole/runtime-model.uc \
 		$(1)/usr/share/foxhole/runtime-model.uc
+	$(INSTALL_DATA) ./root/usr/share/foxhole/game-routing.json $(1)/usr/share/foxhole/
 	$(INSTALL_DATA) ./root/usr/share/foxhole/probe.uc \
 		$(1)/usr/share/foxhole/probe.uc
 	$(INSTALL_DIR) $(1)/usr/share/nftables.d/chain-pre/forward
@@ -225,6 +240,7 @@ define Package/foxhole-openwrt-client/install
 		$(1)/www/luci-static/resources/view/foxhole/client.js
 	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/foxhole/settings.js \
 		$(1)/www/luci-static/resources/view/foxhole/settings.js
+	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/foxhole/remove.js $(1)/www/luci-static/resources/view/foxhole/
 	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/foxhole/pin.js \
 		$(1)/www/luci-static/resources/view/foxhole/pin.js
 	$(INSTALL_DIR) $(1)/www/luci-static/resources/foxhole

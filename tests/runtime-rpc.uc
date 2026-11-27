@@ -4,6 +4,17 @@ let engine_service = { guard_mutation: () => {guard_calls++; if(busy_inside_lock
 import * as model from '/workspace/package/foxhole-openwrt-client/root/usr/share/foxhole/model.uc';
 import * as runtime_model from '/workspace/package/foxhole-openwrt-client/root/usr/share/foxhole/runtime-model.uc';
 import * as core_model from '/workspace/package/foxhole-openwrt-client/root/usr/share/foxhole/core-model.uc';
+import * as subscription_model from '/workspace/package/foxhole-openwrt-client/root/usr/share/foxhole/subscriptions.uc';
+let provider_calls = 0;
+let subscriptions = {
+ web_source: subscription_model.web_source, apply_pending: _ => false,
+ initial: source => {
+  if (source != 'https://example.com/synthetic') die('unexpected_subscription');
+  provider_calls++;
+  return { mode: '', value: { config:'hy2://synthetic@example.com:443/#Synthetic', endpoint:'example.com:443' },
+   metadata:{ sourceUrl:source,selectedProtocol:'hysteria2',selectedNodeName:'Synthetic',selectedOptionId:'option',phoneProfileId:'phone' } };
+ }
+};
 
 const STATE_PATH = '/in-memory/state';
 let state, writes, restarts, session_calls, reject_second_session;
@@ -68,6 +79,7 @@ function reset() {
 		config: 'hy2://fixture@example.com:443/#Example'
 	}];
 	writes = 0;
+	provider_calls = 0;
 	restarts = 0;
 	session_calls = 0;
 	reject_second_session = false;
@@ -126,6 +138,23 @@ test('new server uses default name without leaking config fragment', () => {
 	let config = 'hy2://fixture@example.com:443/#Imported';
 	let result = save_server(request({ id: '', config }));
 	equal(result.servers[1].name, 'VPN SERVER 01');
+});
+
+test('web subscription Save supports a blank name and one omitted h', () => {
+ let result = save_server(request({id:'',name:'',config:'  ttps://example.com/synthetic  '}));
+ equal(result.servers[1].name,'VPN SERVER 01');
+ equal(result.servers[1].config,null);
+ equal(result.servers[1].subscription,null);
+ equal(state.servers[1].subscription.sourceUrl,'https://example.com/synthetic');
+ equal(provider_calls,1);
+ equal(writes,1);
+ equal(restarts,0);
+});
+
+test('edit does not fetch new subscription sources implicitly', () => {
+ rejects(() => save_server(request({name:'Existing',config:'ttps://example.com/synthetic'})), 'unsupported_config');
+ equal(provider_calls,0);
+ equal(writes,0);
 });
 
 test('start stores one desired server before restarting runtime', () => {

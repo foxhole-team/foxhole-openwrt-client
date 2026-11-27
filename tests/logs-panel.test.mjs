@@ -37,6 +37,7 @@ test('FLASH journal renders the versioned archive and loads older entries with a
   assert.deepEqual(panel.archive.entries.map(x => x.sequence), [10, 9]);
   assert.deepEqual(calls.map(x => x.args.beforeSequence), [0, 10]);
   assert.ok(calls.every(x => x.method === 'diagnostics.journal'));
+  panel.close();
 });
 
 test('journal parser rejects duplicate sequence IDs and unsafe observation timestamps', () => {
@@ -84,18 +85,49 @@ test('owned capture refuses arbitrary log arguments before starting a command', 
 test('TLS failure remains a distinct visible log error', async () => {
   globalThis.document = { querySelector: () => null };
   const panel = new LogsPanel({ call: async () => { throw { code: 'tls_required' }; }, text: x => x, scope: () => 1 });
-  await panel.open(); assert.equal(panel.failed, true); assert.equal(panel.failureCode, 'tls_required');
+  await panel.open(); assert.equal(panel.failed, true); assert.equal(panel.failureCode, 'tls_required'); panel.close();
 });
 
-test('RAM deployment never starts a journal request', async () => {
-  globalThis.document = { querySelector: () => null };
-  let calls = 0;
-  const panel = new LogsPanel({ call: async () => { calls++; return snapshot(); },
-    text: x => x, scope: () => 1, storage: () => 'RAM' });
-  await panel.open();
-  assert.equal(calls, 0);
+test('RAM journal shows recent typed rows and refreshes only while open and visible', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  globalThis.document = { querySelector: () => null, hidden: false };
+  const value = { ...journalSnapshot(), storage: 'RAM', available: false, reason: 'RAM_DISABLED',
+    entries: [], totalRecords: 0, beforeSequence: 0, snapshot: { ...snapshot(), recent: [
+      { event: 'tunnel_connected', engine: 'hysteria', observedAtUnixMs: 1700000000000, exitStatus: null }
+    ] } };
+  const calls = [];
+  const panel = new LogsPanel({ call: async method => { calls.push(method); return value; }, text: x => x, scope: () => 1 });
+  const first = panel.open();
+  assert.deepEqual(calls, ['diagnostics.journal']);
+  t.mock.timers.tick(599);
+  await Promise.resolve();
+  assert.equal(panel.loading, true);
+  t.mock.timers.tick(1);
+  await first;
   assert.equal(panel.ramDisabled, true);
-  assert.equal(panel.value, null);
+  assert.deepEqual(panel.value.recent, value.snapshot.recent);
+  t.mock.timers.tick(6000);
+  assert.equal(calls.length, 2);
+  await new Promise(setImmediate);
+  document.hidden = true;
+  panel.visibilityChanged();
+  t.mock.timers.tick(6000);
+  assert.equal(calls.length, 2);
+  document.hidden = false;
+  panel.visibilityChanged();
+  assert.equal(calls.length, 3);
+  panel.close();
+  t.mock.timers.tick(6000);
+  assert.equal(calls.length, 3);
+});
+
+test('RAM journal rejects oversized or untyped lifecycle events', () => {
+  const value = snapshot();
+  const row = { event: 'tunnel_exited', engine: 'core', observedAtUnixMs: 1700000000000, exitStatus: 137 };
+  value.recent = [row];
+  assert.equal(parseLogSnapshot(value).recent.length, 1);
+  value.recent = Array(11).fill(row); assert.throws(() => parseLogSnapshot(value));
+  value.recent = [{ ...row, event: 'secret' }]; assert.throws(() => parseLogSnapshot(value));
 });
 
 test('RAM backend never launches collectors even with ample free RAM', () => {

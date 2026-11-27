@@ -22,6 +22,10 @@ file_info() {
 
 bundle='' base_url='' manifest_hash='' mode=flash protocols=hysteria2 apply=0 license_accepted=0 development=0 include_server=0
 archive_ready=0
+guard_active=0
+guard_sealed=0
+guard_child=''
+guard_phase=0
 transport_budget=0
 while [ "$#" -gt 0 ]; do
  case "$1" in
@@ -70,6 +74,22 @@ acquire_transaction_lock() {
 finish() {
  code=$?
  trap - EXIT INT TERM HUP
+ if [ -n "$guard_child" ]; then
+  # The unreaped child prevents PID reuse.
+  kill -TERM "$guard_child" 2>/dev/null || :
+  kill -CONT "$guard_child" 2>/dev/null || :
+  wait "$guard_child" 2>/dev/null || :
+  guard_child=''
+ fi
+ if [ "$guard_active" = 1 ]; then
+  if [ "$guard_sealed" = 1 ] && ucode "$stage/fresh-install-guard.uc" cleanup "$stage" "$$"; then
+   exec 8<&- 9<&-
+   guard_active=0
+  else
+   keep_stage=1; code=1
+   echo 'Temporary APK guard cleanup unproven; private recovery state retained' >&2
+  fi
+ fi
  if [ "$keep_stage" = 1 ]; then
   printf '{"schema":1,"exitCode":%s,"phase":"%s","pendingConstraint":"%s","complete":%s}\n' \
    "$code" "$transaction_phase" "$pending_constraint" "$install_complete" > "$stage/transaction-state.json" || exit 1
@@ -138,9 +158,13 @@ verify() {
 }
 fetch SHA256SUMS
 printf '%s  %s\n' "$manifest_hash" "$stage/SHA256SUMS" | sha256sum -c - >/dev/null
-for name in package-catalog.json install-plan.uc install-plan-model.uc install-compact-plan.uc engine-package-layout.uc register-compact-engines.uc indexed-install.uc bundle-transport-model.uc bundle-transport.uc; do
+for name in package-catalog.json install-plan.uc install-plan-model.uc install-compact-plan.uc engine-package-layout.uc register-compact-engines.uc indexed-install.uc bundle-transport-model.uc bundle-transport.uc fresh-install-accounting.uc fresh-install-guard.uc stock-factory-verify.uc; do
  fetch "$name"; verify "$name"
 done
+mode=$(ucode "$stage/install-compact-plan.uc" board-mode "$stage/package-catalog.json" "$architecture" \
+ "$DISTRIB_RELEASE" "$protocols" "$development" "$target" "$include_server" "$mode") || {
+ echo 'Unsupported router board, firmware or installation storage mode' >&2; exit 1
+}
 transport_count=$(awk '$2=="bundle-transport.json" {n++} END {print n+0}' "$stage/SHA256SUMS")
 case "$transport_count" in
  0) ;;
@@ -154,6 +178,33 @@ esac
 ucode "$stage/install-plan.uc" select "$stage/package-catalog.json" "$architecture" \
  "$DISTRIB_RELEASE" "$protocols" "$development" "$target" "$include_server" > "$stage/metadata.list"
 while read -r file digest; do fetch "$file"; verify "$file" "$digest"; done < "$stage/metadata.list"
+stock_witness=$(ucode "$stage/install-compact-plan.uc" witness "$stage/package-catalog.json" "$architecture" \
+ "$DISTRIB_RELEASE" "$protocols" "$development" "$target" "$include_server")
+stock_observe() {
+ # Audit packaged /etc files too, using their ACL and xattr
+ # digests from the verified native DB.
+ (ulimit -f 2048
+  apk --no-network --no-cache audit --system --check-permissions --protected-paths /dev/null \
+   --recursive /bin /sbin /lib /usr /etc > "$stage/stock-audit") || return 1
+ ucode "$stage/stock-factory-verify.uc" "$stage/$stock_file" "$stock_digest" "$DISTRIB_RELEASE" \
+  "$mode" "$stage/stock-audit"
+}
+if [ -n "$stock_witness" ]; then
+ stock_file=${stock_witness%% *}
+ stock_digest=${stock_witness#* }
+ stock_observe > "$stage/stock-observation.json"
+fi
+if [ "$target:$DISTRIB_RELEASE:$mode" = 'mediatek/filogic:25.12.5:ram' ]; then
+ plan=ram-root-plan-cudy-wr3000-v1.json
+ fetch "$plan"
+ verify "$plan"
+ catalog_hash=$(sha256sum "$stage/package-catalog.json" | awk '{print $1}')
+ ram_kib=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
+ tmp_kib=$(df -Pk /tmp | awk 'END {print $4}')
+ ucode "$stage/install-compact-plan.uc" ram-requirements "$stage/$plan" "$stage/package-catalog.json" \
+  "$catalog_hash" "$ram_kib" "$tmp_kib"
+ echo 'Cudy WR3000 v1 requires a separately qualified RAM package root' >&2; exit 1
+fi
 flash=$(df -Pk /overlay | awk 'NR==2 {print $4}')
 ram=$(awk '/MemAvailable:/ {print $2}' /proc/meminfo)
 case "$flash:$ram" in *[!0-9:]*|:*|*:) exit 1 ;; esac
@@ -170,6 +221,12 @@ if [ -e /etc/foxhole ] || [ -L /etc/foxhole ]; then
  private_backup=$(du -sk /etc/foxhole | awk '{print $1}')
  case "$private_backup" in ''|*[!0-9]*) exit 1 ;; esac
  backup_bytes=$((backup_bytes + private_backup * 1024 + 4096))
+fi
+accounting_profile=$(ucode "$stage/install-compact-plan.uc" profile "$stage/package-catalog.json" "$architecture" \
+ "$DISTRIB_RELEASE" "$protocols" "$development" "$target" "$include_server")
+if [ -n "$accounting_profile" ]; then
+ [ "$mode" = flash ] || { echo 'This qualified installation requires FLASH' >&2; exit 1; }
+ ucode "$stage/fresh-install-guard.uc" snapshot > "$stage/installed-before.db"
 fi
 transport_ram=$((ram * 1024 - transport_budget))
 [ "$transport_ram" -gt 0 ] || { echo 'Insufficient RAM for authenticated bundle transport; nothing installed' >&2; exit 1; }
@@ -280,8 +337,29 @@ done < "$stage/indexed.list"
 [ "$#" -gt 0 ] || exit 1
 mkdir "$stage/database" "$stage/cache" "$stage/verified-fetch"
 offline() {
- apk --no-network --no-cache --keys-dir "$stage/keys" \
+ env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C apk --no-network --no-cache --keys-dir "$stage/keys" \
   --repositories-file "$stage/repositories.list" --cache-dir "$stage/cache" "$@"
+}
+owned_native() {
+ if [ -z "$accounting_profile" ]; then offline "$@"; return; fi
+ guard_phase=$((guard_phase + 1))
+ native_apk=$(ucode -e 'import * as fs from "fs"; let b=json(fs.readfile(ARGV[0],2097153)); let p=json(fs.readfile(ARGV[1]+"/"+b.installAccounting.profile.file,65537)); print(p.nativeApkPath);' -- "$stage/compact-budget.json" "$stage")
+ set -- "$native_apk" --no-network --no-cache --scripts --commit-hooks --keys-dir "$stage/keys" \
+  --repositories-file "$stage/repositories.list" --cache-dir "$stage/cache" "$@"
+ # Bind the stopped child before exec; clear its environment.
+ env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C /bin/sh -c 'kill -STOP $$; exec "$@"' sh "$@" &
+ guard_child=$!
+ ready=0
+ for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+  if ucode "$stage/fresh-install-guard.uc" stopped "$guard_child"; then ready=1; break; fi
+  sleep 1
+ done
+ [ "$ready" = 1 ] || return 1
+ ucode "$stage/fresh-install-guard.uc" arm "$stage" "$$" "$guard_phase" "$guard_child" "$@"
+ kill -CONT "$guard_child"
+ result=0; wait "$guard_child" || result=$?
+ terminal=$guard_child; guard_child=''
+ ucode "$stage/fresh-install-guard.uc" terminal "$stage" "$$" "$guard_phase" "$terminal" "$result"
 }
 [ -f /etc/apk/world ] && [ ! -L /etc/apk/world ] || exit 1
 case "$(file_info '%u:%a:%h' /etc/apk/world)" in 0:644:1|0:600:1|0:444:1|0:400:1) ;; *) exit 1 ;; esac
@@ -312,6 +390,9 @@ offline query --format json --recursive "$@" > "$stage/live-query.json" 2> "$sta
 ucode "$stage/indexed-install.uc" query "$stage/$budget_file" "$stage/live-query.json"
 offline add --simulate --virtual "$temporary_constraint" "$@" > "$stage/exact-simulate.log"
 cmp -s /etc/apk/world "$stage/world.before"
+ucode "$stage/fresh-install-guard.uc" preflight "$stage" "$temporary_constraint" || {
+ echo 'The APK transaction exceeds the qualified fresh installation plan' >&2; exit 1
+}
 echo 'Exact compact modules and complete package budgets verified'
 [ "$apply" = 1 ] || { echo 'Check only; use --apply to install'; exit 0; }
 acquire_transaction_lock
@@ -328,6 +409,10 @@ ucode -e '
 ' -- "$stage/prior-owned-locked.json"
 cmp -s /etc/apk/world "$stage/world.before"
 transaction_phase=backup
+if [ -n "$stock_witness" ]; then
+ stock_observe > "$stage/stock-observation-locked.json"
+ cmp -s "$stage/stock-observation.json" "$stage/stock-observation-locked.json" || exit 1
+fi
 sha256sum /etc/config/network /etc/config/dhcp /etc/config/firewall > "$stage/config.before"
 uname -r > "$stage/kernel.before"
 sysupgrade -k -b "$stage/sysupgrade-before.tar.gz"
@@ -368,9 +453,17 @@ if [ ! -e "/etc/apk/keys/$key" ]; then
  ln -T "$temporary" "/etc/apk/keys/$key" || { rm -f "$temporary"; exit 1; }
  rm -f "$temporary"
 fi
+if [ -n "$accounting_profile" ]; then
+ keep_stage=1; guard_active=1
+ hook=$(ucode "$stage/fresh-install-guard.uc" create "$stage")
+ exec 8<"$hook"
+ exec 9<"${hook%/*}"
+ ucode "$stage/fresh-install-guard.uc" seal "$stage" "$$" "$temporary_constraint"
+ guard_sealed=1
+fi
 transaction_phase=installing-exact
 pending_constraint=$temporary_constraint
-offline add --virtual "$temporary_constraint" "$@" > "$stage/exact-install.log"
+owned_native add --virtual "$temporary_constraint" "$@" > "$stage/exact-install.log"
 offline query --from installed --installed --match name --fields name,version,arch,status --format json \
  "$temporary_constraint" > "$stage/created-temporary.json"
 created_constraint=$(ucode "$stage/indexed-install.uc" temporary-created "$stage/$budget_file" \
@@ -387,12 +480,12 @@ while read -r kind request ignored; do
 done < "$stage/indexed.list"
 [ "$#" -gt 0 ] || exit 1
 offline add --simulate "$@" > "$stage/roots-simulate.log"
-offline add "$@" > "$stage/roots-install.log"
+owned_native add "$@" > "$stage/roots-install.log"
 ucode "$stage/indexed-install.uc" world-after "$stage/$budget_file" "$stage/world.before" /etc/apk/world "$pending_constraint"
 transaction_phase=removing-temporary
 offline del --simulate "$temporary_constraint" > "$stage/temporary-purge-prediction.log"
 ucode "$stage/indexed-install.uc" purge-only "$stage/$budget_file" "$stage/temporary-purge-prediction.log" "$pending_constraint"
-offline del "$temporary_constraint" > "$stage/temporary-purge.log"
+owned_native del "$temporary_constraint" > "$stage/temporary-purge.log"
 pending_constraint=''
 ucode "$stage/indexed-install.uc" world-after "$stage/$budget_file" "$stage/world.before" /etc/apk/world
 transaction_phase=verifying-installed
@@ -425,6 +518,11 @@ uname -r > "$stage/kernel.after"
 cmp -s "$stage/config.before" "$stage/config.after"
 cmp -s "$stage/kernel.before" "$stage/kernel.after"
 
+if [ "$guard_active" = 1 ]; then
+ ucode "$stage/fresh-install-guard.uc" cleanup "$stage" "$$"
+ exec 8<&- 9<&-
+ guard_active=0
+fi
 transaction_phase=registering-compact-engines
 ucode "$stage/register-compact-engines.uc" "$stage/compact-budget.json"
 catalog_sha=$(sha256sum "$stage/package-catalog.json" | awk '{print $1}')
@@ -440,6 +538,7 @@ fi
 chmod 644 "$temporary"
 mv -f "$temporary" "$receipt"
 transaction_phase=complete
+/usr/libexec/foxhole-initial-update-policy || exit 1
 /usr/libexec/foxhole-license --accept 1 >/dev/null
 install_complete=true
 echo 'Verified compact client modules installed; router pairing and incoming profile creation are separate'

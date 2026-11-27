@@ -72,15 +72,15 @@ export function from_verified(verified, expected) {
 
 };
 export function check(directory) {
- let managed=transaction.context();
- let selected=registry.read(),before=registry.snapshot_context(engine.update_state());
- let bound=binding(before);
- let previous_reference=catalog.current();
- let old=native.selected_modules(selected);
+ let selected=registry.read(),old=native.selected_modules(selected);
  if(!length(old)) {
+  native.target();
   if(length(registry.legacy_protocols()))guard.fail('UNSUPPORTED_TARGET');
   return null;
  }
+ // Pure RAM installations can have no host BASE APK. Only a managed Core cohort needs its transaction context.
+ let managed=transaction.context(),before=registry.snapshot_context(engine.update_state());
+ let bound=binding(before),previous_reference=catalog.current();
  if(before.activeProfileId!=null && before.activeEngineId==null)
   guard.fail('LEGACY_CONNECTION_ACTIVE');
  store.directory(directory);

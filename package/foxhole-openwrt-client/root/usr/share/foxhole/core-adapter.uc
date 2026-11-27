@@ -21,7 +21,7 @@ export function binary_for(raw) {
 	return engine_registry.select(raw)?.path || binary;
 };
 
-export function admit(raw) {
+export function admit(raw, timeout) {
 	let selected_binary = binary_for(raw);
 	if (!fs.stat(selected_binary) || type(raw) != 'string' ||
 	    length(raw) > 262144 || length(raw) < 2)
@@ -37,7 +37,7 @@ export function admit(raw) {
 	try {
 		store.write(input, raw);
 		if (system([ selected_binary, 'import', '--profile', input,
-			'--out', output ], 30000) != 0) die('unsupported_config');
+			'--out', output ], timeout ?? 30000) != 0) die('unsupported_config');
 		let imported = store.read(output, 262144);
 		if (!imported || length(imported) > 262144)
 			die('unsupported_config');
@@ -147,6 +147,7 @@ export function policy_identity(state) {
 		config: selected?.config,
 		localRules: state.settings.localRules,
 		localScope: state.settings.localScope,
+		gamesDirect: state.settings.gamesDirect,
 		killSwitch: state.settings.killSwitch,
 		devices: state.devices, sites: state.sites,
 		countries: state.countries

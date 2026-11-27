@@ -10,6 +10,14 @@ test('About keeps independently verified empty Core module facts without requiri
   assert.equal(value.storage,'RAM');
   assert.equal(model.packageMetadata({schema:1,product:'foxhole',installed:true,version:'1.0.7-r1',storage:'RAM'}).installedModules,null);
 });
+test('About reports a verified standalone Hysteria component alongside managed modules', async () => {
+  const base={schema:1,product:'foxhole',installed:true,version:'1.0.9-r2',storage:'RAM',installedModules:[]};
+  const hysteriaComponent={version:'2.12.2',storage:'RAM'};
+  const metadata=model.packageMetadata({...base,hysteriaComponent});
+  assert.deepEqual(metadata.hysteriaComponent,hysteriaComponent);
+  assert.deepEqual(metadata.installedModules,[]);
+  assert.throws(()=>model.packageMetadata({...base,hysteriaComponent:{...hysteriaComponent,version:'<script>'}}));
+});
 test('About rejects fabricated module identities, duplicate slots and invalid versions', () => {
   const base={schema:1,product:'foxhole',installed:true,version:'1.0.7-r1',storage:'RAM'};
   const row={id:'vless',version:'1.0.4',packageVersion:'1.0.4-r6',storage:'RAM'};
@@ -53,13 +61,18 @@ test('stale chart samples do not remain displayed as current CPU or memory', () 
 
 test('package.status keeps authoritative deployment when independent module verification is unavailable', async () => {
   const source=await read('package/foxhole-openwrt-client/root/usr/share/rpcd/ucode/foxhole.uc');
-  const factory=modules=>new Function('auth_record','update_service','license_required','LICENSE_VERSION','type','length','match','trim',
-    `return function(request) ${functionBody(source,'package_status').replace(/\bfor \(let (\w+) in /g,'for (let $1 of ')}`)(()=>({changed:true}),
-      {deployment:()=>({version:'1.0.7-r1',storage:'RAM'}),installed_modules:modules},()=>false,1,x=>typeof x,x=>x?.length??0,(s,re)=>s.match(re),s=>s.trim());
+  const factory=(modules,homeServerEnabled=false,deployment=()=>({version:'1.0.7-r1',storage:'RAM'}))=>new Function('state_record','server_mode','auth_record','update_service','license_required','LICENSE_VERSION','type','length','match','trim',
+    `return function(request) ${functionBody(source,'package_status').replace(/\bfor \(let (\w+) in /g,'for (let $1 of ')}`)(()=>({homeServerEnabled}),{enabled:state=>state.homeServerEnabled},()=>({changed:true}),
+      {deployment,installed_modules:modules},()=>false,1,x=>typeof x,x=>x?.length??0,(s,re)=>s.match(re),s=>s.trim());
   const empty=factory(()=>[])({});
-  assert.equal(empty.storage,'RAM');assert.deepEqual(empty.installedModules,[]);
-  const unavailable=factory(()=>{throw Error('engine_package_verification_failed');})({});
-  assert.equal(unavailable.version,'1.0.7-r1');assert.equal(unavailable.storage,'RAM');assert.equal(unavailable.installedModules,null);
+  const broken=factory(()=>{throw Error('unexpected module lookup');},false,()=>{throw Error('update_package_verification_failed');})({});
+  assert.equal(broken.product,'foxhole');assert.equal(broken.installed,true);assert.equal(broken.pinConfigured,true);
+  assert.equal(broken.packageUpdates,false);assert.equal(broken.updateVerificationUnavailable,true);
+  assert.equal(broken.version,null);assert.equal(broken.storage,null);assert.equal(broken.installedModules,null);
+  assert.equal(empty.updateVerificationUnavailable,false);
+  assert.equal(empty.storage,'RAM');assert.deepEqual(empty.installedModules,[]);assert.equal(empty.homeServerEnabled,false);
+  const unavailable=factory(()=>{throw Error('engine_package_verification_failed');},true)({});
+  assert.equal(unavailable.version,'1.0.7-r1');assert.equal(unavailable.storage,'RAM');assert.equal(unavailable.installedModules,null);assert.equal(unavailable.homeServerEnabled,true);
 });
 
 test('About facts never fall back to an older update-job module list', async () => {
@@ -73,8 +86,8 @@ test('About facts never fall back to an older update-job module list', async () 
 
 test('package discovery exposes only sanitized firmware/model/architecture and excludes board identifiers',async()=>{
  const source=await read('package/foxhole-openwrt-client/root/usr/share/rpcd/ucode/foxhole.uc');
- const build=board=>new Function('auth_record','update_service','license_required','LICENSE_VERSION','type','length','match','trim','index','ubus','fs','ord',
-  `return function(request) ${functionBody(source,'package_status').replace(/\bfor \(let (\w+) in /g,'for (let $1 of ')}`)(()=>({changed:true}),{deployment:()=>({storage:'RAM',version:'1.0.7-r1'}),installed_modules:()=>[]},()=>false,1,
+ const build=board=>new Function('state_record','server_mode','auth_record','update_service','license_required','LICENSE_VERSION','type','length','match','trim','index','ubus','fs','ord',
+  `return function(request) ${functionBody(source,'package_status').replace(/\bfor \(let (\w+) in /g,'for (let $1 of ')}`)(()=>({homeServerEnabled:false}),{enabled:state=>state.homeServerEnabled},()=>({changed:true}),{deployment:()=>({storage:'RAM',version:'1.0.7-r1'}),installed_modules:()=>[]},()=>false,1,
   x=>typeof x,x=>x?.length??0,(s,re)=>s.match(re),s=>s.trim(),(a,x)=>a.indexOf(x),{connect:()=>({call:()=>board,disconnect(){}})},
   {lstat:()=>({type:'file',uid:0,nlink:1,mode:0o644,size:20}),readfile:()=> 'aarch64_cortex-a53\n'},(value,index=0)=>value.charCodeAt(index));
  const value=build({model:'Cudy WR3000 v1',release:{description:'OpenWrt 25.12.5'},serial:'private-serial',mac:'private-mac',address:'private-address'})({});
@@ -86,8 +99,8 @@ test('package discovery exposes only sanitized firmware/model/architecture and e
 
 test('router status adds only a parsed LAN literal address and keeps hardware facts when LAN discovery fails', async()=>{
  const source=await read('package/foxhole-openwrt-client/root/usr/share/rpcd/ucode/foxhole.uc');
- const build=(lan,failLan=false)=>new Function('auth_record','update_service','license_required','LICENSE_VERSION','type','length','match','trim','index','ubus','fs','iptoarr','arrtoip','ord',
-  `return function(request) ${functionBody(source,'package_status').replace(/\bfor \(let (\w+) in /g,'for (let $1 of ')}`)(()=>({changed:true}),
+ const build=(lan,failLan=false)=>new Function('state_record','server_mode','auth_record','update_service','license_required','LICENSE_VERSION','type','length','match','trim','index','ubus','fs','iptoarr','arrtoip','ord',
+  `return function(request) ${functionBody(source,'package_status').replace(/\bfor \(let (\w+) in /g,'for (let $1 of ')}`)(()=>({homeServerEnabled:false}),{enabled:state=>state.homeServerEnabled},()=>({changed:true}),
   {deployment:()=>({storage:'RAM',version:'1.0.7-r2'}),installed_modules:()=>[]},()=>false,1,
   x=>x==null?'null':Array.isArray(x)?'array':typeof x,x=>x?.length??0,(s,re)=>s.match(re),s=>s.trim(),(a,x)=>a.indexOf(x),
   {connect:()=>({call:(object)=>{if(object==='system')return {model:'Cudy WR3000 v1',release:{description:'OpenWrt 25.12.5'}};if(failLan)throw Error('LAN not available');return lan;},disconnect(){}})},

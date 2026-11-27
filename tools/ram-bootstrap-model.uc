@@ -30,19 +30,35 @@ export function url(value) {
 function platform(arch,target,release) {
  if(release!='25.12.5'||!(arch=='aarch64_cortex-a53'&&target=='mediatek/filogic'||arch=='x86_64'&&target=='x86/64'))fail();
 };
+const github_origin='https://github.com/foxhole-team/foxhole-openwrt-client/releases/download/';
+function github_host(address) {
+ return match(address||'',/^https:\/\/(github\.com|api\.github\.com|release-assets\.githubusercontent\.com|objects\.githubusercontent\.com|github-releases\.githubusercontent\.com)\.*(:[0-9]+)?\//i)!=null;
+};
+function github_asset(value,ver,bank) {
+ if(!match(ver,/^(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})-r[1-9][0-9]{0,5}$/))fail();
+ let filename=bank?'foxhole-ram-bootstrap-bank-'+ver+'-'+value.arch+'.apk':'foxhole-openwrt-client-'+ver+'.apk';
+ return github_origin+'v'+split(ver,'-r')[0]+'/'+filename;
+};
 export function descriptor(value) {
  let fields=['schema','kind','artifact','version','baseVersion','arch','target','osRelease','baseSha256','signerPemSha256','caFileSha256','recoveryOrigin'];
  if(type(value)=='object'&&index(keys(value),'overlay')>=0)push(fields,'overlay');exact(value,fields);
  exact(value.artifact,['url','bytes','sha256']);
- if(value.schema!=1||value.kind!='foxhole-ram-bootstrap-v1'||!version(value.version)||!version(value.baseVersion)||
+ let github=value.schema==2&&value.kind=='foxhole-ram-bootstrap-github-v1';
+ if(type(value.schema)!='int'||(!github&&(value.schema!=1||value.kind!='foxhole-ram-bootstrap-v1'))||!version(value.version)||!version(value.baseVersion)||
   !sha(value.baseSha256)||!sha(value.signerPemSha256)||value.caFileSha256!=null&&!sha(value.caFileSha256)||
   !url(value.artifact.url)||!integer(value.artifact.bytes)||value.artifact.bytes<1||value.artifact.bytes>maximum_archive||!sha(value.artifact.sha256))fail();
  if(!url(value.recoveryOrigin)||substr(value.recoveryOrigin,length(value.recoveryOrigin)-1)!='/')fail();
+ if(github) {
+  if(value.recoveryOrigin!=github_origin||value.caFileSha256!=null||
+     value.signerPemSha256!='fa220a28fd8662fc5f617f46594bafe2415b4f605136570dc3c446caeb7d1ef1'||
+     value.artifact.url!=github_asset(value,value.version,true))fail();
+ } else if(github_host(value.recoveryOrigin)||github_host(value.artifact.url))fail();
  if(value.overlay!=null) {
   let overlay=value.overlay;exact(overlay,['baseVersion','baseSha256','artifact']);exact(overlay.artifact,['url','bytes','sha256']);
   if(!version(overlay.baseVersion)||compare(overlay.baseVersion,value.baseVersion)<=0||!sha(overlay.baseSha256)||
    overlay.artifact.sha256!=overlay.baseSha256||!integer(overlay.artifact.bytes)||overlay.artifact.bytes<1||overlay.artifact.bytes>8388608||
-   !url(overlay.artifact.url)||overlay.artifact.url!=value.recoveryOrigin+'foxhole-openwrt-client-'+overlay.baseVersion+'.apk')fail();
+   !url(overlay.artifact.url)||overlay.artifact.url!=(github?github_asset(value,overlay.baseVersion,false):
+    value.recoveryOrigin+'foxhole-openwrt-client-'+overlay.baseVersion+'.apk'))fail();
  }
  platform(value.arch,value.target,value.osRelease);return value;
 };
@@ -194,8 +210,9 @@ export function installed(rows,expected) {
  }
  if(!found)fail();return true;
 };
-export function accepted_download(stderr,code) {
+export function accepted_download(stderr,code,github) {
  return code==0&&type(stderr)=='string'&&!match(stderr,/[Rr][Ee][Dd][Ii][Rr][Ee][Cc][Tt]/)&&
+  (!github||index(stderr,'FoxHole GitHub release fetch v2\n')>=0)&&
   !match(stderr,/[Cc]ertificate|SSL error|[Tt][Ll][Ss] error/);
 };
 
@@ -265,10 +282,21 @@ export function base_layout(document, version) {
 		if (!seen[path]) fail('PACKAGE_VERIFICATION_FAILED');
 	return seen;
 };
-export function base_policy(value,wanted) {
+export function base_policy(value,wanted,modern) {
  exact(value,['schema','transactionAbi','stateAbi','osRelease','packageVersion','releaseTag','targets']);
+ for(let key in ['schema','transactionAbi','stateAbi'])
+  if(type(value[key])!='int')fail();
  if(value.schema!=1||value.transactionAbi!=1||value.stateAbi!=1||value.osRelease!='25.12.5'||value.packageVersion!=wanted||
-  value.releaseTag!='v'+split(wanted,'-r')[0]||!same_value(value.targets,['x86/64','mediatek/filogic']))fail();return value;
+  value.releaseTag!='v'+split(wanted,'-r')[0]||!same_value(value.targets,['x86/64','mediatek/filogic']))fail();
+ if(modern!=null) {
+  exact(modern,['schema','transactionAbi','stateAbi','supportedOpenWrt','packageVersion','releaseTag','targets']);
+  for(let key in ['schema','transactionAbi','stateAbi'])
+   if(type(modern[key])!='int')fail();
+  if(modern.schema!=2||modern.transactionAbi!=value.transactionAbi||modern.stateAbi!=value.stateAbi||
+   modern.packageVersion!=value.packageVersion||modern.releaseTag!=value.releaseTag||
+   !same_value(modern.targets,value.targets)||!same_value(modern.supportedOpenWrt,['25.12.5','25.12.6']))fail();
+ }
+ return value;
 };
 export function package_fence(before,after,expected) {
  installed(before,expected);installed(after,{...expected,baseVersion:expected.overlay.baseVersion});

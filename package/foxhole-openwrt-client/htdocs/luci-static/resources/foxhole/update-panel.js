@@ -8,8 +8,6 @@ const REASONS = new Set(['UNSUPPORTED_TARGET', 'NOT_CHECKED', 'RELEASE_UNAVAILAB
   'STALE_PLAN', 'STALE_SESSION', 'BUSY', 'NO_SPACE', 'DOWNLOAD_FAILED', 'PACKAGE_VERIFICATION_FAILED',
   'DOWNGRADE_REJECTED', 'VERSION_IDENTITY_CONFLICT', 'ROLLBACK_UNAVAILABLE', 'RAM_STAGE_UNAVAILABLE',
   'ROUTER_UNAVAILABLE', 'RECOVERY_REQUIRED', 'INVALID_REQUEST', 'LEGACY_CONNECTION_ACTIVE']);
-const BUDGET = ['downloadBytes', 'stagingBytes', 'flashRequiredBytes', 'flashAvailableBytes',
-  'ramRequiredBytes', 'ramAvailableBytes', 'reservedBytes'];
 const sha = v => typeof v === 'string' && /^[a-f0-9]{64}$/.test(v);
 const integer = v => Number.isSafeInteger(v) && v >= 0;
 const version = v => typeof v === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_.~+-]{0,159}$/.test(v);
@@ -56,6 +54,10 @@ export function updateStatus(v) {
       !(a.suspendedReason === null || ['RECOVERY_REQUIRED', 'UNSUPPORTED_TARGET', 'ROLLBACK_UNAVAILABLE', 'RAM_STAGE_UNAVAILABLE', 'LEGACY_CONNECTION_ACTIVE'].includes(a.suspendedReason))) invalid();
   if (v.activeOwnJob !== null) { ref(v.activeOwnJob); if (TERMINAL.has(v.activeOwnJob.state)) invalid(); }
   if (v.lastOwnJob !== null) ref(v.lastOwnJob);
+  for (const job of [v.activeOwnJob, v.lastOwnJob]) {
+    if (job && ('routerId' in job || 'schema' in job)) updateJob(job, v.routerId);
+  }
+  if (v.activeOwnJob && v.activeAutomaticJob) invalid();
   if (v.activeAutomaticJob !== null) {
     const job = v.activeAutomaticJob;
     if (job.automatic !== true || !['CHECK', 'APPLY'].includes(job.operation) || !STATES.has(job.state) || TERMINAL.has(job.state) ||
@@ -64,35 +66,51 @@ export function updateStatus(v) {
   }
   return v;
 }
-export function updatePlan(v, status) {
-  if (!v || v.schema !== 1 || v.routerId !== status.routerId || v.revision !== status.revision ||
-      !/^update-plan-[a-f0-9]{32}$/.test(v.planId) || !sha(v.planSha256) || v.confirmationRequired !== true ||
-      v.fromVersion !== status.currentVersion || v.toVersion !== status.availableVersion ||
-      !integer(v.expiresAtUptimeMs) || typeof v.bootId !== 'string' || !v.bootId ||
-      !['KEEP_ACTIVE', 'RECONNECT_REQUIRED'].includes(v.impact) || !Array.isArray(v.changes) ||
-      !v.changes.length || v.changes.length > 4 || !Array.isArray(v.engineIds) ||
-      JSON.stringify([...v.engineIds].sort()) !== JSON.stringify(status.installedModules.map(x => x.id).sort()) ||
-      !v.budget || Object.keys(v.budget).length !== 7 || !BUDGET.every(k => integer(v.budget[k]))) invalid();
-  const seen = new Set();
-  for (const row of v.changes) {
-    if (seen.has(row.id) || !version(row.toVersion) || row.toVersion === row.fromVersion) invalid();
-    seen.add(row.id);
+function verifiedCurrent(value) {
+  return value.supported === true && value.failureReason === null && value.coreAvailability !== 'AVAILABLE' && version(value.currentVersion) &&
+    value.currentVersion === value.availableVersion && Number.isSafeInteger(value.lastCheckedAtUnixMs) && value.lastCheckedAtUnixMs > 0;
+}
+function verifiedAvailable(value) {
+  return value?.supported === true && value.availability === 'AVAILABLE' && integer(value.lastCheckedAtUnixMs) &&
+    value.lastCheckedAtUnixMs > 0 && version(value.availableVersion) && version(value.currentVersion) &&
+    (value.availableVersion !== value.currentVersion || value.coreAvailability === 'AVAILABLE' && sha(value.coreCohortSha256));
+}
+export function updatePlan(plan, status) {
+  if (!verifiedAvailable(status) || status.busy || status.activeOwnJob || status.activeAutomaticJob || status.failureReason ||
+      !plan || plan.schema !== 1 || plan.routerId !== status.routerId || plan.revision !== status.revision ||
+      plan.confirmationRequired !== true || !/^update-plan-[a-f0-9]{32}$/.test(plan.planId) || !sha(plan.planSha256) ||
+      !integer(plan.expiresAtUptimeMs) || plan.expiresAtUptimeMs === 0 || typeof plan.bootId !== 'string' ||
+      !/^[a-zA-Z0-9-]{1,96}$/.test(plan.bootId) || plan.fromVersion !== status.currentVersion ||
+      plan.toVersion !== status.availableVersion || !['RECONNECT_REQUIRED','KEEP_ACTIVE'].includes(plan.impact)) invalid();
+  const modules = new Map(status.installedModules.map(row => [row.id,row]));
+  if (!Array.isArray(plan.engineIds) || plan.engineIds.length !== modules.size ||
+      new Set(plan.engineIds).size !== modules.size || !plan.engineIds.every(id => modules.has(id)) ||
+      !Array.isArray(plan.changes) || !plan.changes.length || plan.changes.length > modules.size + 1) invalid();
+  const changed = new Set();
+  for (const row of plan.changes) {
+    if (!row || changed.has(row.id) || !version(row.fromVersion) || !version(row.toVersion) || row.fromVersion === row.toVersion) invalid();
+    changed.add(row.id);
     if (row.id === 'foxhole') {
-      if (row.storage !== null || row.fromVersion !== status.currentVersion || row.toVersion !== status.availableVersion ||
-          v.impact !== 'RECONNECT_REQUIRED') invalid();
+      if (row.storage !== null || row.fromVersion !== plan.fromVersion || row.toVersion !== plan.toVersion ||
+          plan.impact !== 'RECONNECT_REQUIRED') invalid();
     } else {
-      const current = status.installedModules.find(x => x.id === row.id);
-      if (!current || current.storage !== row.storage || current.version !== row.fromVersion) invalid();
+      const installed = modules.get(row.id);
+      if (!installed || installed.storage !== row.storage || installed.version !== row.fromVersion) invalid();
     }
   }
-  if (!seen.has('foxhole') && v.fromVersion !== v.toVersion) invalid();
-  return v;
+  if (changed.has('foxhole') !== (plan.fromVersion !== plan.toVersion)) invalid();
+  for (const field of ['downloadBytes','stagingBytes','flashRequiredBytes','ramRequiredBytes','flashAvailableBytes','ramAvailableBytes'])
+    if (!integer(plan.budget?.[field])) invalid();
+  if (plan.budget.flashRequiredBytes > plan.budget.flashAvailableBytes || plan.budget.ramRequiredBytes > plan.budget.ramAvailableBytes) invalid();
+  return plan;
 }
-
 export function availabilityLabel(value, text) {
   if (value.availability === 'NOT_CHECKED' && value.coreAvailability === 'CURRENT') return text('updates.core_up_to_date');
   if (value.availability === 'NOT_CHECKED') return '';
-  return text(`updates.${value.availability === 'CURRENT' ? 'up_to_date' : value.availability.toLowerCase()}`);
+  if (value.availability === 'AVAILABLE' && !verifiedAvailable(value)) return text('updates.check_failed');
+  if (value.availability === 'CURRENT') return text(verifiedCurrent(value) ? 'updates.up_to_date' :
+    value.supported === false ? 'updates.unsupported' : 'updates.check_failed');
+  return text(`updates.${value.availability.toLowerCase()}`);
 }
 export async function initializeUpdatePolicy(eligible, enabled, call) {
   if (eligible !== true) return { initialized: false };
@@ -106,147 +124,245 @@ export async function initializeUpdatePolicy(eligible, enabled, call) {
 }
 
 export function updateBadgeKey(value) {
-  if (!value?.supported || value.busy || value.activeOwnJob || value.activeAutomaticJob || value.lastCheckedAtUnixMs == null) return null;
-  if (value.availability === 'AVAILABLE') return 'updates.badge_available';
-  if (value.availability === 'CURRENT' && value.failureReason === null && value.currentVersion === value.availableVersion)
-    return 'updates.badge_latest';
+  if (!value?.supported || value.busy || value.activeOwnJob || value.activeAutomaticJob || (!integer(value.lastCheckedAtUnixMs) || value.lastCheckedAtUnixMs === 0)) return null;
+  if (verifiedAvailable(value)) return 'updates.badge_available';
   return null;
 }
 
 export class UpdatePanel {
-  constructor({ call, text, element, show, scope, error }) {
-    Object.assign(this, { call, text, element, show, scope, error });
-    this.sequence = 0; this.current = null; this.plan = null; this.job = null;
-    this.pending = false; this.uncertain = false; this.timer = null;
+  constructor({ call, text, element, icon, scope, error, confirmPlan }) {
+    Object.assign(this, { call, text, element, icon, scope, error, confirmPlan });
+    this.cache = null; this.statusRequest = null; this.warmedScope = null; this.recheck = null;
+    this.sequence = 0; this.current = null; this.job = null;
+    this.pending = false; this.reading = false; this.uncertain = false; this.timer = null;
   }
-  close() { this.sequence++; clearTimeout(this.timer); this.plan = null; this.pending = false; }
+  close() {
+    this.sequence++; clearTimeout(this.timer);
+    this.current = this.job = null;
+    this.pending = this.reading = this.uncertain = false;
+  }
   fresh(sequence, scope) { return sequence === this.sequence && scope === this.scope(); }
-  async open() {
-    const sequence = ++this.sequence, scope = this.scope(); clearTimeout(this.timer);
+  cached() {
+    return this.cache?.scope === this.scope() && performance.now() - this.cache.readAt < 300000 ? this.cache.value : null;
+  }
+  forget() { this.cache = this.statusRequest = this.warmedScope = this.recheck = null; }
+  status() {
+    const scope = this.scope();
+    if (this.statusRequest?.scope === scope) return this.statusRequest.promise;
+    const promise = this.call('updates.status').then(updateStatus).then(value => {
+      if (this.scope() === scope && this.statusRequest?.promise === promise) this.cache = { scope, value, readAt:performance.now() };
+      return value;
+    }).finally(() => { if (this.statusRequest?.promise === promise) this.statusRequest = null; });
+    this.statusRequest = { scope, promise };
+    return promise;
+  }
+  async warm() {
+    const scope = this.scope();
+    if (this.warmedScope === scope) return;
+    this.warmedScope = scope;
     try {
-      const result = updateStatus(await this.call('updates.status'));
+      const value = await this.status();
+      if (scope !== this.scope() || !value.supported || value.busy || value.activeOwnJob || value.activeAutomaticJob ||
+          !value.autoUpdate.enabled || value.autoUpdate.suspendedReason || value.availability === 'AVAILABLE') return;
+      const last = Math.max(value.lastCheckedAtUnixMs || 0, value.autoUpdate.lastAttemptAtUnixMs || 0);
+      if (Date.now() - last < value.autoUpdate.intervalSeconds * 1000) return;
+      const accepted = updateJob(await this.call('updates.check', {expectedRevision:value.revision}), value.routerId);
+      if (scope === this.scope() && accepted.operation === 'CHECK') await this.status();
+    } catch { /* The check is optional; opening Updates can always read the current status. */ }
+  }
+  async open(reportError = false) {
+    const sequence = ++this.sequence, scope = this.scope();
+    clearTimeout(this.timer);
+    this.current = this.cached(); this.pending = false; this.reading = true; this.render();
+    try {
+      const value = await this.status();
       if (!this.fresh(sequence, scope)) return;
-      this.current = result; this.plan = null;
-      const owned = result.activeOwnJob || result.lastOwnJob;
-      this.job = owned ? updateJob(await this.call('updates.job', { jobId: owned.jobId }), result.routerId) : null;
-      if (!this.fresh(sequence, scope)) return;
-      this.uncertain = false; this.render(); this.poll(sequence, scope);
+      let job = null;
+      if (value.activeOwnJob) {
+        const ref = value.activeOwnJob;
+        job = updateJob(await this.call('updates.job', { jobId: ref.jobId }), value.routerId);
+        if (!this.fresh(sequence, scope)) return;
+        if (job.jobId !== ref.jobId || job.operation !== ref.operation || job.planId !== ref.planId) invalid();
+      }
+      this.current = value; this.job = job; this.uncertain = false;
     } catch (e) {
-      if (this.fresh(sequence, scope)) { this.current = null; this.render(); this.error(e); }
+      if (this.fresh(sequence, scope)) { this.cache = this.current = this.job = null; if (reportError) this.error(e); }
+    } finally {
+      if (this.fresh(sequence, scope)) { this.reading = false; this.render(); this.poll(sequence, scope); }
     }
   }
   async summary() {
     const sequence = this.sequence, scope = this.scope();
-    const previous = document.querySelector('[data-update-summary]');
-    if (previous) { previous.hidden = true; previous.textContent = ''; delete previous.dataset.i18n; }
+    const node = document.querySelector('[data-update-summary]');
+    if (!node) return;
+    const slot = node.parentElement;
+    const paint = value => {
+      const key = updateBadgeKey(value);
+      node.hidden = !key;
+      node.textContent = key ? this.text(key) : '';
+      if (key) { node.dataset.updateState = 'available'; node.dataset.i18n = key; }
+      else { delete node.dataset.i18n; delete node.dataset.updateState; }
+    };
+    paint(this.cached());
+    slot.setAttribute('aria-busy', 'true');
     try {
-      const value = updateStatus(await this.call('updates.status'));
-      if (!this.fresh(sequence, scope)) return;
-      this.current = value;
-      const node = document.querySelector('[data-update-summary]');
-      if (node) {
-        const key = updateBadgeKey(value);
-        node.hidden = key === null;
-        node.textContent = key ? this.text(key) : '';
-        node.dataset.updateState = key === 'updates.badge_available' ? 'available' : 'latest';
-        if (key) node.dataset.i18n = key;
-      }
-    } catch { /* Older or unreachable packages never appear current. */ }
+      const value = await this.status();
+      if (this.fresh(sequence, scope) && node.isConnected) paint(value);
+    } catch {
+      if (this.fresh(sequence, scope) && node.isConnected) { this.cache = null; paint(null); }
+    } finally { slot.removeAttribute('aria-busy'); }
+  }
+  activeJob() {
+    const value = this.current;
+    if (!value) return null;
+    if (value.activeAutomaticJob) return value.activeAutomaticJob;
+    const ref = value.activeOwnJob;
+    if (!ref) return null;
+    const job = this.job?.jobId === ref.jobId ? this.job : ref;
+    return TERMINAL.has(job.state) ? null : job;
   }
   async action(name, payload = {}) {
-    if (!this.current || this.pending || this.uncertain && name !== 'settings') return;
-    const sequence = this.sequence, scope = this.scope();
+    if (this.pending || this.reading || !['check','settings'].includes(name)) return;
+    if (name === 'check' && (!this.current || this.uncertain)) return this.open(true);
     const previous = this.current;
-    if (['plan', 'apply'].includes(name) && (previous.failureReason === 'LEGACY_CONNECTION_ACTIVE' || previous.busy)) {
-      this.plan = null; this.render(); return;
-    }
-    this.pending = true; this.render();
+    if (!previous?.supported || this.uncertain) return;
+    if (name === 'check' && (previous.busy || previous.activeOwnJob || previous.activeAutomaticJob)) return;
+    if (name === 'settings' && (typeof payload.autoUpdateEnabled !== 'boolean' ||
+        payload.autoUpdateEnabled === previous.autoUpdate.enabled)) return;
+    const sequence = ++this.sequence, scope = this.scope();
+    this.cache = this.statusRequest = null;
+    clearTimeout(this.timer); this.pending = true; this.render();
     try {
-      const result = await this.call(`updates.${name}`, { expectedRevision: previous.revision, ...payload });
-      if (!this.fresh(sequence, scope)) return;
-      if (name === 'settings') this.current = updateStatus(result);
-      else if (name === 'plan') { this.plan = updatePlan(result, previous); await this.show('update-plan'); }
-      else {
-        const accepted = updateJob(result, previous.routerId);
-        if (name === 'apply' && accepted.planId !== this.plan?.planId || name === 'check' && accepted.operation !== 'CHECK') invalid();
-        this.job = accepted; this.plan = null;
+      if (name === 'settings') {
+        const value = updateStatus(await this.call('updates.settings', {
+          expectedRevision: previous.revision, autoUpdateEnabled: payload.autoUpdateEnabled
+        }));
+        if (!this.fresh(sequence, scope)) return;
+        if (value.routerId !== previous.routerId || value.revision <= previous.revision ||
+            value.autoUpdate.enabled !== payload.autoUpdateEnabled) invalid();
+        this.current = value; this.cache = {scope, value, readAt:performance.now()}; this.job = null;
+      } else {
+        const value = await this.call('updates.check', { expectedRevision: previous.revision });
+        if (!this.fresh(sequence, scope)) return;
+        const accepted = updateJob(value, previous.routerId);
+        if (accepted.operation !== 'CHECK') invalid();
+        await this.open(true);
       }
-      this.pending = false; this.render();
-      if (name === 'apply' || name === 'check') await this.open();
     } catch (e) {
-      if (this.fresh(sequence, scope)) {
-        // A lost write response is uncertainty. Only status/job reads may
-        // resolve it.
-        if (name === 'apply' || name === 'check') this.uncertain = true;
-        this.error(e);
-      }
-    } finally { if (this.fresh(sequence, scope)) { this.pending = false; this.render(); } }
+      if (this.fresh(sequence, scope)) { this.uncertain = true; this.error(e); }
+    } finally {
+      if (this.fresh(sequence, scope)) { this.pending = false; this.render(); this.poll(sequence, scope); }
+    }
   }
-  async apply() {
-    if (!this.plan || this.pending || this.uncertain) return;
-    await this.action('apply', { planId: this.plan.planId, planSha256: this.plan.planSha256, confirmed: true });
-    if (!this.uncertain) await this.show('updates');
-  }
-  async poll(sequence, scope) {
-    if (!this.fresh(sequence, scope)) return;
-    const active = this.job && !TERMINAL.has(this.job.state) || this.current?.activeAutomaticJob;
-    if (!active) return;
+  poll(sequence, scope) {
+    const v = this.current;
+    if (!this.fresh(sequence, scope) || this.uncertain || !v ||
+        !(v.activeOwnJob || v.activeAutomaticJob || (v.busy && v.failureReason !== 'RECOVERY_REQUIRED'))) return;
+    clearTimeout(this.timer);
     this.timer = setTimeout(() => { if (this.fresh(sequence, scope)) void this.open(); }, 2000);
   }
-  button(action, key, disabled) {
-    const node = this.element('button', 'outline-button', this.text(key));
-    node.type = 'button'; node.dataset.action = action; node.disabled = disabled; return node;
+  primaryAction() {
+    const v = this.current;
+    const needsCheck = v && this.recheck?.scope === this.scope() && this.recheck.router === v.routerId && this.recheck.revision === v.revision;
+    const install = !this.uncertain && !needsCheck && updateBadgeKey(v) !== null;
+    return { install, disabled:this.pending || this.reading || (!this.uncertain && !!v &&
+      (!v.supported || v.busy || !!v.activeOwnJob || !!v.activeAutomaticJob ||
+       install && (!!v.failureReason || !!v.autoUpdate.suspendedReason))) };
+  }
+  renderFooter() {
+    const button = document.querySelector('[data-update-primary]');
+    if (!button) return;
+    const {install,disabled} = this.primaryAction();
+    const label = button.querySelector('[data-i18n]');
+    label.dataset.i18n = install ? 'updates.update' : 'updates.check';
+    label.textContent = this.text(label.dataset.i18n);
+    button.querySelector('use').setAttribute('href', install ? '#icon-download' : '#icon-refresh');
+    button.dataset.action = install ? 'update-install' : 'update-check';
+    button.disabled = disabled;
+  }
+  async install() {
+    const action = this.primaryAction();
+    if (!action.install || action.disabled) return;
+    const previous = this.current, sequence = ++this.sequence, scope = this.scope();
+    let submitted = false;
+    clearTimeout(this.timer); this.pending = true; this.render();
+    try {
+      const raw = await this.call('updates.plan', {expectedRevision:previous.revision});
+      if (!this.fresh(sequence,scope)) return;
+      const plan = updatePlan(raw,previous);
+      const changes = plan.changes.map(row => (row.id === 'foxhole' ? 'FoxHole OpenWrt' :
+        this.text('protocol.'+row.id)+' ('+row.storage+')') + ': ' + row.fromVersion + ' → ' + row.toVersion);
+      const lines = [this.text('updates.confirm_title'),this.text('updates.confirm'),...changes];
+      if (plan.impact === 'RECONNECT_REQUIRED') lines.push(this.text('updates.reconnect'));
+      if (this.confirmPlan?.(lines.join('\n')) !== true || !this.fresh(sequence,scope) || this.current !== previous) return;
+      this.cache = this.statusRequest = null;
+      submitted = true;
+      const reply = await this.call('updates.apply', {planId:plan.planId,planSha256:plan.planSha256,
+        expectedRevision:plan.revision,confirmed:true});
+      if (!this.fresh(sequence,scope)) return;
+      const accepted = updateJob(reply,previous.routerId);
+      if (accepted.operation !== 'APPLY' || accepted.planId !== plan.planId) invalid();
+      await this.open(true);
+    } catch (error) {
+      if (this.fresh(sequence,scope)) {
+        this.recheck = {scope,router:previous.routerId,revision:previous.revision};
+        if (submitted) this.uncertain = true;
+        this.error(error);
+      }
+    } finally {
+      if (this.fresh(sequence,scope)) { this.pending = false; this.render(); this.poll(sequence,scope); }
+    }
   }
   render() {
     const root = document.querySelector('[data-update-detail]');
-    if (root) {
-      root.replaceChildren(); const v = this.current;
-      if (!v) {
-        root.append(this.element('p', 'muted', this.text('updates.unavailable')),
-          this.button('update-status', 'updates.status_only', this.pending));
-        return;
-      }
-      const versions = this.element('dl', 'engine-budget');
-      for (const [key, value] of [['current', v.currentVersion], ['available_version', v.availableVersion]])
-        versions.append(this.element('dt', '', this.text(`updates.${key}`)), this.element('dd', '', value || '—'));
-      root.append(versions);
-      const availability = availabilityLabel(v, this.text);
-      if (availability) root.append(this.element('p', 'muted', availability));
-      if (v.failureReason) root.append(this.element('p', 'muted', this.text(`error.update_${v.failureReason.toLowerCase()}`)));
-      if (v.autoUpdate.enabled && v.autoUpdate.suspendedReason && v.autoUpdate.suspendedReason !== v.failureReason)
-        root.append(this.element('p', 'muted', this.text(`error.update_${v.autoUpdate.suspendedReason.toLowerCase()}`)));
-      const job = this.job || v.activeAutomaticJob;
-      if (job) {
-        root.append(this.element('p', 'muted', this.text(`updates.state_${job.state.toLowerCase()}`)));
-        const progress = this.element('progress', 'engine-progress'); progress.max = 100; progress.value = job.progressPercent;
-        progress.setAttribute('aria-label', this.text('updates.progress')); root.append(progress);
-        root.append(this.element('p', 'update-progress-label', `${job.progressPercent}%`));
-      }
-      const row = this.element('label', 'setting-row'); const label = this.element('span', 'setting-copy');
-      label.append(this.element('strong', '', this.text('updates.auto'))); const control = this.element('input');
-      control.type = 'checkbox'; control.checked = v.autoUpdate.enabled; control.disabled = this.pending || !v.supported;
-      control.addEventListener('change', () => void this.action('settings', { autoUpdateEnabled: control.checked }));
-      const toggle = this.element('span', 'switch'); const decoration = this.element('i');
-      decoration.setAttribute('aria-hidden', 'true'); toggle.append(control, decoration);
-      row.append(label, toggle); root.append(row, this.element('small', 'muted', this.text('updates.auto_detail')));
-      const disabled = this.pending || this.uncertain || v.busy || !v.supported;
-      root.append(this.button('update-check', 'updates.check', disabled),
-        this.button('update-plan', 'updates.update', disabled || v.availability !== 'AVAILABLE' || v.failureReason === 'LEGACY_CONNECTION_ACTIVE'));
-      if (this.uncertain) root.append(this.element('p', 'muted', this.text('updates.uncertain')),
-        this.button('update-status', 'updates.status_only', this.pending));
+    if (!root) return;
+    this.renderFooter();
+    root.replaceChildren();
+    const v = this.current, waiting = this.pending || this.reading;
+    if (!v) {
+      root.append(this.element('p', this.reading ? 'muted foxhole-loading' : 'muted', this.text(this.uncertain ? 'updates.uncertain' : this.reading ? 'updates.state_checking' : 'updates.unavailable')));
+      return;
     }
-    const apply = document.querySelector('[data-action="update-apply"]');
-    if (apply) apply.disabled = !this.plan || this.pending || this.uncertain;
-    const planRoot = document.querySelector('[data-update-plan]');
-    if (planRoot && this.plan) {
-      planRoot.replaceChildren();
-      for (const change of this.plan.changes) planRoot.append(this.element('p', '',
-        `${change.id === 'foxhole' ? 'FoxHole' : change.id}: ${change.fromVersion} → ${change.toVersion}${change.storage ? ` · ${change.storage}` : ''}`));
-      planRoot.append(this.element('p', 'muted', this.text(this.plan.impact === 'RECONNECT_REQUIRED' ? 'updates.reconnect' : 'updates.confirm')));
-      const table = this.element('dl', 'engine-budget');
-      for (const [key, bytes] of [['download', this.plan.budget.downloadBytes], ['flash', this.plan.budget.flashRequiredBytes], ['ram', this.plan.budget.ramRequiredBytes]])
-        table.append(this.element('dt', '', this.text(`engines.${key}`)), this.element('dd', '', `${Math.ceil(bytes / 1024)} KiB`));
-      planRoot.append(table);
+    const job = this.activeJob(), idle = !this.pending && !this.uncertain && !v.busy && !v.activeOwnJob && !v.activeAutomaticJob;
+    const current = idle && v.availability === 'CURRENT' && verifiedCurrent(v);
+    const available = idle && updateBadgeKey(v) !== null;
+    const versions = this.element('dl', 'engine-budget update-versions');
+    for (const [key, value] of [['current', v.currentVersion], ['available_version', v.availableVersion]]) {
+      const css = key === 'available_version' && available ? 'is-update-available' : '';
+      versions.append(this.element('dt', css, this.text(`updates.${key}`)), this.element('dd', css, value || '—'));
     }
+    root.append(versions);
+    if (current || available) {
+      const result = this.element('div', 'update-result');
+      const mark = this.element('span', current ? 'success-mark' : 'download-mark');
+      mark.setAttribute('aria-hidden','true'); mark.append(this.icon(current ? 'check' : 'download'));
+      result.append(mark, this.element('p', '', this.text(current ? 'updates.up_to_date' : 'updates.required'))); root.append(result);
+    } else if ((v.availability !== 'CURRENT' || idle) && !v.failureReason) {
+      const label = availabilityLabel(v, this.text);
+      if (label) root.append(this.element('p', 'muted', label));
+    }
+    if (v.failureReason) root.append(this.element('p', 'muted', this.text(`error.update_${v.failureReason.toLowerCase()}`)));
+    const suspended = v.autoUpdate.suspendedReason;
+    if (v.autoUpdate.enabled && suspended && suspended !== v.failureReason)
+      root.append(this.element('p', 'muted', this.text(`error.update_${suspended.toLowerCase()}`)));
+    if (job) {
+      const state = job.step === 'CHECKING_RELEASE' && job.state === 'DOWNLOADING' ? 'CHECKING' : job.state;
+      const transferring = job.state === 'DOWNLOADING' && ['DOWNLOADING_INDEX', 'DOWNLOADING_PACKAGE'].includes(job.step);
+      root.append(this.element('p', transferring ? 'muted' : 'muted foxhole-loading', this.text(`updates.state_${state.toLowerCase()}`)));
+      if (transferring) {
+        const bar = this.element('progress', 'engine-progress'); bar.max = 100; bar.value = job.progressPercent;
+        bar.setAttribute('aria-label', this.text('updates.progress'));
+        root.append(bar, this.element('p', 'update-progress-label', `${job.progressPercent}%`));
+      }
+    }
+    if (this.uncertain) root.append(this.element('p', 'muted', this.text('updates.uncertain')));
+    const row = this.element('label', 'setting-row'), label = this.element('span', 'setting-copy');
+    label.append(this.element('strong', '', this.text('updates.auto')));
+    const control = this.element('input'); control.type = 'checkbox'; control.checked = v.autoUpdate.enabled;
+    control.disabled = waiting || this.uncertain || !v.supported;
+    control.addEventListener('change', () => void this.action('settings', { autoUpdateEnabled: control.checked }));
+    const toggle = this.element('span', 'switch'), decoration = this.element('i');
+    decoration.setAttribute('aria-hidden', 'true'); toggle.append(control, decoration); row.append(label, toggle);
+    root.append(row);
   }
 }

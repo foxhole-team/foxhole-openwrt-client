@@ -10,7 +10,7 @@ id = "generic-api-key"
 description = "Exact public oauth2 module checksum in patch context"
 condition = "AND"
 regexTarget = "secret"
-paths = ['''(?:^|/)package/hysteria/(?:patches/100-network-security\.patch|combined-source\.patch)$''']
+paths = ['''(?:^|/)package/hysteria/(?:patches/(?:100-network-security\.patch|120-dependency-security-20261112\.patch)|combined-source\.patch)$''']
 regexes = ['''^dnDm7JmhM45NNpd8FDDeLhK6FwqbOf4MLCM9zb1BOHI=$''']
 
 [[rules.allowlists]]
@@ -24,3 +24,10 @@ regexes = [
   '''^f1643fb76a0156e438de45419d9091e1d514372fc870d284a58b4dc60c0bef0a$''',
   '''^d2dbf59135366415fcc6037c254cc87070ff9a87a224b09336d793b9e3c171d8$''',
 ]
+
+[[rules.allowlists]]
+description = "Pinned SHA-256 of the OpenWrt public firmware signing key"
+condition = "AND"
+regexTarget = "secret"
+paths = ['''(?:^|/)tools/stock-factory\.py$''']
+regexes = ['''^334d8760642bf986e87ffa4eef3860df11941c38241956a9ebc6d90f8ab6f9a3$''']

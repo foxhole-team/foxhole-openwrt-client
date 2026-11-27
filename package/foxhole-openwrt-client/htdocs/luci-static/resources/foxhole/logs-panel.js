@@ -1,4 +1,6 @@
 const phases = new Set(['connecting', 'connected', 'blocked', 'disconnected', 'error']);
+const lifecycle = new Set(['tunnel_connected', 'tunnel_start_failed', 'tunnel_exited', 'runtime_stopped']);
+const engines = new Set(['core', 'hysteria', 'unknown']);
 const processes = new Set(['foxhole-history', 'hysteria', 'foxcore-cli', 'ucode', 'rpcd', 'uhttpd', 'logd', 'ubusd', 'apk', 'dnsmasq', 'other']);
 const integer = value => Number.isSafeInteger(value) && value >= 0;
 function invalid() { throw Object.assign(new Error('unavailable'), { code: 'unavailable' }); }
@@ -19,6 +21,10 @@ export function parseLogSnapshot(value) {
     if (!['oom_killed', 'oom_selected', 'oom_invoked'].includes(event.event) || !processes.has(event.process) ||
         !Number.isFinite(event.uptimeSeconds) || event.uptimeSeconds < 0 ||
         !(event.pid === null || integer(event.pid))) invalid();
+  if (value.recent != null && (!Array.isArray(value.recent) || value.recent.length > 10 ||
+      value.recent.some(row => !row || Object.keys(row).length !== 4 || !lifecycle.has(row.event) ||
+        !engines.has(row.engine) || !integer(row.observedAtUnixMs) || row.observedAtUnixMs > 8640000000000000 ||
+        !(row.event === 'tunnel_exited' ? integer(row.exitStatus) && row.exitStatus <= 255 : row.exitStatus === null)))) invalid();
   return value;
 }
 
@@ -48,25 +54,67 @@ export function parseJournalSnapshot(value) {
   return value;
 }
 export class LogsPanel {
-  constructor({ call, text, scope, bytes, error, storage }) {
-    Object.assign(this, { call, text, scope, bytes, error, storage });
+  constructor({ call, text, scope, bytes, error }) {
+    Object.assign(this, { call, text, scope, bytes, error });
     this.sequence = 0;
   }
-  close() { this.sequence++; this.loading = false; this.value = null; this.archive = null; this.failed = false; this.failureCode = null; this.ramDisabled = false; }
-  open() { this.close(); return this.refresh(); }
+  close() {
+    clearTimeout(this.timer);
+    this.sequence++;
+    this.isOpen = this.loading = this.failed = this.ramDisabled = false;
+    this.value = this.archive = this.failureCode = null;
+  }
+  open() {
+    this.close();
+    this.isOpen = true;
+    return this.refresh(false, true);
+  }
+  visibilityChanged() {
+    clearTimeout(this.timer);
+    if (this.isOpen && !document.hidden) void this.refresh(false, false, true);
+  }
+  renderRecent(body) {
+    const rows = this.value.recent;
+    if (!rows?.length) {
+      const row = body.insertRow();
+      const cell = row.insertCell();
+      cell.colSpan = 2;
+      cell.textContent = this.text(rows ? 'logs.empty' : 'logs.unavailable');
+      return;
+    }
+    const labels = { tunnel_connected: 'logs.phase_connected', tunnel_start_failed: 'error.tunnel_start_failed',
+      tunnel_exited: 'logs.tunnel_exited', runtime_stopped: 'logs.phase_disconnected' };
+    for (const event of rows) {
+      const row = body.insertRow();
+      row.insertCell().textContent = new Date(event.observedAtUnixMs).toLocaleTimeString(document.documentElement?.lang);
+      const engine = event.engine === 'core' ? 'FoxHole Core' : event.engine === 'hysteria' ? 'Hysteria 2' : null;
+      row.insertCell().textContent = [this.text(labels[event.event]), engine,
+        event.exitStatus === null ? null : this.text('logs.exit_code', { value: event.exitStatus })].filter(Boolean).join(' · ');
+    }
+  }
   render() {
     const root = document.querySelector('[data-modal-view="logs"]');
     if (!root) return;
     const status = root.querySelector('[data-log-status]');
-    status.textContent = this.ramDisabled ? this.text('logs.ram_unavailable') : this.loading ? this.text('logs.loading') : this.failed ? this.text(this.failureCode === 'tls_required' ? 'logs.tls_required' : 'error.unavailable') : '';
-    const refresh = document.querySelector('[data-action="logs-refresh"]');
-    refresh?.toggleAttribute('disabled', Boolean(this.loading || this.ramDisabled));
-    if (refresh) refresh.hidden = this.ramDisabled;
+    const initial = this.loading && !this.value;
+    status.hidden = !initial && !this.failed;
+    status.textContent = initial ? this.text('logs.loading') : this.failed ? this.text(this.failureCode === 'tls_required' ? 'logs.tls_required' : 'error.unavailable') : '';
+    status.classList.toggle('foxhole-loading', initial);
+    document.querySelector('[data-action="logs-refresh"]')?.toggleAttribute('disabled', Boolean(this.loading));
+    const recent = root.querySelector('[data-log-recent]');
+    recent.hidden = !this.ramDisabled || !this.value;
     const content = root.querySelector('[data-log-content]');
-    if (content) content.hidden = this.ramDisabled;
-    const older = root.querySelector('[data-action="logs-older"]');
-    if (older) { older.hidden = !this.archive?.hasMore; older.disabled = Boolean(this.loading); }
+    content.hidden = this.ramDisabled || !this.value;
     if (!this.value) return;
+    if (this.ramDisabled) {
+      const body = recent.querySelector('[data-log-recent-rows]');
+      body.replaceChildren();
+      this.renderRecent(body);
+      return;
+    }
+    const older = root.querySelector('[data-action="logs-older"]');
+    older.hidden = !this.archive?.hasMore;
+    older.disabled = Boolean(this.loading);
     const value = this.value;
     root.querySelector('[data-log-summary]').textContent = this.text('logs.memory', {
       value: value.memAvailableKiB === null ? '—' : this.bytes(value.memAvailableKiB * 1024),
@@ -92,32 +140,45 @@ export class LogsPanel {
         : this.text((name === 'core' ? source.eventsAvailable : source.available) ? 'logs.empty' : 'logs.unavailable');
     }
   }
-  async refresh(older = false) {
-    if (this.loading) return;
+  async refresh(older = false, initial = false, automatic = false) {
+    if (!this.isOpen || this.loading) return;
+    clearTimeout(this.timer);
     const sequence = ++this.sequence, scope = this.scope();
-    this.loading = true; this.failed = false; this.render();
+    this.loading = true;
+    this.render();
+    const minimum = initial ? new Promise(resolve => setTimeout(resolve, 600)) : null;
+    const previous = this.archive;
     try {
-      if (this.storage) {
-        const storage = await this.storage();
-        if (sequence !== this.sequence || scope !== this.scope()) return;
-        this.ramDisabled = storage === 'RAM';
-        if (this.ramDisabled) { this.value = null; return; }
-      }
       const result = parseJournalSnapshot(await this.call('diagnostics.journal', {
-        beforeSequence: older ? this.archive?.beforeSequence || 0 : 0
+        beforeSequence: older ? previous?.beforeSequence || 0 : 0
       }));
+      await minimum;
       if (sequence !== this.sequence || scope !== this.scope()) return;
-      if (result.reason === 'RAM_DISABLED') { this.ramDisabled = true; this.value = null; this.archive = null; return; }
-      if (!result.available) throw Object.assign(new Error('unavailable'), { code: 'unavailable' });
-      const entries = older ? [...new Map([...(this.archive?.entries || []), ...result.entries]
-        .map(row => [row.sequence, row])).values()].slice(0, 2048) : result.entries;
-      this.archive = { ...result, entries };
+      if (result.reason !== 'RAM_DISABLED' && !result.available) invalid();
+      this.failed = false;
+      this.ramDisabled = result.reason === 'RAM_DISABLED';
       this.value = result.snapshot;
+      if (this.ramDisabled) { this.archive = null; return; }
+      const keepOlder = automatic && previous?.expanded === true;
+      const first = older ? previous?.entries || [] : result.entries;
+      const rest = older ? result.entries : keepOlder ? previous.entries : [];
+      const entries = [...new Map([...first, ...rest].map(row => [row.sequence, row])).values()]
+        .sort((a, b) => b.sequence - a.sequence).slice(0, 2048);
+      this.archive = { ...result, entries, expanded: older || keepOlder,
+        hasMore: keepOlder ? previous.hasMore : result.hasMore, beforeSequence: entries.at(-1)?.sequence || 0 };
     } catch (error) {
+      await minimum;
       if (sequence !== this.sequence || scope !== this.scope()) return;
-      this.failed = true; this.failureCode = error?.code; this.error?.(error);
+      this.failed = true;
+      this.failureCode = error?.code;
+      this.error?.(error);
     } finally {
-      if (sequence === this.sequence && scope === this.scope()) { this.loading = false; this.render(); }
+      if (sequence === this.sequence && scope === this.scope()) {
+        this.loading = false;
+        this.render();
+        if (this.isOpen && !document.hidden)
+          this.timer = setTimeout(() => void this.refresh(false, false, true), 6000);
+      }
     }
   }
 }

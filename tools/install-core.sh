@@ -350,6 +350,7 @@ fi
 chmod 644 "$temporary"
 mv -f "$temporary" "$receipt"
 transaction_phase=complete
+/usr/libexec/foxhole-initial-update-policy || exit 1
 /usr/libexec/foxhole-license --accept 1 >/dev/null
 install_complete=true
 echo 'Core client package installed; router pairing and inbound server setup are separate'

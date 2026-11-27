@@ -78,8 +78,9 @@ test('rollback restores exactly successful unmounts, in reverse order; it never 
  const rollback=actualFunction('rollback',{model,verify_mount:row=>events.push(['verify',row.target]),
   command:argv=>events.push(argv),replace:()=>{},fs:{},mount_rows:()=>[],bind:(from,to)=>events.push(['restore',from,to]),
   restore_marker:()=>events.push(['marker']),bootstrap:{restore:value=>{assert.equal(value,journal.bootstrap);assert.equal(bootDescriptor,value.newRaw);bootDescriptor=value.oldRaw;events.push(['boot-restore']);}},
-  start_services:()=>{assert.equal(bootDescriptor,journal.bootstrap.oldRaw);events.push(['start-current-desired']);},stop_services:()=>{throw Error('unexpected');}});
- rollback(journal,'journal');
+  start_services:()=>{assert.equal(bootDescriptor,journal.bootstrap.oldRaw);events.push(['start-current-desired']);},update_native:{require_package_ready:(storage,version)=>events.push(['ready',storage,version])},stop_services:()=>{throw Error('unexpected');}});
+ rollback(journal,'journal','1.0.9-r2');
+ assert.deepEqual(events.at(-1),['ready','RAM','1.0.9-r2']);
  assert.deepEqual(events.filter(row=>row[0]=='/bin/umount').map(row=>row[1]),['/new-two','/new-one']);
  assert.deepEqual(events.filter(row=>row[0]=='restore'),[['restore','/source-one','/old-one']]);
  assert.equal(journal.phase,'ROLLED_BACK');assert.deepEqual(journal.unmounted,[]);
@@ -96,8 +97,15 @@ test('rollback quiesces restarted new consumers before removing their mounts',()
  let bootDescriptor=journal.bootstrap.newRaw;
  const rollback=actualFunction('rollback',{model,verify_mount:()=>{},command:()=>events.push('unmount'),replace:()=>{},fs:{},
   mount_rows:()=>[],bind:()=>{},restore_marker:()=>{},bootstrap:{restore:value=>{assert.equal(value,journal.bootstrap);assert.equal(bootDescriptor,value.newRaw);bootDescriptor=value.oldRaw;events.push('boot-restore');}},
-  start_services:()=>{assert.equal(bootDescriptor,journal.bootstrap.oldRaw);events.push('start-current');},stop_services:()=>events.push('quiesce')});
+  start_services:()=>{assert.equal(bootDescriptor,journal.bootstrap.oldRaw);events.push('start-current');},update_native:{require_package_ready:()=>{}},stop_services:()=>events.push('quiesce')});
  rollback(journal,'journal');assert.deepEqual(events,['quiesce','unmount','boot-restore','start-current']);
+});
+test('rollback is incomplete if the restored management API remains unavailable',()=>{
+ const journal={unmounted:[],mounted:[],created:[],restarted:false,phase:'ACTIVE'};
+ const rollback=actualFunction('rollback',{model,replace:()=>{},fs:{},mount_rows:()=>[],restore_marker:()=>{},
+  bootstrap:{restore:()=>{}},start_services:()=>{},update_native:{require_package_ready:()=>{throw Error('incompatible');}}});
+ assert.throws(()=>rollback(journal,'journal','1.0.9-r2'),/incompatible/);
+ assert.equal(journal.phase,'ACTIVE');
 });
 test('actual job guard rejects revoked principal and Stop before commit, permits authoritative Stop after commit',()=>{
  const state={revision:8,activeServerId:'selected'},bound={routerId:'router',stateRevision:8,activeProfileId:'selected',stateWithoutStop:'state',registrySha256:sha('{}'),worldSha256:sha('world')};

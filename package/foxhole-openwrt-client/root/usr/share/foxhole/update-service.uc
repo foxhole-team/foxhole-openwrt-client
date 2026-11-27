@@ -41,7 +41,10 @@ function current_state() {
 	    index(['NOT_CHECKED','CURRENT','AVAILABLE','UNSUPPORTED','CHECK_FAILED'],value.availability) < 0) model.fail('RECOVERY_REQUIRED');
 	return value;
 };
-function policy() { return model.policy(read(POLICY,8192)); };
+function policy() {
+ let saved=read(POLICY,8192);
+ return model.policy(saved,saved==null?read('/etc/foxhole/auth.json',4096):null);
+};
 function active(job) { return job != null && index(TERMINAL,job.state) < 0; };
 function blocked(job) { return active(job) || job?.state == 'RECOVERY_REQUIRED'; };
 function engine_busy() { let job=read('/etc/foxhole/engine-job.json'),server=read('/etc/foxhole/vpn-server-job.json',2097152); return blocked(job)||blocked(server); };
@@ -161,7 +164,7 @@ export function status(principal) {
 		coreAvailability:value.coreAvailability||'UNKNOWN',
 		coreCohortSha256:value.candidate?.component=='CORE'?
 			value.candidate.reference.bodySha256:value.coreCohortSha256||null,
-		autoUpdate:{enabled:flag.enabled,configured:fs.lstat(POLICY)!=null,intervalSeconds:86400,lastAttemptAtUnixMs:flag.lastAttemptAtUnixMs,
+		autoUpdate:{enabled:flag.enabled,configured:fs.lstat(POLICY)!=null||model.initial_owner_policy(read('/etc/foxhole/auth.json',4096))!=null,intervalSeconds:86400,lastAttemptAtUnixMs:flag.lastAttemptAtUnixMs,
 			nextCheckAtUnixMs:flag.enabled?(flag.lastAttemptAtUnixMs==null?wall():flag.lastAttemptAtUnixMs+86400000):null,suspendedReason:suspended},
 		installedModules:map(installed,row=>({id:row.id,storage:row.storage,version:row.packageVersion})),
 		activeOwnJob:active(job)?job_ref(job,owner(principal)):null,lastOwnJob:job_ref(job,owner(principal))||job_ref(last,owner(principal)),
@@ -392,10 +395,24 @@ function perform_check(job) {
 	let tag=native.latest(directory); progress(job,'DOWNLOADING','DOWNLOADING_INDEX',15);
 	let next=native.base(tag,directory+'/candidate',keys);
 	progress(job,'VERIFYING','VERIFYING_PACKAGE',35);
+	let comparison=native.compare(version,next.version);
+	if(comparison=='>') {
+		// The official signed BASE is older; there is no change to install or roll back.
+		if(core_failure!=null)model.fail(core_failure);
+		if(!authorized(job)||!same(binding(ctx),binding(context()))||!same(selected,registry.read()))model.fail('STALE_PLAN');
+		transaction(()=>{let value=current_state();require_authorized(job);
+			value.availability='CURRENT';value.availableVersion=version;value.candidate=null;value.packageCandidate=null;
+			value.lastCheckedAtUnixMs=wall();value.failureReason=null;value.coreCheckFailure=null;
+			value.coreAvailability=core?'CURRENT':'UNKNOWN';value.coreCohortSha256=core?core.reference.bodySha256:null;
+			value.deviceDownloadRequired=false;value.relayEvidence=null;value.revision++;
+			write(STATE,value);job.revision=value.revision;progress(job,'SUCCEEDED','COMPLETED',100);
+		});
+		return;
+	}
 	let previous=tag==local.releaseTag&&next.version==version?next:native.base(local.releaseTag,directory+'/rollback',keys);
 	if(previous.version!=version)model.fail('ROLLBACK_UNAVAILABLE');
 	native.installed_base(previous);
-	let base_changed=model.version_admit(native.compare(version,next.version),previous.sha256,next.sha256);
+	let base_changed=model.version_admit(comparison,previous.sha256,next.sha256);
 	let effective=registry.effective_catalog(next.catalog,next.catalogSha256).value;
 	let old_modules=native.selected_modules(selected),modules=native.module_changes(old_modules,effective,target.architecture);
 	engines.commit(selected,modules.artifacts,[],selected.revision);
@@ -567,6 +584,13 @@ function core_callbacks() {
 		endAtomic:end_package_phase,restart
 	};
 };
+function activate_base(version) {
+ for (let task in [['foxhole-history','restart'],['foxhole-mobile','restart'],['foxhole-inbound','restart'],
+                   ['firewall','reload'],['rpcd','restart'],['uhttpd','reload']]) {
+  if (system(['/etc/init.d/'+task[0],task[1]],15000)!=0) model.fail('PACKAGE_VERIFICATION_FAILED');
+ }
+ native.require_package_ready('FLASH',version);
+};
 function perform_apply(job) {
 	if(job.plan?.candidate?.component=='CORE') {
 		core_transaction.apply(job,core_callbacks());
@@ -648,6 +672,7 @@ function perform_apply(job) {
 			if((!restart(job)||!engine.update_wait_reconnect(job,engines.selected(next,ctx.activeEngineId),job.restartStarted,job.previousGeneration))&&
 			    !stopped_by_request(job))model.fail('RECOVERY_REQUIRED');
 		}
+		if(value.baseChanged)activate_base(plan.toVersion);
 		terminal(job,'SUCCEEDED');
 		try{prune_recovery_cache(value,job);}catch(_){}
 		return public_job(job);
@@ -701,6 +726,7 @@ function attempt_recovery(job) {
 			if((!restart(job)||!engine.update_wait_reconnect(job,engines.selected(old,job.plan.binding.activeEngineId),started,previous_generation))&&!stopped_by_request(job))model.fail('RECOVERY_REQUIRED');
 			job.previousConnectionRestored=!stopped_by_request(job);
 		}
+		if(job.plan.candidate.baseChanged)activate_base(job.plan.fromVersion);
 		job.recoverySucceeded=true;terminal(job,'FAILED');return true;
 	});
 };
@@ -734,10 +760,6 @@ export function run(id) {
 		if(job.mutationStarted)try{attempt_recovery(job);}catch(_){job.failureReason='RECOVERY_REQUIRED';progress(job,'RECOVERY_REQUIRED','RECOVERY_REQUIRED',job.progressPercent);}
 	}
 	try{fs.unlink('/tmp/foxhole/'+job.jobId+'/check-config');}catch(_){}
-	// Ordinary package hooks were deferred by the exact live journal.
-	// Publish terminal state first.
-	if(job.plan?.candidate?.component!='CORE'&&job.mutationStarted&&(job.state=='SUCCEEDED'||job.recoverySucceeded))system(['/bin/sh','-c',
-		'/etc/init.d/foxhole-history restart; /etc/init.d/foxhole-mobile restart; /etc/init.d/foxhole-inbound restart; /etc/init.d/firewall reload; /etc/init.d/rpcd restart; /etc/init.d/uhttpd reload'],30000);
 	return public_job(read(JOB));
 };
 export function hooks_deferred() {

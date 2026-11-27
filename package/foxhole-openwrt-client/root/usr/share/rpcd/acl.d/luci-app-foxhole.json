@@ -90,5 +90,22 @@
         ]
       }
     }
+  },
+  "luci-app-foxhole-remove": {
+    "description": "Uninstall the FoxHole package",
+    "read": {
+      "ubus": {
+        "foxhole.admin": [
+          "remove_package_plan"
+        ]
+      }
+    },
+    "write": {
+      "ubus": {
+        "foxhole.admin": [
+          "remove_package_apply"
+        ]
+      }
+    }
   }
 }

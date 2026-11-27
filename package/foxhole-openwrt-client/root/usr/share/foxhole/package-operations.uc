@@ -72,3 +72,60 @@ export function world() {
 	}
 	return rows;
 };
+
+function repair_parent(path) {
+    for(let p=fs.dirname(path);p!='/';p=fs.dirname(p)) {
+        let st=fs.lstat(p);
+        if(st&&(st.type!='directory'||st.uid!=0||(st.mode&0o022)&&!(p=='/tmp'&&(st.mode&0o7777)==0o1777)))fail('PACKAGE_VERIFICATION_FAILED');
+    }
+};
+function repair_file(path,sha,mode) {
+    repair_parent(path);
+    let st=fs.lstat(path);
+    if(!st)return false;
+    if(st.type!='file'||st.uid!=0||st.nlink!=1||(st.mode&0o022))fail('PACKAGE_VERIFICATION_FAILED');
+    return (st.mode&0o7777)==mode && st.size>0 && st.size<=134217728 && registry.hash_file(path)==sha;
+};
+// Hash every file in the verified, closed APK layout, including notices and the native file list.
+export function repair_diagnosis(prepared) {
+    let counts=[];
+    for(let item in prepared) {
+        engines.package_layout(item.payload,item.value);
+        let damaged=0;
+        for(let dir in item.payload.paths)for(let file in dir.files||[]) {
+            if(!match(file.hash||'',/^[a-f0-9]{64}$/))fail('PACKAGE_VERIFICATION_FAILED');
+            if(!repair_file('/'+dir.name+'/'+file.name,file.hash,file.name=='foxcore-cli'?0o755:0o644))damaged++;
+        }
+        let v=item.value,raw=null;
+        if(v.storage=='RAM')raw=repair_file('/tmp/foxhole/engine-binaries/'+v.id+'/'+v.binarySha256+'/foxcore-cli',v.binarySha256,0o700);
+        push(counts,{id:v.id,damagedPackageFiles:damaged,ramBinaryVerified:raw});
+    }
+    return counts;
+};
+export function repair_ram(v,nonce) {
+    if(v.storage!='RAM')return;
+    if(!match(nonce,/^[a-f0-9]{64}$/))fail('INVALID_REQUEST');
+    let folder='/tmp/foxhole/engine-binaries/'+v.id+'/'+v.binarySha256;
+    store.directory(folder);
+    let target=folder+'/foxcore-cli',lock_path=folder+'/download.lock',pending=folder+'/repair-'+nonce;
+    store.target(lock_path);
+    let lock=fs.open(lock_path,'a+',0o600);
+    if(!lock||!lock.lock('xn')||!store.file_metadata(fs.lstat(lock_path))) {if(lock)lock.close();fail('BUSY');}
+    let own_pending=false;
+    try {
+        if(!repair_file(target,v.binarySha256,0o700)) {
+            let prefix=substr(v.indexUrl,0,length(v.indexUrl)-length('engines.adb'));
+            let url=prefix+'engine-'+v.id+'-'+v.architecture+'-'+v.binarySha256+'.bin';
+            let verified=asset(url,v.binarySha256,v.binaryBytes);
+            if(fs.lstat(verified).size!=v.binaryBytes||fs.lstat(pending))fail('RAM_STAGE_UNAVAILABLE');
+            own_pending=true;
+            if(system(['/bin/cp',verified,pending],10000)!=0||!fs.chmod(pending,0o700)||
+               !repair_file(pending,v.binarySha256,0o700)||!fs.rename(pending,target))fail('RAM_STAGE_UNAVAILABLE');
+        }
+        registry.running_executable(v);
+    } catch(error) {
+        if(own_pending&&fs.lstat(pending)?.type=='file')fs.unlink(pending);
+        lock.close();die(error);
+    }
+    lock.close();
+};

@@ -2,9 +2,10 @@
 
 ## Installer
 
-Run on the supported OpenWrt target as root. Authenticate `SHA256SUMS`
-independently and replace `HASH` with its SHA-256. For GitHub downloads,
-use the verified one-command bootstrap in the [README](../README.md).
+The [README](../README.md#quickstart) has the Bash installer for use over SSH
+and a one-line command for the router terminal. Run the examples below as
+root on a supported OpenWrt router. Authenticate `SHA256SUMS` independently
+and replace `HASH` with its SHA-256.
 
 ```sh
 sh install.sh --help

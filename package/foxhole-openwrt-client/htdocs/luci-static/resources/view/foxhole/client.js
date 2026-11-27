@@ -1,6 +1,7 @@
 'use strict';
 'require rpc';
 'require view';
+'require foxhole.loader as pixelLoader';
 
 const parameters = {
  'vpnServer.plan': ['token'],
@@ -45,7 +46,7 @@ const parameters = {
 	'client.access': ['token', 'revision', 'id', 'allowLan'],
 	'client.get': ['token', 'id'],
 	'client.delete': ['token', 'revision', 'id'],
-	'pin.change': ['token', 'newPin', 'licenseAccepted', 'licenseVersion'],
+	'pin.change': ['token', 'newPin', 'licenseAccepted', 'licenseVersion', 'initialAutoUpdateEnabled'],
 	'device.resolve': ['token', 'address'],
 	'device.list': ['token']
 };
@@ -84,13 +85,13 @@ function validMessage(message) {
 
 function panelMetadata() {
 	const title = document.title, changes = [];
-	document.title = 'FoxHole OpenWRT';
+	document.title = 'FOXHOLE OPENWRT';
 	for (const [tag, selector, attributes] of [
-		['meta', 'meta[name="application-name"]', { name: 'application-name', content: 'FoxHole OpenWRT' }],
-		['meta', 'meta[name="apple-mobile-web-app-title"]', { name: 'apple-mobile-web-app-title', content: 'FoxHole OpenWRT' }],
+		['meta', 'meta[name="application-name"]', { name: 'application-name', content: 'FOXHOLE OPENWRT' }],
+		['meta', 'meta[name="apple-mobile-web-app-title"]', { name: 'apple-mobile-web-app-title', content: 'FOXHOLE OPENWRT' }],
 		['link', 'link[rel="icon"]', { rel: 'icon', href: L.resource('foxhole/assets/foxhole-32.png'), type: 'image/png', sizes: '32x32' }],
 		['link', 'link[rel="apple-touch-icon"]', { rel: 'apple-touch-icon', href: L.resource('foxhole/assets/foxhole-180.png'), sizes: '180x180' }],
-		['link', 'link[rel="manifest"]', { rel: 'manifest', href: L.resource('foxhole/manifest.json?v=1.0.8-r2') }]
+		['link', 'link[rel="manifest"]', { rel: 'manifest', href: L.resource('foxhole/manifest.json') + '?v=1.0.13-r1-ui16' }]
 	]) {
 		const existing = document.querySelector(selector);
 		const node = existing || document.createElement(tag);
@@ -106,22 +107,23 @@ function panelMetadata() {
 		});
 	}
 	return () => {
-		if (document.title === 'FoxHole OpenWRT') document.title = title;
+		if (document.title === 'FOXHOLE OPENWRT') document.title = title;
 		changes.forEach(restore => restore());
 	};
 }
 
 return view.extend({
 	load: function() {
-		return Promise.resolve();
+		pixelLoader.mount(_('Loading data'));
+		return new Promise(resolve => setTimeout(resolve, 600));
 	},
 
 	render: function() {
 		this._foxholeRestoreMetadata = panelMetadata();
 		const frame = E('iframe', {
 			'class': 'foxhole-luci-frame',
-			'src': L.resource('foxhole/shell.html'),
-			'title': 'FoxHole OpenWRT',
+			'src': L.resource('foxhole/shell.html') + '?v=1.0.13-r1-ui16',
+			'title': 'FOXHOLE OPENWRT',
 			'referrerpolicy': 'no-referrer',
 			'loading': 'eager',
 			'allow': 'clipboard-write'
