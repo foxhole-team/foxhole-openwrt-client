@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=foxhole-openwrt-client
-PKG_VERSION:=1.0.13
+PKG_VERSION:=1.0.20
 FOXHOLE_BASE_ROLE?=flash
 ifeq ($(FOXHOLE_BASE_ROLE),flash)
 PKG_RELEASE:=1

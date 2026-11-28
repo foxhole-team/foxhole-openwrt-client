@@ -43,6 +43,10 @@ export function setup(options){
 '''
 MOCKS={
 'fixture-fs.uc':r'''import { memory } from './fixture-state.uc';
+export function lstat(path){
+ if(path=='/tmp/foxhole-ram-active.json')return null;
+ die('fixture_unexpected_lstat');
+};
 export function stat(path){
  if(path in memory.files)return {type:'file',size:length(memory.files[path])};
  if(index(['/sys/class/net/foxhole0','/sys/class/net/br-lan'],path)>=0)return {type:'directory'};
@@ -135,6 +139,7 @@ def transformed(raw,root):
   "from '/usr/share/foxhole/runtime-model.uc'":"from '"+str(root/'fixture-runtime.uc')+"'",
   "from '/usr/share/foxhole/core-model.uc'":"from '"+str(root/'core-model.actual.uc')+"'",
   "from '/usr/share/foxhole/core-adapter.uc'":"from '"+str(root/'adapter.actual.uc')+"'",
+  "from '/usr/share/foxhole/log-model.uc'":"from '"+str(CORE.with_name('log-model.uc'))+"'",
   "from '/usr/share/foxhole/private-store.uc'":"from '"+str(root/'fixture-store.uc')+"'"}
  for before,after in replacements.items():assert text.count(before)==1;text=text.replace(before,after)
  insertion="\nimport { system, exit } from '"+str(root/'fixture-system.uc')+"';\nimport { memory, setup } from '"+str(root/'fixture-state.uc')+"';\nsetup("+json.dumps(CURRENT_OPTIONS,separators=(',',':'))+");\n"

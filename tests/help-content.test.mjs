@@ -3,8 +3,8 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { helpTopics, helpResourceKeys, HelpPanel } from '../package/foxhole-openwrt-client/htdocs/luci-static/resources/foxhole/help-content.js';
 
-test('all twelve stable topics have explicit structure and translated text in every locale', () => {
-  assert.deepEqual(helpTopics.map(x => x.id), ['start','profiles','routing','dns','blocking','phone','clients','updates','storage','privacy','diagnostics','current']);
+test('all thirteen stable topics have explicit structure and translated text in every locale', () => {
+  assert.deepEqual(helpTopics.map(x => x.id), ['start','profiles','routing','games','dns','blocking','phone','clients','updates','storage','privacy','diagnostics','current']);
   const keys = helpResourceKeys();
   for (const lang of ['en','ru','de','fr','es','ja','zh','ar']) {
     const values = JSON.parse(readFileSync(new URL(`../package/foxhole-openwrt-client/htdocs/luci-static/resources/foxhole/locales/${lang}.json`, import.meta.url), 'utf8'));
@@ -29,7 +29,8 @@ test('Help safely renders text, keeps native disclosure and never performs a req
   panel.render(root, 'diagnostics');
   assert.equal(root.children[0].textContent, '<img src=x onerror=alert(1)>');
   const details = root.children.filter(x => x.tag === 'details');
-  assert.equal(details.length, 11);
+  assert.equal(details.length, 12);
+  assert.ok(details.some(x => x.dataset.helpTopic === 'games'));
   assert.ok(details.some(x => x.dataset.helpTopic === 'diagnostics' && x.open));
   assert.ok(details.every(x => x.children[0].tag === 'summary'));
   const links = [];

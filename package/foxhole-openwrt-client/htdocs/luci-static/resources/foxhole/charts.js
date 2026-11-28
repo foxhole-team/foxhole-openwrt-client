@@ -1,5 +1,5 @@
 import { countryCode as country, countryFlagPath }
-  from './frontend-model.js?v=1.0.13-r1-ui16';
+  from './frontend-model.js?v=1.0.20-r1-ui23';
 
 const periods = { '24h': 86400000, '7d': 604800000, '30d': 2592000000 };
 const number = (value) => value == null || value === '' || !Number.isFinite(Number(value)) ? null : Number(value);
@@ -354,7 +354,7 @@ export class Charts {
     if (changed) this.draw();
   }
 
-  pointsBetween(start, end = Number.POSITIVE_INFINITY) {
+  pointsBetween(start, end = Number.POSITIVE_INFINITY, limit = Number.POSITIVE_INFINITY) {
     let low = 0;
     let high = this.samples.length;
     while (low < high) {
@@ -369,13 +369,14 @@ export class Charts {
       if (this.samples[middle].time <= end) low = middle + 1;
       else high = middle;
     }
-    return this.samples.slice(first, low);
+    return this.samples.slice(Math.max(first, low - limit), low);
   }
 
   rate(previous, current, key, direction) {
-    const before = number(previous?.[key]?.[direction]);
-    const after = number(current?.[key]?.[direction]);
-    const seconds = previous ? (current.time - previous.time) / 1000 : 0;
+    if (!previous || !current) return null;
+    const before = number(previous[key]?.[direction]);
+    const after = number(current[key]?.[direction]);
+    const seconds = (current.time - previous.time) / 1000;
     if (before == null || after == null || seconds <= 0 || after < before || !continuousSamples(previous, current) ||
         previous?.[key]?.device && current?.[key]?.device && previous[key].device !== current[key].device) return null;
     return (after - before) / seconds;
@@ -477,8 +478,12 @@ export class Charts {
       this.frame = 0;
       const styles = this.getColors();
       const now = Date.now();
-      for (const [id, canvas] of Object.entries(this.canvases))
-        this.render(canvas, id, now, styles);
+      const domain = chartDomain(this.period, now);
+      const cards = Object.entries(this.canvases);
+      const onlyMeta = cards.every(([, canvas]) => canvas.closest('.is-collapsed'));
+      const timeline = { ...domain, points: this.pointsBetween(domain.start, now, onlyMeta ? 2 : undefined) };
+      for (const [id, canvas] of cards)
+        this.render(canvas, id, now, styles, timeline);
     });
   }
 
@@ -503,17 +508,17 @@ export class Charts {
     this.syncVpnMeta(latest);
   }
 
-  render(canvas, id, end = Date.now(), styles = null) {
+  render(canvas, id, end = Date.now(), styles = null, timeline = null) {
     const latency = id === 'wan-latency' || id === 'vpn-latency';
-    const { start, duration } = chartDomain(this.period, end);
-    const points = this.pointsBetween(start, end);
+    const { start, duration } = timeline || chartDomain(this.period, end);
+    const points = timeline?.points ?? this.pointsBetween(start, end);
     if (canvas.closest('.is-collapsed')) {
       this.updateMeta(id, points, end);
       return;
     }
-    if (!canvas.clientWidth) return;
-    const ratio = window.devicePixelRatio || 1;
     const width = canvas.clientWidth;
+    if (!width) return;
+    const ratio = window.devicePixelRatio || 1;
     const height = Math.max(80, canvas.clientHeight);
     const pixelWidth = Math.round(width * ratio);
     const pixelHeight = Math.round(height * ratio);
@@ -580,7 +585,11 @@ export class Charts {
       for (const item of visible) {
         if (item[series] == null) { previous = null; continue; }
         if (!previous || item.segment !== previous.segment) ctx.moveTo(x(item.time), y(item[series]));
-        else ctx.lineTo(x(item.time), y(item[series]));
+        else {
+          const fromX = x(previous.time), toX = x(item.time), step = (toX - fromX) / 3;
+          const fromY = y(previous[series]), toY = y(item[series]);
+          ctx.bezierCurveTo(fromX + step, fromY, toX - step, toY, toX, toY);
+        }
         previous = item;
       }
       ctx.stroke();

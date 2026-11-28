@@ -60,13 +60,15 @@ Chaque protocole choisi utilise un module client distinct dans une installation 
 
 <a id="whats-new"></a>
 
-> **🆕 Nouveautés - 1.0.13 Beta (FLASH r1 · RAM r2)**
+> **🆕 Nouveautés - 1.0.20 Beta (FLASH r1 · RAM r2)**
 >
-> - Installez le paquet par SSH depuis macOS, Linux ou Windows avec le programme Bash. Après une nouvelle installation, les mises à jour automatiques du paquet sont activées et peuvent être désactivées.
-> - Les mises à jour vérifient l’API du routeur et tentent de restaurer la version précédente si la vérification échoue. La gestion du serveur VPN domestique et la création du premier client ont été corrigées.
-> - Importez les abonnements Hysteria 2, VLESS et WireGuard compatibles dans LuCI ou envoyez-les depuis Guard ou VPN. Le routeur actualise automatiquement les abonnements compatibles.
-> - Jeux sans VPN utilise un interrupteur standard dans les paramètres. Le routage s’ouvre depuis Ajouter. Les flèches d’ouverture et de fermeture ont des angles nets.
-> - Le journal a une nouvelle icône d’actualisation et affiche les dix derniers événements VPN en RAM. L’état logiciel affiche Hysteria 2 lorsqu’il est installé séparément.
+> - Correction de bugs mineurs dans l’interface.
+> - Le renard est en couleur dans les thèmes clair et sombre. Le thème Nuit utilise un logo et des commandes monochromes.
+> - Le thème clair reprend les couleurs des applications Android. Les trois thèmes utilisent les mêmes séparateurs dans les réglages.
+> - Les modifications du serveur peuvent être annulées et les règles vérifiées avant enregistrement. En cas de PIN incorrect, seuls les points deviennent rouges.
+> - Les informations du programme sont présentées dans un tableau. La police apparaît au-dessus du thème. Les fenêtres se ferment depuis leur en-tête.
+> - L’arrière-plan de la barre supérieure devient flou uniquement pendant le défilement. Le thème sombre reprend les couleurs de FoxHole VPN et la palette noire s’appelle désormais Nuit.
+> - Optimisation de l’interface web.
 
 <a id="quickstart"></a>
 

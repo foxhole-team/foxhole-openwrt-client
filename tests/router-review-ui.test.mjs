@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as model from '../package/foxhole-openwrt-client/htdocs/luci-static/resources/foxhole/frontend-model.js';
 import * as charts from '../package/foxhole-openwrt-client/htdocs/luci-static/resources/foxhole/charts.js';
+import { bindVerticalDismiss } from '../package/foxhole-openwrt-client/htdocs/luci-static/resources/foxhole/ui-controller.js';
 import { functionBody, read, panelRoot } from './helpers.mjs';
 
 test('About keeps independently verified empty Core module facts without requiring updates status', () => {
@@ -24,11 +25,15 @@ test('About rejects fabricated module identities, duplicate slots and invalid ve
   for(const installedModules of [[{...row,id:'unknown'}],[row,row],[{...row,version:'<script>'}],[{...row,storage:'HOST'}]])
     assert.throws(()=>model.packageMetadata({...base,installedModules}));
 });
-test('modal footers remove only contextual help and put Back/Close together after actions', () => {
-  const actions=[{action:'modal-back'},{action:'open-help',topic:'updates'},{action:'save'},{action:'modal-close'}];
-  assert.equal(typeof model.modalFooterActions,'function');
-  assert.deepEqual(model.modalFooterActions(actions).map(x=>x.action),['save','modal-back','modal-close']);
-  assert.equal(actions.length,4);
+test('modal chrome hides empty footers and routes dismiss gestures to the parent view', async () => {
+  const app = await read(`${panelRoot}/app.js`);
+  const shell = await read(`${panelRoot}/shell.html`);
+  assert.doesNotMatch(app + shell, /modal-back|action\.back/);
+  assert.match(functionBody(app, 'renderModalChrome'), /footer\.hidden = actions\.length === 0/);
+  assert.match(app, /case 'modal-dismiss': await back\(\)/);
+  assert.match(app, /if \(!popups\.closeActive\(\)\) void back\(\)/);
+  assert.match(app, /bindVerticalDismiss\(handle, 1, canSwipeModal, \(\) => void back\(\)\)/);
+  assert.match(functionBody(app, 'renderModalChrome'), /data-modal-close[^\n]*hidden = pinSetupRequired/);
 });
 test('chart missing intervals preserve outage/reboot boundaries without adding numeric measurements', () => {
   const end=2000000000000,start=end-60000;
@@ -134,4 +139,47 @@ test('server toggle supplies the complete declared RPC wire fields on both enabl
   assert.equal(sent[0].payload.confirmed,enabled);assert.equal(sent[0].payload.removeComponent,false);
   assert.equal(sent[0].payload.planSha256,enabled?'a'.repeat(64):'');
  }
+});
+
+
+test('modal header carries compact Manage and Close while configurations remain keyboard buttons', async () => {
+  const shell = await read(`${panelRoot}/shell.html`);
+  const header = shell.split('<header class="modal-header">')[1].split('</header>')[0];
+  assert.match(header, /class="modal-header-actions"[\s\S]*data-action="open-networks"[^>]*data-i18n-aria-label="action.manage"/);
+  assert.match(header, /data-action="modal-dismiss"[^>]*data-i18n-aria-label="action.close"/);
+  assert.match(shell, /<button class="server-control-card" type="button" data-action="edit-server" data-server-control-card>/);
+  assert.match(shell, /<button class="server-control-card" type="button" data-action="manage-client" data-client-control-card>/);
+  const app = await read(`${panelRoot}/app.js`);
+  assert.ok(header.indexOf('data-modal-manage') < header.indexOf('data-modal-close'));
+  assert.match(functionBody(app, 'renderServerControl'), /desired \? 'stop-server' : 'connect-server'/);
+  assert.match(functionBody(app, 'renderServerControl'), /if \(!metrics.childElementCount\) metrics.append\(serverMetricGrid\(server\)\)/);
+});
+
+test('PIN bootstrap offers localized Russian and English loading before the app draws', async () => {
+  const shell = await read(`${panelRoot}/shell.html`);
+  assert.ok(shell.indexOf('pin-locale.js') < shell.indexOf('id="pin-gate"'));
+  assert.match(shell, /lang="ru" class="pin-loading-ru">Загрузка/);
+  assert.match(shell, /lang="en" class="pin-loading-en">Loading/);
+  assert.match(shell, /id="pin-input" disabled/);
+  const css = await read(`${panelRoot}/app.css`);
+  assert.match(css, /html:lang\(ru\) \.pin-loading-en, html:not\(:lang\(ru\)\) \.pin-loading-ru/);
+});
+
+
+test('mobile dismiss intent requires a permitted primary touch and dominant vertical movement', () => {
+  const surface = new EventTarget();
+  let accepted = true, closed = 0;
+  bindVerticalDismiss(surface,1,() => accepted,() => closed++);
+  const emit = (type, x, y, pointerType = 'touch') => surface.dispatchEvent(Object.assign(new Event(type), {
+    pointerType, pointerId:1, isPrimary:true, clientX:x, clientY:y
+  }));
+  emit('pointerdown', 4, 8); emit('pointerup', 8, 84);
+  assert.equal(closed,1);
+  emit('pointerdown', 0, 0); emit('pointerup', 70, 56);
+  emit('pointerdown', 0, 0, 'mouse'); emit('pointerup', 0, 90, 'mouse');
+  emit('pointerdown', 0, 90); emit('pointerup', 0, 0);
+  emit('pointerdown', 0, 0); emit('pointercancel', 0, 0); emit('pointerup', 0, 90);
+  accepted=false;
+  emit('pointerdown', 0, 0); emit('pointerup', 0, 90);
+  assert.equal(closed,1);
 });

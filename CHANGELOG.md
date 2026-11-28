@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.0.20 Beta (FLASH r1 · RAM r2)
+
+- Minor interface bug fixes.
+
+## 1.0.19 Beta (FLASH r1 · RAM r2)
+
+- The Light and Dark themes show the fox in color. Night uses a monochrome logo and controls.
+
+## 1.0.18 Beta (FLASH r1 · RAM r2)
+
+- The Light theme now matches the Android apps. Settings use the same row dividers in all three themes.
+
+## 1.0.17 Beta (FLASH r1 · RAM r2)
+
+- About now shows a table. Font appears above Theme. Dialogs close from the header.
+- Server edits can be cancelled. Routing rules can be tested before saving. A wrong PIN highlights only the entry dots.
+
+## 1.0.16 Beta (FLASH r1 · RAM r2)
+
+- The top bar blurs only while scrolling. Dark uses the FoxHole VPN palette. The black palette is now called Night.
+
+## 1.0.15 Beta (FLASH r1 · RAM r2)
+
+- Square icon buttons, glass top bar and simpler dialog controls. Aligned chart chevrons and refreshed the Journal icon.
+
+## 1.0.14 Beta (FLASH r1 · RAM r2)
+
+- Frontend optimization.
+
 ## 1.0.13 Beta (FLASH r1 · RAM r2)
 
 - The Bash installer is available as a checksum-verified release asset. Updated the Journal refresh icon.

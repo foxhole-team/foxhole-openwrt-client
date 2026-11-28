@@ -60,13 +60,15 @@ Kompakte Installationen verwenden ein eigenes Clientmodul je ausgewähltem Proto
 
 <a id="whats-new"></a>
 
-> **🆕 Neuigkeiten - 1.0.13 Beta (FLASH r1 · RAM r2)**
+> **🆕 Neuigkeiten - 1.0.20 Beta (FLASH r1 · RAM r2)**
 >
-> - Über SSH von macOS, Linux oder Windows mit dem Bash-Installationsprogramm installieren. Nach einer Neuinstallation sind automatische Paketupdates standardmäßig aktiv und können ausgeschaltet werden.
-> - Paketupdates prüfen die Router-API und versuchen bei einem Fehler, die vorherige Version wiederherzustellen. Die Verwaltung des Heim-VPN-Servers und das Anlegen des ersten Clients wurden korrigiert.
-> - Unterstützte Abonnements für Hysteria 2, VLESS und WireGuard in LuCI importieren oder aus Guard oder VPN senden. Der Router aktualisiert unterstützte Abonnements automatisch.
-> - Spiele ohne VPN hat einen Standardschalter in den Einstellungen. Routing öffnen Sie über Hinzufügen. Die Pfeile zum Auf- und Zuklappen haben klare Kanten.
-> - Das Protokoll hat ein neues Aktualisierungssymbol und zeigt in RAM die letzten zehn VPN-Ereignisse. Der Softwarestatus zeigt separat installiertes Hysteria 2.
+> - Kleine Fehler in der Benutzeroberfläche behoben.
+> - Das helle und das dunkle Design zeigen den Fuchs in Farbe. Im Nachtdesign sind Logo und Bedienelemente schwarzweiß.
+> - Das helle Design verwendet die Farben der Android-Apps. Die Trennlinien in den Einstellungen sind in allen drei Designs einheitlich.
+> - Serveränderungen lassen sich verwerfen und Routingregeln vor dem Speichern prüfen. Bei falscher PIN werden nur die Eingabepunkte rot.
+> - Die Programminformationen stehen in einer Tabelle. Die Schriftwahl steht über dem Design. Dialoge lassen sich über die Titelleiste schließen.
+> - Der Hintergrund der Kopfzeile wird nur beim Scrollen weichgezeichnet. „Dunkel“ verwendet die Farben von FoxHole VPN, die schwarze Palette heißt jetzt „Nacht“.
+> - Frontend optimiert.
 
 <a id="quickstart"></a>
 

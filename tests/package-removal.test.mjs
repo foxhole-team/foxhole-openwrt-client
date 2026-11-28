@@ -63,14 +63,14 @@ test('LuCI requires a separate confirmation and routes RAM completion to the sto
    if(attrs.role==='status')status=node;return node;}
   const rpc={declare:s=>async(...args)=>{calls.push([s.method,...args]);return s.method==='remove_package_apply'?
    {status:mode==='RAM'?'REBOOT_REQUIRED':'REMOVED'}:{};}};
-  const ui={showModal:(title,children)=>modals.push(children.at(-1).kids),hideModal:()=>{}};
+  const ui={showModal:(title,children)=>modals.push(children),hideModal:()=>{}};
   const ctx={rpc,ui,E,setTimeout,clearTimeout,request:{},document:{documentElement:{lang:'en'}},view:{extend:v=>v},L:{hasViewPermission:()=>true,url:(...p)=>'/'+p.join('/')}};
   const view=vm.runInNewContext('(function(){'+src+'})()',ctx);
   const tree=view.render([{}, {mode,version:'1.0.9-r2',token:'a'.repeat(64),hostVersion:null}]);
   await new Promise(resolve=>setImmediate(resolve));
   const content=tree.kids[1],button=content.kids.at(-1);assert.equal(calls.length,0);
-  await button.events.click();assert.equal(calls.length,0);await modals.at(-1)[0].events.click();assert.equal(calls.length,0);
-  await button.events.click();await modals.at(-1)[2].events.click();
+  await button.events.click();assert.equal(calls.length,0);const cancel=modals.at(-1)[0].kids.at(-1);assert.equal(cancel.attrs['aria-label'],'action.close');await cancel.events.click();assert.equal(calls.length,0);
+  await button.events.click();await modals.at(-1).at(-1).kids[0].events.click();
   assert.deepEqual(calls,[['remove_package_apply','a'.repeat(64),mode]]);
   if(mode==='RAM')assert.equal(content.kids.at(-1).attrs.href,'/admin/system/reboot');else assert.equal(status.textContent,'remove.done');
  }
@@ -118,10 +118,10 @@ test('a lost removal reply offers a fresh plan instead of replaying the write',a
   replaceChildren(...v){this.kids=v;},append(...v){this.kids.push(...v);},addEventListener(k,f){this.events[k]=f;}};
   if(attrs.role==='status')status=n;return n;};
  const rpc={declare:spec=>async()=>{calls.push(spec.method);if(spec.method==='remove_package_apply')throw Error('lost reply');return {mode:'ABSENT'};}};
- const view=vm.runInNewContext('(function(){'+src+'})()', {rpc,setTimeout,clearTimeout,request:{},view:{extend:x=>x},ui:{showModal:(_title,kids)=>modals.push(kids.at(-1).kids),hideModal(){}},E,L:{hasViewPermission:()=>true}});
+ const view=vm.runInNewContext('(function(){'+src+'})()', {rpc,setTimeout,clearTimeout,request:{},view:{extend:x=>x},ui:{showModal:(_title,kids)=>modals.push(kids),hideModal(){}},E,L:{hasViewPermission:()=>true}});
  const tree=view.render([{}, {mode:'FLASH',token:'a'.repeat(64),version:'1.0.9-r1'}]),content=tree.kids[1];
  await new Promise(resolve=>setImmediate(resolve));
- await content.kids.at(-1).events.click();await modals.at(-1)[2].events.click();
+ await content.kids.at(-1).events.click();await modals.at(-1).at(-1).kids[0].events.click();
  const retry=content.kids[0];assert.equal(retry.kids[0],'remove.retry');await retry.events.click();
  assert.deepEqual(calls,['remove_package_apply','remove_package_plan']);assert.equal(status.textContent,'remove.absent');
 });

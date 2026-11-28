@@ -98,10 +98,11 @@ test('games has one Settings toggle and routing remains reachable from Add', asy
 
 test('directional icons use angular strokes and reinstall has balanced distinct arrows', async () => {
   const shell = await read(`${panelRoot}/shell.html`);
-  for (const id of ['chevron','back','download','upload','play','refresh','reinstall'])
+  for (const id of ['chevron','download','upload','play','refresh','reinstall'])
     assert.match(shell, new RegExp(`<symbol id="icon-${id}" viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter">`));
+  assert.match(shell, /<symbol id="icon-chevron-down" viewBox="0 0 12 12" stroke-linecap="square" stroke-linejoin="miter">\s*<path d="m2 4 4 4 4-4"/);
   assert.match(shell, /id="icon-reinstall"[\s\S]*M4 11V7h15m-3-3 3 3-3 3M20 13v4H5m3-3-3 3 3 3/);
-  assert.match(shell, /id="icon-refresh"[\s\S]*M20 6v5h-5M20 11l-5-5H8l-4 4v6l4 4h8l4-4/);
+  assert.match(shell, /id="icon-refresh"[\s\S]*M19 9l-4-4H9L5 9v6l4 4h6l4-4M19 5v4h-4/);
   assert.match(shell, /data-action="logs-refresh"[^>]*data-i18n-aria-label="logs.refresh"[\s\S]*?href="#icon-refresh"/);
   const panel = await read(`${panelRoot}/engine-panel.js`);
   assert.match(panel, /'engines\.reinstall', 'reinstall'/);

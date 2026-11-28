@@ -52,19 +52,32 @@ export async function checkSettingsLayout(browser, origin, responseCases) {
    });
    await page.locator('dialog [data-action="open-about"]').click();
    await page.waitForFunction(()=>document.querySelector('dialog[open] [data-about-version]')?.textContent==='1.0.9-r2');
+   const aboutTable = page.locator('dialog[open] table.about-details');
+   assert.equal(await aboutTable.locator('tr > th[scope="row"] + td').count(), 7);
+   if (width >= 960) {
+    const stage = page.locator('dialog[open] .modal-stage');
+    assert.ok(await stage.evaluate(el => el.scrollHeight <= el.clientHeight + 1), 'About fits on desktop');
+   }
    for(const [field,expected] of Object.entries({storage:'RAM',model:'Cudy WR3000 v1',firmware:'OpenWrt 25.12.5',address:'192.0.2.1'}))
     assert.equal(await page.locator('dialog[open] [data-about-'+field+']').textContent(),expected);
-   await page.locator('dialog[open] [data-action="modal-close"]').click();
-   await page.locator('[data-action="open-settings"]').click();
+   await page.locator('dialog[open] [data-modal-close]').click();
+   await page.locator('dialog.view-settings-home[open]').waitFor();
    await page.locator('dialog.view-settings-home [data-settings-help-entry]').click();
    const help=page.locator('dialog[open] [data-help-content]');
    await help.waitFor();
    const columns=await help.evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length);
    assert.equal(columns,1,'help uses a single full-width column at '+width);
-   await page.locator('dialog[open] [data-action="modal-close"]').click();
-   await page.locator('[data-action="open-settings"]').click();
+   await page.locator('dialog[open] [data-modal-close]').click();
+   await page.locator('dialog.view-settings-home[open]').waitFor();
    await page.locator('dialog [data-action="open-interface-settings"]').click();
    await page.waitForSelector('dialog.view-interface-settings[open]');
+   const order = await page.locator('dialog[open] .settings-list').evaluate(grid => {
+    const row = id => grid.querySelector(id).closest('.setting-row');
+    return { font: row('#font-select').offsetTop, theme: row('#theme-select').offsetTop,
+     upperBorders: [...grid.children].slice(0, 2).map(el => getComputedStyle(el).borderTopWidth) };
+   });
+   assert.ok(order.font < order.theme, 'Font appears above Theme');
+   if (width >= 960) assert.deepEqual(order.upperBorders, ['0px', '0px']);
    const trigger=page.locator('dialog .font-picker-trigger');await trigger.click();
    const menu=page.locator('.font-picker-menu:visible');await menu.waitFor();
    const fonts=await menu.evaluate(el=>{
@@ -212,7 +225,7 @@ export async function checkSettingsResponses(browser, origin) {
       controlError:Math.max(...before.map(r=>r.controlError))});
      cachedAvailable = availability === 'AVAILABLE';
      current=null;
-     await page.locator('dialog[open] [data-action="modal-close"]').click();
+     await page.locator('dialog[open] [data-modal-close]').click();
      await page.locator('dialog[open]').waitFor({state:'hidden'});
     }
    }
@@ -226,7 +239,7 @@ export function assertSettingsResponses(results) {
   const scenario = [value.width, value.scale, value.language, value.availability, value.supported, value.backupFirst].join('/');
   assert.deepEqual(value.moved, [], 'Asynchronous response shifted settings: ' + scenario);
   assert.ok(value.authorization && value.summary, 'Invalid capability or update state: ' + scenario);
-  // The visible ink varies slightly with accents and descenders in each label.
+  // Accents and descenders affect the visible glyph bounds.
   assert.ok(value.worstIcon <= 1.25 * value.scale + .1, 'Leading icon misses its first line: ' + scenario + ' ' + JSON.stringify(value.icons));
   assert.ok(value.controlError <= 1, 'Trailing control moved off center: ' + scenario);
  }

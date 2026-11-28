@@ -117,14 +117,29 @@ test('cache whole-tree validation refuses symlink/foreign hardlink before deleti
 
 test('actual rollback restores exact boot descriptor before restarting current consumers',()=>{
  const f=fixture(),p=f.api.prove(candidate(),sha('metadata')),j=f.api.journal(p,candidate(),sha('metadata')),old=f.files.get(BOOT);f.api.commit(j);
+ const previous=JSON.parse(old).baseVersion;
  const events=[],journal={bootstrap:j,unmounted:[],mounted:[],created:[],restarted:true};
  const rollback_actions=new Function('length','push',`return function rollback_actions(unmounted,mounted) ${functionBody(read('usr/share/foxhole/ram-switch-model.uc'),'rollback_actions')}`)(v=>v.length,(a,v)=>a.push(v));
+ let ready=true;
  const bindings={...builtins,model:{rollback_actions},fs:{},filter:(a,f)=>a.filter(f),replace:()=>{},mount_rows:()=>[],
  verify_mount:()=>{},command:()=>{},bind:()=>{},restore_marker:()=>events.push('marker'),bootstrap:f.api,
- stop_services:()=>events.push('quiesce'),start_services:()=>{assert.equal(f.files.get(BOOT),old);events.push('start-current');},fail:()=>{throw new Error('refused');}};
- const rollback=new Function(...Object.keys(bindings),`return function rollback(journal,path) ${adapt(functionBody(switching,'rollback'))}`)(...Object.values(bindings));
- rollback(journal,'journal');assert.equal(journal.phase,'ROLLED_BACK');assert.deepEqual(events,['quiesce','marker','start-current']);
- f.files.set(BOOT,'{}');events.length=0;assert.throws(()=>rollback({...journal,phase:'ACTIVE'},'journal'));assert.ok(!events.includes('start-current'));
+ stop_services:()=>events.push('quiesce'),start_services:()=>{assert.equal(f.files.get(BOOT),old);events.push('start-current');},
+ update_native:{require_package_ready:(storage,version)=>{
+   assert.equal(storage,'RAM');assert.equal(version,previous);
+   events.push('verify-current');if(!ready)throw new Error('runtime unavailable');
+ }},fail:()=>{throw new Error('refused');}};
+ const rollback=new Function(...Object.keys(bindings),`return function rollback(journal,path,previous_version) ${adapt(functionBody(switching,'rollback'))}`)(...Object.values(bindings));
+ rollback(journal,'journal',previous);
+ assert.equal(journal.phase,'ROLLED_BACK');
+ assert.deepEqual(events,['quiesce','marker','start-current','verify-current']);
+ ready=false;events.length=0;
+ const failed={...journal,phase:'ACTIVE'};f.api.commit(j);
+ assert.throws(()=>rollback(failed,'journal',previous),/runtime unavailable/);
+ assert.equal(failed.phase,'ACTIVE');
+ assert.deepEqual(events,['quiesce','marker','start-current','verify-current']);
+ f.files.set(BOOT,'{}');events.length=0;
+ assert.throws(()=>rollback({...journal,phase:'ACTIVE'},'journal',previous));
+ assert.ok(!events.includes('start-current'));
 });
 
 test('stage initializes signed destination root ACL before native extract preserves it and full payload verification',()=>{

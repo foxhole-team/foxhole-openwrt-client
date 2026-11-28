@@ -42,13 +42,23 @@ test('every existing update entry delegates RAM without entering host/native FLA
 test('paired phones can query guarded package updates on either storage mode', async () => {
   const rpc = await read(`${packageRoot}/root/usr/share/rpcd/ucode/foxhole.uc`);
   for (const storage of ['RAM', 'FLASH']) {
-    const context = vm.createContext({ phone_session: () => {},
+    const queried = [];
+    const context = vm.createContext({ phone_session: request => {
+      if (request.token !== 'paired') throw new Error('unauthorized');
+    },
       server_install: { installed: () => null }, protocol_facts: { server: () => null }, server_mode: { enabled: () => false }, state_record: () => ({ settings: {} }),
       core_adapter: { receipt: () => null }, fs: { stat: () => null },
-      read_json: () => null, ram_deployment: () => storage === 'RAM' });
-    vm.runInContext(`function phone_capabilities(request) ${functionBody(rpc, 'phone_capabilities')}`, context);
-    assert.equal(context.phone_capabilities({}).packageUpdates, true);
-    assert.equal(context.phone_capabilities({}).phoneRemoteProvisioning, false);
+      read_json: () => null, ram_deployment: () => storage === 'RAM',
+      index: (rows, value) => rows.indexOf(value), push: (rows, value) => rows.push(value),
+      engine_registry: { select_protocol: id => { queried.push(id); return id === 'hysteria2'; } } });
+    const body = functionBody(rpc, 'phone_capabilities').replace(/for \(let (\w+) in /g, 'for (let $1 of ');
+    vm.runInContext(`function phone_capabilities(request) ${body}`, context);
+    assert.throws(() => context.phone_capabilities({}), /unauthorized/);
+    const capabilities = context.phone_capabilities({ token: 'paired' });
+    assert.equal(capabilities.packageUpdates, true);
+    assert.equal(capabilities.phoneRemoteProvisioning, false);
+    assert.deepEqual(plain(capabilities.coreProtocols), ['hysteria2']);
+    assert.deepEqual(queried, ['vless', 'hysteria2', 'wireguard']);
   }
 });
 test('RAM job dispatch survives marker absence and never enters global database worker', () => {

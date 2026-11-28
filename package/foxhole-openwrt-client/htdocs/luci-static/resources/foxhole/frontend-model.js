@@ -144,12 +144,24 @@ export function normalizeSettings(value = {}) {
     clientRules: input.clientRules === true,
     vpnServerEnabled: input.vpnServerEnabled === true,
     killSwitch: input.killSwitch === true,
-    darkStyle: false,
+    darkStyle: input.darkStyle === true,
     darkCharts: input.darkCharts === true,
     plainHeadings: input.plainHeadings === true,
     hideRouterStatus: input.hideRouterStatus === true,
     theme: input.theme === 'light' ? 'light' : 'dark'
   };
+}
+
+// Keep settings readable by earlier packages.
+export function panelTheme(settings) {
+  if (settings.theme === 'light') return 'light';
+  return settings.darkStyle === true ? 'foxhole' : 'dark';
+}
+
+export function setPanelTheme(settings, choice) {
+  if (!['dark', 'foxhole', 'light'].includes(choice)) return;
+  settings.theme = choice === 'light' ? 'light' : 'dark';
+  settings.darkStyle = choice === 'foxhole';
 }
 
 export function normalizeDevice(value) {
@@ -372,13 +384,4 @@ export function normalizeSitePattern(value) {
   if (!host || !validHostMask(host))
     throw new ModelError('invalid_site');
   return host;
-}
-
-export function modalFooterActions(actions) {
-  const visible = actions.filter(item => item.action !== 'open-help');
-  if (!visible.some(item => item.action === 'modal-back') ||
-      !visible.some(item => item.action === 'modal-close')) return visible;
-  return [...visible.filter(item => !['modal-back', 'modal-close'].includes(item.action)),
-    ...visible.filter(item => item.action === 'modal-back'),
-    ...visible.filter(item => item.action === 'modal-close')];
 }

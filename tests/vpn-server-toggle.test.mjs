@@ -57,4 +57,14 @@ test('clients hidden by backend setting and confirmation is separate from generi
 
 test('generic settings cannot enable or disable server implicitly and old clients preserve explicit state',()=>{const current=state();current.settings.vpnServerEnabled=true;assert.equal(policy.settings(current,{language:'en'}),true);assert.equal(policy.settings(current,{vpnServerEnabled:true}),true);assert.throws(()=>policy.settings(current,{vpnServerEnabled:false}),/confirmation_required/);assert.throws(()=>policy.settings(state(),{vpnServerEnabled:true}),/confirmation_required/);});
 
-test('server switch follows kill switch and two-column settings require real adequate content width',async()=>{const html=await read(`${panelRoot}/shell.html`),css=await read(`${panelRoot}/app.css`);const view=html.split('id="tpl-settings-home"')[1].split('</template>')[0];assert.ok(view.indexOf('for="kill-switch"')<view.indexOf('data-vpn-server-toggle'));assert.ok(view.indexOf('data-vpn-server-toggle')<view.indexOf('data-action="open-exceptions"'));assert.match(css,/@container settings-view \(min-width: 760px\)/);assert.match(css,/grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);});
+test('server switch follows kill switch and routing opens from the Add menu', async () => {
+  const html = await read(`${panelRoot}/shell.html`);
+  const css = await read(`${panelRoot}/app.css`);
+  const view = html.split('id="tpl-settings-home"')[1].split('</template>')[0];
+  const add = html.split('id="tpl-add-choice"')[1].split('</template>')[0];
+  assert.match(view, /for="kill-switch"[\s\S]*data-vpn-server-toggle[\s\S]*data-action="open-engines"/);
+  assert.doesNotMatch(view, /data-action="open-exceptions"/);
+  assert.match(add, /id="add-choice-routes"[^>]*data-action="open-exceptions"/);
+  assert.match(css, /@container settings-view \(min-width: 760px\)/);
+  assert.match(css, /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+});

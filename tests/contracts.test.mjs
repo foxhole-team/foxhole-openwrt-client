@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import { functionBody, hostHarness, modelPath, packageRoot, panelRoot,
   plain, read, rpcMethods } from './helpers.mjs';
 
-const readMethods = ['vpnServer.plan', 'vpnServer.job', 'diagnostics.logs', 'diagnostics.journal', 'backup.export', 'backup.validate', 'backup.status', 'updates.deviceStatus', 'updates.status', 'updates.plan', 'updates.job', 'engines.status', 'engines.plan', 'engines.job', 'package.status', 'unlock', 'lock', 'state', 'telemetry', 'server.test',
+const readMethods = ['vpnServer.plan', 'vpnServer.job', 'diagnostics.logs', 'diagnostics.journal', 'backup.export', 'backup.validate', 'backup.status', 'updates.deviceStatus', 'updates.status', 'updates.plan', 'updates.job', 'engines.status', 'engines.plan', 'engines.job', 'package.status', 'unlock', 'lock', 'state', 'telemetry', 'routing.test', 'server.test',
   'server.get', 'client.get', 'client.status', 'device.resolve', 'device.list',
   'pair.unlock', 'pair.list', 'phone.status', 'phone.capabilities', 'phone.resolve'];
 const writeMethods = ['vpnServer.set', 'backup.apply', 'updates.deviceBegin', 'updates.deviceChunk', 'updates.deviceFinish', 'updates.check', 'updates.apply', 'updates.settings', 'engines.apply', 'setup.reset', 'settings', 'server.save', 'server.delete',
@@ -169,7 +169,7 @@ test('dashboard separates WAN traffic from latency series', async () => {
   assert.match(charts, /point\.latency\?\.wan/);
   assert.match(charts, /point\.latency\?\.serverId === this\.vpn\.serverId/);
   assert.match(charts,
-    /const \{ start, duration \} = chartDomain\(this\.period, end\)/);
+    /const \{ start, duration \} = timeline \|\| chartDomain\(this\.period, end\)/);
   assert.match(charts, /this\.pointsBetween\(start, end\)/);
   assert.doesNotMatch(shell, /day_average/);
   assert.match(charts,
@@ -261,7 +261,10 @@ test('modal actions use one accessible native dialog flow', async () => {
     'router-stats']) {
     assert.match(app, new RegExp(`['"]?${view}['"]?: \\{`), view);
   }
-  for (const action of ['modal-back', 'modal-close', 'save-server',
+  assert.match(shell, /data-action="modal-dismiss" data-modal-close/);
+  assert.doesNotMatch(shell + app, /modal-back/);
+  assert.doesNotMatch(app, /action: 'modal-(close|back)'/);
+  for (const action of ['save-server',
     'generate-client', 'manage-client', 'save-manual-address',
     'save-pin', 'confirm-delete', 'delete-client']) {
     assert.match(app, new RegExp(`action: '${action}'`), action);
@@ -288,8 +291,7 @@ test('modal actions use one accessible native dialog flow', async () => {
   assert.match(flow, /clearTimeout\(timer\)/);
   assert.match(app, /dialog\.addEventListener\('cancel'/);
   assert.doesNotMatch(app, /button:not\(:disabled\)[\s\S]*event\.key !== 'Tab'/);
-  assert.match(css, /\.outline-button\.is-close \{ background: transparent/);
-  assert.doesNotMatch(shell, /action\.cancel/);
+  assert.match(shell, /data-action="cancel-client-rename"[^>]*data-i18n-aria-label="action.cancel"/);
   assert.match(css, /\.modal-footer \{[^}]*border-top:/);
   assert.doesNotMatch(css, /is-transitioning|is-leaving/);
   assert.match(css,
@@ -331,7 +333,7 @@ test('updates, protocols and backup size to content while log refresh has one ac
  assert.doesNotMatch(html,/data-i18n="backup.description"/);
  assert.match(html,/data-action="logs-refresh" data-log-refresh hidden data-i18n-title="logs.refresh" data-i18n-aria-label="logs.refresh"/);
  assert.equal((html.match(/data-action="logs-refresh"/g)||[]).length,1);
- assert.match(app,/'logs': \{ icon: 'logs', actions: \(\) => \[backAction, closeAction\]/);
+ assert.match(app,/'logs': \{ icon: 'logs' \}/);
 });
 
 test('DHCP picker and native LuCI access setting are packaged', async () => {
@@ -376,7 +378,7 @@ test('FoxHole themes, WAN metadata and section controls are explicit', async () 
   assert.doesNotMatch(css,
     /view-(?:server-control|client-control)[^{]*\{[^}]*height:/);
   assert.doesNotMatch(css,
-    /\.modal\.view-(?:add-choice|client-device)[^{]*\{[^}]*height:/);
+    /\.modal\.view-(?:add-choice|client-device)(?:\[open\])?\s*\{[^}]*height:/);
   assert.match(app,
     /storage\.get\('plainHeadings'\) === '1'/);
   assert.match(app,
@@ -393,7 +395,11 @@ test('FoxHole themes, WAN metadata and section controls are explicit', async () 
     /\.setting-copy\.with-icon > \.setting-icon > svg \{[^}]*width: 15px; height: 15px/);
   assert.doesNotMatch(css, /html\.theme-ui-gray/);
   assert.match(css, /--primary-bg: #fff/);
-  assert.match(css, /html\.theme-light[\s\S]*--primary-bg: #303842/);
+  const lightPalette = css.match(/html\.theme-light \{([^}]+)\}/)[1];
+  for (const [token, color] of Object.entries({
+    bg: '#f2e8d5', fg: '#2a2118', muted: '#665440', surface: '#fff8ea', line: '#b7a17d'
+  })) assert.ok(lightPalette.includes(`--${token}: ${color};`), `light palette: ${token}`);
+  assert.match(css, /\.setting-row \{[^}]*border-top: 1px solid var\(--line\)/);
   assert.match(css, /\.vpn-button \{ background: transparent/);
   assert.doesNotMatch(css, /html\.theme-dark \.vpn-button/);
   assert.match(css,
@@ -433,9 +439,13 @@ test('FoxHole themes, WAN metadata and section controls are explicit', async () 
   assert.doesNotMatch(css, /mobile-sheet-platform|modal-backdrop/);
   assert.match(css,
     /@media \(max-width: 540px\)/);
-  assert.match(css,
-    /\.modal-footer\.layout-server-config \[data-action="test-server"\] \{[^}]*grid-column: 1 \/ -1/);
-  assert.doesNotMatch(css, /backdrop-filter/);
+  assert.doesNotMatch(css, /\.layout-server-config \[data-action="test-server"\] \{[^}]*grid-column: 1 \/ -1/);
+  assert.doesNotMatch(css, /\.topbar \{[^}]*filter:/);
+  assert.match(css, /\.topbar::before \{[^}]*pointer-events: none/);
+  assert.doesNotMatch(css.match(/\.topbar::before \{([^}]+)\}/)[1], /filter|gradient|shadow|border/);
+  assert.match(css, /\.topbar\.is-scrolled::before \{[^}]*backdrop-filter: blur/);
+  assert.match(app, /addEventListener\('scrollend', clearTopbarBlur\)/);
+  assert.match(css, /@media \(prefers-reduced-transparency: reduce\) \{\s*\.topbar\.is-scrolled::before \{[^}]*backdrop-filter: none/);
   assert.match(css, /\.modal:is\(\.is-opening, \.is-closing\) \{ will-change: transform; \}/);
   assert.match(css, /select \{ padding-inline-end: 30px; \}/);
   assert.match(app,
@@ -522,7 +532,7 @@ test('site direction and all destructive actions are explicit', async () => {
   assert.doesNotMatch(app, /case 'edit-(?:address|country|site)'/);
   assert.doesNotMatch(shell, /tpl-rule-route|data-rule-route-select/);
   assert.match(app,
-    /case 'select-route':[\s\S]*input\.matches\('\[data-rule-inline\]'\)[\s\S]*selectedRule\([\s\S]*queueDraftSave\('exceptions\.rule_saved'\)/);
+    /case 'select-route':[\s\S]*input\.matches\('\[data-rule-inline\]'\)[\s\S]*selectedRule\([\s\S]*rule\.route = input\.value/);
   assert.match(css,
     /\.modal\.view-exceptions \{ width: min\(calc\(100% - 48px\), 840px\)/);
   assert.match(css,
@@ -684,7 +694,7 @@ test('settings views share one bounded modal height with scrollable help', async
   const views = [
     ['settings-home', ['localScope', 'localRules', 'gamesDirect', 'clientRules', 'killSwitch'],
       ['open-engines', 'open-backup', 'open-logs', 'open-interface-settings', 'open-updates', 'open-about'], 0],
-    ['interface-settings', ['theme', 'darkCharts', 'hideRouterStatus', 'plainHeadings'],
+    ['interface-settings', ['plainHeadings', 'theme', 'darkCharts', 'hideRouterStatus'],
       ['open-pin-change'], 1]
   ];
   for (const [name, settings, actions, languageRows] of views) {

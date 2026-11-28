@@ -99,7 +99,7 @@ export function select_release(value,current) {
    if(base==null||compare(found[1],base.version)>0)base={version:found[1],file:asset.name,bytes:asset.size,releaseTag:release.tag_name};
   }
   if(!sums||base==null) {
-   // A partial release at or above the installed tag cannot establish that there is no update.
+   // An incomplete current or newer release leaves status unknown.
    if(release.tag_name==release_for(current)||compare(substr(release.tag_name,1)+'-r1',current)>0)fail('RELEASE_UNAVAILABLE');
    continue;
   }

@@ -1,22 +1,22 @@
-import { UpdatePanel, initializeUpdatePolicy } from './update-panel.js?v=1.0.13-r1-ui16';
-import { EnginePanel } from './engine-panel.js?v=1.0.13-r1-ui16';
-import { BackupPanel } from './backup-panel.js?v=1.0.13-r1-ui16';
-import { LogsPanel } from './logs-panel.js?v=1.0.13-r1-ui16';
-import { PairingPanel } from './pairing-panel.js?v=1.0.13-r1-ui16';
-import { HelpPanel } from './help-content.js?v=1.0.13-r1-ui16';
-import { hasHost, request, cancelPending, PanelError } from './bridge.js?v=1.0.13-r1-ui16';
-import { Charts, formatBytes, setCountryLabel } from './charts.js?v=1.0.13-r1-ui16';
+import { UpdatePanel, initializeUpdatePolicy } from './update-panel.js?v=1.0.20-r1-ui23';
+import { EnginePanel } from './engine-panel.js?v=1.0.20-r1-ui23';
+import { BackupPanel } from './backup-panel.js?v=1.0.20-r1-ui23';
+import { LogsPanel } from './logs-panel.js?v=1.0.20-r1-ui23';
+import { PairingPanel } from './pairing-panel.js?v=1.0.20-r1-ui23';
+import { HelpPanel } from './help-content.js?v=1.0.20-r1-ui23';
+import { hasHost, request, cancelPending, PanelError } from './bridge.js?v=1.0.20-r1-ui23';
+import { Charts, formatBytes, setCountryLabel } from './charts.js?v=1.0.20-r1-ui23';
 import {
   clientDeviceIcon, clientDeviceType, clone, countryCodes,
   countryFlagPath, finite, maskIpv4, maskMac, networkDeviceIcon,
   normalizeMac, normalizeRuntime, normalizeSitePattern, normalizedState, packageMetadata,
-  randomId,
+  panelTheme, setPanelTheme, randomId,
   serverCountryCode,
   validAddress
-, modalFooterActions } from './frontend-model.js?v=1.0.13-r1-ui16';
+} from './frontend-model.js?v=1.0.20-r1-ui23';
 import {
-  ModalFlow, PopupController, waitForMotion
-} from './ui-controller.js?v=1.0.13-r1-ui16';
+  bindVerticalDismiss, ModalFlow, PopupController, waitForMotion
+} from './ui-controller.js?v=1.0.20-r1-ui23';
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -28,7 +28,8 @@ const supportedLanguages = ['en', 'ru', 'de', 'fr', 'es', 'ja', 'zh', 'ar'];
 const languageFlags = { ru: 'RU', en: 'GB', ja: 'JP', de: 'DE', fr: 'FR', es: 'ES', zh: 'CN', ar: 'SA' };
 const dictionary = {};
 let language = supportedLanguages.includes(storage.get('language')) ? storage.get('language') : 'ru';
-let preferredTheme = storage.get('theme') === 'light' ? 'light' : 'dark';
+const savedTheme = storage.get('theme');
+let preferredTheme = ['light', 'foxhole'].includes(savedTheme) ? savedTheme : 'dark';
 let preferredPlainHeadings = storage.get('plainHeadings') === '1';
 let token = null;
 let pinSetupRequired = false;
@@ -53,6 +54,7 @@ let busy = false;
 let pollTimer = 0;
 let polling = false;
 let failures = 0;
+let pinRejectionTimer;
 let pinCooldownDeadline = 0;
 let pinCooldownTimer = null;
 let epoch = 0;
@@ -106,6 +108,7 @@ function translate(root = document) {
 
 let selectMeasure;
 const selectWidths = [56, 68, 80, 96, 112, 132, 156, 190, 224];
+const periodWidths = [46, 52, 58, 64, 72, 80, 96, 116, 140];
 
 function syncFontStyleLabel(root = document) {
   const input = $('[data-setting="plainHeadings"]', root);
@@ -126,10 +129,11 @@ function selectTextWidth(select, text) {
 
 function sizeCompactSelect(select) {
   const selected = select.selectedOptions[0]?.textContent?.trim() || '';
-  const closed = Math.max(54, selectTextWidth(select, selected));
+  const closed = Math.max(select.hasAttribute('data-period') ? 46 : 54, selectTextWidth(select, selected));
+  const widths = select.hasAttribute('data-period') ? periodWidths : selectWidths;
   const bucket = (width) => {
-    const index = selectWidths.findIndex((candidate) => width <= candidate);
-    return String(index < 0 ? selectWidths.length - 1 : index);
+    const index = widths.findIndex((candidate) => width <= candidate);
+    return String(index < 0 ? widths.length - 1 : index);
   };
   select.dataset.closedSize = bucket(closed);
 }
@@ -186,127 +190,110 @@ function actionButton(action, name, label, id) {
   return button;
 }
 
-const backAction = {
-  action: 'modal-back', icon: 'back', label: 'action.back', tone: 'muted'
-};
-const closeAction = {
-  action: 'modal-close', icon: 'close', label: 'action.close', tone: 'close'
-};
-
 const modalDefinitions = {
- 'vpn-server-disable': { icon: 'server', actions: () => [backAction, { action: 'confirm-vpn-server-disable', icon: 'power', label: 'vpn_server.disable', tone: 'danger' }] },
- 'vpn-server-enable': { icon: 'server', actions: view => [backAction, closeAction, { action: 'confirm-vpn-server', icon: 'check', label: 'action.confirm', tone: 'accent', disabled: view.data.plan?.available !== true }] },
-  'add-choice': {
-    icon: 'shield', actions: () => [closeAction, {
-      action: 'open-networks', icon: 'settings', label: 'action.manage',
-      tone: 'accent'
-    }]
-  },
+  'vpn-server-disable': { icon: 'server', actions: () => [{ action: 'confirm-vpn-server-disable', icon: 'power', label: 'vpn_server.disable', tone: 'danger' }] },
+  'vpn-server-enable': { icon: 'server', actions: view => [{ action: 'confirm-vpn-server', icon: 'check', label: 'action.confirm', tone: 'accent', disabled: view.data.plan?.available !== true }] },
+  'add-choice': { icon: 'shield', manage: true },
   'server-config': {
-    icon: 'server', layout: 'server-config', actions: () => [{
-      action: 'test-server', icon: 'activity', label: 'action.test'
-    }, backAction, {
+    icon: 'server', layout: 'server-config', actions: view => [view.data.id
+      ? { action: 'cancel-server-edit', icon: 'close', label: 'action.cancel' }
+      : { action: 'test-server', icon: 'activity', label: 'action.test' }, {
       action: 'save-server', icon: 'check', label: 'action.save',
       tone: 'accent'
     }]
   },
   'server-control': {
-    icon: 'server', actions: () => [closeAction, {
+    icon: 'server', actions: () => [{
       action: 'connect-server', icon: 'play', label: 'action.connect',
       tone: 'accent', marker: 'serverToggle'
     }]
   },
   'client-device': {
     icon: 'mobile', actions: (view) => {
-      if (view.data.managed) return [backAction, {
+      if (view.data.managed) return [{
         action: 'delete-client', icon: 'trash', label: 'action.delete',
         tone: 'danger', id: view.data.id, disabled: !view.data.export
       }];
-      if (!view.data.export) return [backAction, {
+      if (!view.data.export) return [{
         action: 'generate-client', icon: 'chevron', label: 'action.next', tone: 'accent'
       }];
-      return [backAction, {
-        action: 'modal-close', icon: 'check', label: 'action.done',
-        tone: 'accent'
-      }];
+      return [];
     }
   },
   'client-control': {
-    icon: 'mobile', actions: (view) => [closeAction, {
+    icon: 'mobile', actions: (view) => [{
       action: 'manage-client', icon: 'eye', label: 'action.open_profile',
       tone: 'accent', id: view.data.id
     }]
   },
-  'engines': { icon: 'network', actions: () => [backAction, closeAction] },
-  'engine-plan': { icon: 'download', actions: () => [backAction, { action: 'engine-apply', icon: 'check', label: 'action.confirm', tone: 'accent' }] },
-  'engine-progress': { icon: 'download', actions: () => [closeAction] },
-  'updates': { icon: 'download', actions: () => [{action:'update-check',icon:'refresh',label:'updates.check',marker:'updatePrimary',disabled:true},backAction,closeAction] },
-  'logs': { icon: 'logs', actions: () => [backAction, closeAction] },
+  'engines': { icon: 'network' },
+  'engine-plan': { icon: 'download', actions: () => [{ action: 'engine-apply', icon: 'check', label: 'action.confirm', tone: 'accent' }] },
+  'engine-progress': { icon: 'download' },
+  'updates': { icon: 'download', actions: () => [{action:'update-check',icon:'refresh',label:'updates.check',marker:'updatePrimary',disabled:true}] },
+  'logs': { icon: 'logs' },
   'settings-home': {
-    icon: 'settings', actions: () => [closeAction]
+    icon: 'settings'
   },
   'interface-settings': {
-    icon: 'moon', actions: () => [backAction, closeAction]
+    icon: 'moon'
   },
-  'about': { icon: 'info', actions: () => [backAction, closeAction] },
+  'about': { icon: 'info' },
   exceptions: {
-    icon: 'globe', actions: () => [backAction, closeAction]
+    icon: 'globe', layout: 'route-rules', actions: () => [
+      { action: 'test-rules', icon: 'activity', label: 'action.test' },
+      { action: 'save-rules', icon: 'check', label: 'action.save' }
+    ]
   },
   'manual-address': {
-    icon: 'devices', actions: () => [backAction, {
+    icon: 'devices', actions: () => [{
       action: 'save-manual-address', icon: 'plus', label: 'action.add',
       tone: 'accent'
     }]
   },
   'network-management': {
-    icon: 'settings', actions: () => [{action:'refresh-profiles',icon:'refresh',label:'pairing.refresh'},backAction,closeAction]
+    icon: 'settings', actions: () => [{action:'refresh-profiles',icon:'refresh',label:'pairing.refresh'}]
   },
   'pin-change': {
-    icon: 'key', actions: () => [pinSetupRequired ? {
+    icon: 'key', actions: () => [...(pinSetupRequired ? [{
       action: 'lock', icon: 'lock', label: 'action.lock'
-    } : backAction, {
+    }] : []), {
       action: 'save-pin', icon: 'check', label: 'action.save',
       tone: 'accent', disabled: true
     }]
   },
   pairings: {
-    icon: 'mobile', actions: () => [closeAction, {
+    icon: 'mobile', actions: () => [{
       action: 'pairing-refresh', icon: 'refresh', label: 'pairing.refresh'
     }]
   },
   'pairing-revoke': {
-    icon: 'trash', actions: () => [backAction, {
+    icon: 'trash', actions: () => [{
       action: 'pairing-revoke', icon: 'trash', label: 'pairing.revoke', tone: 'danger'
     }]
   },
   backup: {
-    icon: 'floppy', actions: () => [backAction, closeAction]
+    icon: 'floppy'
   },
   'confirm-delete': {
-    icon: 'trash', actions: () => [backAction, {
+    icon: 'trash', actions: () => [{
       action: 'confirm-delete', icon: 'trash', label: 'action.confirm',
       tone: 'danger'
     }]
   },
   'confirm-regenerate': {
-    icon: 'refresh', actions: () => [backAction, {
+    icon: 'refresh', actions: () => [{
       action: 'confirm-regenerate', icon: 'refresh', label: 'action.confirm',
       tone: 'accent'
     }]
   },
   'router-stats': {
-    icon: 'activity', actions: () => [closeAction]
+    icon: 'activity'
   },
-  help: {
-    icon: 'info', actions: () => views.length > 1
-      ? [backAction, closeAction] : [closeAction]
-  }
+  help: { icon: 'info' }
 };
 
 function modalDefinition(view) {
-  return modalDefinitions[view.name] || {
-    icon: 'shield', actions: () => [closeAction]
-  };
+  return modalDefinitions[view.name] || { icon: 'shield' };
 }
 
 function renderModalChrome(view) {
@@ -327,13 +314,15 @@ function renderModalChrome(view) {
   const refreshLogs = $('[data-log-refresh]', dialog);
   refreshLogs.hidden = view.name !== 'logs';
   refreshLogs.disabled = view.name !== 'logs' || Boolean(logsPanel.loading);
+  $('[data-modal-close]', dialog).hidden = pinSetupRequired;
+  $('[data-modal-manage]', dialog).hidden = !definition.manage;
   dialog.className = `modal view-${view.name}${clientExport
     ? ' has-client-export' : ''}`;
 
   const footer = $('[data-modal-footer]');
   footer.className = `modal-footer layout-${definition.layout || 'default'}`;
-  const actions = modalFooterActions(definition.actions(view));
-  footer.classList.toggle('has-navigation-pair', actions.some(item => item.action === 'modal-back') && actions.some(item => item.action === 'modal-close'));
+  const actions = definition.actions?.(view) || [];
+  footer.hidden = actions.length === 0;
   footer.classList.toggle('is-single', actions.length === 1);
   footer.replaceChildren(...actions.map((action) => {
     const button = element('button', `outline-button${action.tone
@@ -537,7 +526,7 @@ function lastConnection(value) {
 function appearance(settings, renderEntities = true) {
   const next = {
     language: supportedLanguages.includes(settings.language) ? settings.language : 'ru',
-    theme: settings.theme === 'light' ? 'light' : 'dark',
+    theme: panelTheme(settings),
     darkCharts: settings.darkCharts === true,
     plainHeadings: settings.plainHeadings === true,
     hideRouterStatus: settings.hideRouterStatus === true
@@ -554,6 +543,8 @@ function appearance(settings, renderEntities = true) {
     preferredTheme === 'light');
   document.documentElement.classList.toggle('theme-dark',
     preferredTheme === 'dark');
+  document.documentElement.classList.toggle('theme-foxhole',
+    preferredTheme === 'foxhole');
   document.documentElement.classList.remove('theme-ui-gray');
   document.documentElement.classList.toggle('theme-charts-gray',
     next.darkCharts);
@@ -562,7 +553,7 @@ function appearance(settings, renderEntities = true) {
   for (const node of $$('[data-router-status]'))
     node.hidden = next.hideRouterStatus;
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content',
-    preferredTheme === 'light' ? '#CBCACA' : '#000000');
+    getComputedStyle(document.documentElement).getPropertyValue('--bg').trim());
   storage.set('theme', preferredTheme);
   preferredPlainHeadings = next.plainHeadings;
   storage.set('plainHeadings', preferredPlainHeadings ? '1' : '0');
@@ -679,7 +670,7 @@ function applyState(next) {
   pairingPanel.renderHeader(state.pairedDeviceCount);
   syncVpnContext();
   if (!draft) appearance(state.settings, false);
-  else if (draftSaved === draftChange && state.revision > draft.revision) {
+  else if (!routeRulesView() && draftSaved === draftChange && state.revision > draft.revision) {
     draft = settingsDraft();
     refreshDraftView();
   }
@@ -736,6 +727,13 @@ function entityRenderKey() {
   });
 }
 
+function updateServerMetrics(row, server) {
+  for (const [label, value] of serverMetrics(server)) {
+    const node = $(`[data-metric="${label}"] strong`, row);
+    if (node && node.textContent !== value) node.textContent = value;
+  }
+}
+
 function renderLists() {
   if (!state) return;
   $('[data-vpn-server-section]').hidden = state.settings.vpnServerEnabled !== true;
@@ -744,11 +742,7 @@ function renderLists() {
   if (renderKey === renderedEntities) {
     for (const server of state.servers) {
       const row = $(`[data-server-list] [data-id="${server.id}"]`);
-      if (!row) continue;
-      for (const [label, value] of serverMetrics(server)) {
-        const node = $(`[data-metric="${label}"] strong`, row);
-        if (node && node.textContent !== value) node.textContent = value;
-      }
+      if (row) updateServerMetrics(row, server);
     }
     return;
   }
@@ -866,6 +860,7 @@ async function openView(name, data = {}, reset = false) {
 async function back() {
   if (busy || modal.transitioning || pinSetupRequired) return;
   popups.closeAll();
+  if (modal.current?.name === 'exceptions') beginSettingsDraft();
   if (modal.current?.name === 'engines') enginePanel.close();
   if (modal.current?.name === 'updates') updatePanel.close();
   if (modal.current?.name === 'logs') logsPanel.close();
@@ -983,7 +978,7 @@ function renderSettings() {
   const serverToggle = $('[data-vpn-server-toggle]');
   if (serverToggle) serverToggle.checked = state.settings.vpnServerEnabled === true;
   for (const node of $$('[data-setting]')) {
-    const value = draft.settings[node.dataset.setting];
+    const value = node.dataset.setting === 'theme' ? panelTheme(draft.settings) : draft.settings[node.dataset.setting];
     if (node.type === 'checkbox') {
       node.checked = node.hasAttribute('data-setting-inverted')
         ? !Boolean(value) : Boolean(value);
@@ -1011,6 +1006,9 @@ function renderServerControl(data) {
   const active = Boolean(state.runtime?.connected &&
     state.runtime?.activeServerId === server.id);
   const desired = state.runtime?.desiredServerId === server.id;
+  const card = $('[data-server-control-card]');
+  card.dataset.id = server.id;
+  card.setAttribute('aria-label', `${t('action.edit')} · ${server.name}`);
   $('[data-server-control-name]').textContent = server.name;
   setCountryLabel($('[data-server-control-country]'),
     serverCountryCode(server, state.runtime));
@@ -1021,8 +1019,9 @@ function renderServerControl(data) {
   status.classList.toggle('is-online', active);
   status.classList.toggle('is-offline', !active &&
     (!desired || state.runtime.phase === 'disconnected'));
-  $('[data-server-control-metrics]').replaceChildren(
-    serverMetricGrid(server));
+  const metrics = $('[data-server-control-metrics]');
+  if (!metrics.childElementCount) metrics.append(serverMetricGrid(server));
+  else updateServerMetrics(metrics, server);
   for (const button of $$('[data-server-toggle]')) {
     button.dataset.id = server.id;
     button.dataset.action = desired ? 'stop-server' : 'connect-server';
@@ -1038,6 +1037,9 @@ function renderServerControl(data) {
 function renderClientControl(data) {
   const client = state.clients.find((item) => item.id === data.id);
   if (!client) return;
+  const card = $('[data-client-control-card]');
+  card.dataset.id = client.id;
+  card.setAttribute('aria-label', `${t('action.open_profile')} · ${client.name}`);
   $('[data-client-control-name]').textContent = client.name;
   const type = clientDeviceType(client.deviceType);
   $('[data-client-control-type]').textContent = t(`client.${type}`);
@@ -1365,7 +1367,22 @@ function addCountry() {
   setCountrySelection();
   popups.setOpen($('[data-country-picker]'), false);
   renderRules();
-  queueDraftSave('exceptions.rule_saved');
+}
+
+async function submitRouteRules(save) {
+  if (modal.current?.name !== 'exceptions' || !draft) return;
+  await operation(async () => {
+    const payload = clone(draft);
+    if (!save) {
+      const result = await api('routing.test', payload);
+      if (result?.valid !== true) throw new PanelError('invalid_settings');
+      toast(t('exceptions.rules_valid'));
+      return;
+    }
+    applyState(await api('settings', payload));
+    toast(t('settings.saved'));
+    return true;
+  }, save);
 }
 
 function routeRulesView() {
@@ -1476,7 +1493,6 @@ function addSelectedDevices() {
   popups.setOpen($('[data-device-picker]').closest('[data-popup]'), false);
   renderRules();
   renderDevicePicker();
-  queueDraftSave('exceptions.rule_saved');
   return true;
 }
 
@@ -1534,7 +1550,6 @@ async function saveManualDevice() {
       id: randomId('device'), name: value, address, mac, bindMac,
       route
     });
-    queueDraftSave('exceptions.rule_saved');
     saved = true;
     return true;
   });
@@ -1552,7 +1567,6 @@ function addSite() {
   form.elements.pattern.value = '';
   syncSiteAddState();
   renderRules();
-  queueDraftSave('exceptions.rule_saved');
   return true;
 }
 
@@ -1814,7 +1828,10 @@ function newServerSubscription(view, config) {
 
 function syncServerTestAction(view) {
   const config = $('[data-server-config]'), button = $('[data-action="test-server"]');
-  if (config && button) button.hidden = newServerSubscription(view, config.value);
+  if (config && button) {
+    button.hidden = newServerSubscription(view, config.value);
+    button.closest('.modal-footer').classList.toggle('is-single', button.hidden);
+  }
 }
 
 async function testServer() {
@@ -2074,7 +2091,6 @@ async function deleteEntity() {
     draft.sites = draft.sites.filter((entry) => entry.id !== item.id);
   }
   if (['country', 'address', 'site'].includes(type)) {
-    queueDraftSave('exceptions.rule_deleted');
     await back();
     return;
   }
@@ -2250,9 +2266,12 @@ function localLock() {
   $('#app-shell').inert = false;
   $('#pin-gate').hidden = false;
   $('#pin-input').value = '';
+  clearTimeout(pinRejectionTimer);
+  $('#pin-input').removeAttribute('aria-invalid');
+  $('#pin-error-feedback').textContent = '';
   $('#pin-input').disabled = !hasHost;
   $$('[data-pin-dot]').forEach((dot) => dot.classList.remove('is-filled'));
-  $('#pin-gate').classList.remove('is-loading', 'is-unlocking', 'is-error');
+  $('#pin-gate').classList.remove('is-loading', 'is-unlocking', 'pin-rejected');
   renderPinCooldown();
   if (!$('#pin-input').disabled) $('#pin-input').focus({preventScroll:true});
 }
@@ -2298,10 +2317,11 @@ async function unlock(event) {
     localLock();
     if (error.code === 'invalid_pin') {
       void $('#pin-gate').offsetWidth;
-      $('#pin-gate').classList.add('is-error');
-      setTimeout(() => $('#pin-gate').classList.remove('is-error'), 520);
-    }
-    toast(errorText(error), 'error');
+      $('#pin-gate').classList.add('pin-rejected');
+      $('#pin-input').setAttribute('aria-invalid', 'true');
+      $('#pin-error-feedback').textContent = errorText(error);
+      pinRejectionTimer = setTimeout(() => $('#pin-gate').classList.remove('pin-rejected'), 520);
+    } else toast(errorText(error), 'error');
     $('#pin-input').focus();
   }
 }
@@ -2343,8 +2363,10 @@ async function perform(action, target) {
     case 'open-client-control': await openView('client-control', { id }, true); break;
     case 'manage-client': await loadEntity('client', id); break;
     case 'retry-client': await readClientProfile(modal.current); break;
-    case 'modal-close': await closeModal(); break;
-    case 'modal-back': await back(); break;
+    case 'cancel-server-edit':
+    case 'modal-dismiss': await back(); break;
+    case 'test-rules': await submitRouteRules(false); break;
+    case 'save-rules': await submitRouteRules(true); break;
     case 'save-server': await saveServer(); break;
     case 'save-pin': await savePin(); break;
     case 'save-manual-address': await saveManualDevice(); break;
@@ -2402,7 +2424,6 @@ async function perform(action, target) {
         });
         if (rule) {
           rule.route = input.value;
-          queueDraftSave('exceptions.rule_saved');
         }
       }
       break;
@@ -2516,7 +2537,10 @@ document.addEventListener('submit', (event) => {
 document.addEventListener('input', (event) => {
   const input = event.target;
   if (input.id === 'pin-input') {
-    $('#pin-gate').classList.remove('is-error');
+    clearTimeout(pinRejectionTimer);
+    input.removeAttribute('aria-invalid');
+    $('#pin-error-feedback').textContent = '';
+    $('#pin-gate').classList.remove('pin-rejected');
     input.value = input.value.replace(/\D/g, '').slice(0, 6);
     $$('[data-pin-dot]').forEach((dot, index) => dot.classList.toggle('is-filled', index < input.value.length));
     if (input.value.length === 6) $('#pin-form').requestSubmit();
@@ -2587,7 +2611,8 @@ document.addEventListener('change', (event) => {
   if (input.matches('[data-setting]') && draft) {
     if (input.dataset.valueType === 'boolean' && !['true', 'false'].includes(input.value)) return;
     const value = input.type === 'checkbox' ? input.checked : input.dataset.valueType === 'boolean' ? input.value === 'true' : input.value;
-    draft.settings[input.dataset.setting] = input.hasAttribute(
+    if (input.dataset.setting === 'theme') setPanelTheme(draft.settings, value);
+    else draft.settings[input.dataset.setting] = input.hasAttribute(
       'data-setting-inverted') ? !value : value;
     if (input.dataset.setting === 'gamesDirect') {
       syncGamesControls();
@@ -2700,17 +2725,30 @@ function syncViewport() {
 window.visualViewport?.addEventListener('resize', syncViewport);
 window.visualViewport?.addEventListener('scroll', syncViewport);
 window.addEventListener('resize', syncViewport);
+const scrollShell = $('#app-shell');
+const topbar = $('#topbar');
+let scrollIdleTimer;
+function clearTopbarBlur() {
+  topbar.classList.remove('is-scrolled');
+}
+scrollShell.addEventListener('scroll', () => {
+  topbar.classList.toggle('is-scrolled', scrollShell.scrollTop > 0);
+  if (!('onscrollend' in scrollShell)) {
+    clearTimeout(scrollIdleTimer);
+    scrollIdleTimer = setTimeout(clearTopbarBlur, 150);
+  }
+}, { passive: true });
+scrollShell.addEventListener('scrollend', clearTopbarBlur);
 document.addEventListener('focusin', syncViewport);
 document.addEventListener('focusout', () => requestAnimationFrame(syncViewport));
-const appShell = $('#app-shell');
-const topbar = $('[data-topbar]');
-let topbarSolid = false;
-appShell.addEventListener('scroll', () => {
-  const solid = appShell.scrollTop > 1;
-  if (solid === topbarSolid) return;
-  topbarSolid = solid;
-  topbar.classList.toggle('has-glass', solid);
-}, { passive: true });
+const mobileSheet = matchMedia('(max-width: 720px)');
+const canSwipeModal = event => mobileSheet.matches && dialog.open && !busy && !modal.transitioning &&
+  !pinSetupRequired && !$('[data-modal-close]').hidden &&
+  !event.target.closest('button, a, label, input, textarea, select, [contenteditable]');
+for (const handle of $$('[data-modal-grab], .modal-header', dialog))
+  bindVerticalDismiss(handle, 1, canSwipeModal, () => void back());
+const toastSurface = $('[data-toast]');
+bindVerticalDismiss(toastSurface, -1, () => mobileSheet.matches && !toastSurface.hidden, hideToast);
 document.addEventListener('visibilitychange', () => {
   logsPanel.visibilityChanged();
   if (document.hidden) { stopPolling(); clearTimeout(pinCooldownTimer); }
@@ -2720,12 +2758,14 @@ window.addEventListener('pagehide', () => { stopPolling(); clearTimeout(pinCoold
 
 async function boot() {
   try {
-    for (const locale of supportedLanguages) {
+    await Promise.all(supportedLanguages.map(async locale => {
       const response = await fetch(new URL(`./locales/${locale}.json`, import.meta.url), { cache: 'no-store', credentials: 'same-origin' });
       if (!response.ok) throw new Error();
       dictionary[locale] = await response.json();
-    }
-    appearance({ language, theme: preferredTheme, darkCharts: true,
+    }));
+    $('#pin-input').disabled = !hasHost;
+    appearance({ language, theme: preferredTheme === 'light' ? 'light' : 'dark',
+      darkStyle: preferredTheme === 'foxhole', darkCharts: true,
       plainHeadings: preferredPlainHeadings });
     const period = storage.get('period') || '24h';
     charts.setPeriod(period);
@@ -2740,7 +2780,7 @@ async function boot() {
     }
   } catch {
     $('#pin-input').disabled = true;
-    $('#pin-prompt').textContent = t('auth.loading');
+    $('#pin-prompt').textContent = dictionary[language]?.['auth.loading'] ?? (language === 'ru' ? 'Загрузка' : 'Loading');
     toast(t('error.locale_unavailable'), 'error');
   }
 }

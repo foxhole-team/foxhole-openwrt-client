@@ -125,10 +125,12 @@ export async function runMobileUiChecks(browser, baseURL, screenshots = '.') {
         overflow: document.documentElement.scrollWidth > innerWidth || document.body.scrollWidth > innerWidth,
         cards: [...document.querySelectorAll('[data-chart-card]')].map(e => e.getBoundingClientRect().toJSON()),
         canvas: [...document.querySelectorAll('[data-chart]')].map(e => ({ css: e.clientWidth, pixels: e.width })),
+        intro: document.querySelector('.intro').getBoundingClientRect().toJSON(),
         app: document.querySelector('#app-shell').getBoundingClientRect().toJSON() }));
       check(!dimensions.overflow, `${scenario.label}: page overflow`);
       if (width <= 540) {
-        check(dimensions.cards[0].left === 0 && dimensions.cards[0].width === width, `${scenario.label}: wasted chart width`);
+        check(Math.abs(dimensions.cards[0].left - dimensions.intro.left) < 1 &&
+          Math.abs(dimensions.cards[0].right - dimensions.intro.right) < 1, `${scenario.label}: chart and heading edges differ`);
         check(dimensions.cards[1].top > dimensions.cards[0].bottom, `${scenario.label}: charts remain cramped`);
       }
       check(dimensions.canvas.every(e => Math.abs(e.pixels - e.css * (scenario.mobile ? 3 : 1)) <= 1), 'Canvas backing scale');
@@ -161,12 +163,12 @@ export async function runMobileUiChecks(browser, baseURL, screenshots = '.') {
       await diagnostics.locator('summary').focus();
       await page.keyboard.press('Enter');
       check(await diagnostics.evaluate(e=>e.open), 'Keyboard activation must open diagnostics');
-      await page.locator('dialog [data-action="modal-back"]').click();
+      await page.locator('dialog [data-modal-close]').click();
       await page.waitForSelector('dialog.view-settings-home[open]');
       await page.locator('dialog [data-settings-help-entry]').click();
       await page.waitForSelector('dialog.view-help[open]');
       check(await diagnostics.evaluate(e=>e.open), 'Help lost disclosure state after navigation');
-      await page.locator('dialog [data-action="modal-back"]').click();
+      await page.locator('dialog [data-modal-close]').click();
       await page.waitForSelector('dialog.view-settings-home[open]');
       await page.locator('dialog [data-action="open-exceptions"]').click();
       await page.waitForSelector('dialog.view-exceptions[open]');
@@ -174,7 +176,7 @@ export async function runMobileUiChecks(browser, baseURL, screenshots = '.') {
       check(exceptions.footer.bottom <= height + 1 && !exceptions.horizontalOverflow, 'Exception footer clipped');
       await page.locator('dialog .modal-stage').evaluate(e => { e.scrollTop = e.scrollHeight; });
       check(await page.locator('dialog .modal-stage').evaluate(e => e.scrollTop > 0 || e.scrollHeight <= e.clientHeight), 'Modal cannot scroll');
-      await page.locator('dialog [data-action="modal-back"]').click();
+      await page.locator('dialog [data-modal-close]').click();
       await page.waitForSelector('dialog.view-settings-home[open]');
       await page.locator('dialog [data-action="open-interface-settings"]').click();
       await page.waitForSelector('dialog.view-interface-settings[open]');
@@ -184,7 +186,9 @@ export async function runMobileUiChecks(browser, baseURL, screenshots = '.') {
       const popupRect = await popup.boundingBox();
       check(popupRect.x >= 0 && popupRect.x + popupRect.width <= width + 1, 'Settings popup exceeds viewport');
       await page.keyboard.press('Escape');
-      await page.locator('dialog [data-action="modal-close"]').click();
+      await page.locator('dialog [data-modal-close]').click();
+      await page.waitForSelector('dialog.view-settings-home[open]');
+      await page.locator('dialog [data-modal-close]').click();
       await page.waitForSelector('dialog:not([open])', { state: 'attached' });
       check(!await page.locator('#app-shell').evaluate(e => e.inert), 'Background remains inert after modal');
       if (['iphone-390', 'android-430'].includes(scenario.label)) {

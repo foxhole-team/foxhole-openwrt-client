@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-// Pass the stock release's luci.js; only router reads are replaced with local fixtures.
+// Use stock luci.js with fixtures for router reads.
 export async function runLuCIEntryChecks(browser, origin, luciSource) {
   const page = await browser.newPage({viewport:{width:1000,height:800},reducedMotion:'reduce'});
   const base = '/cgi-bin/luci/admin/services/foxhole/';
@@ -38,7 +38,7 @@ export async function runLuCIEntryChecks(browser, origin, luciSource) {
         const loaderSource=await fetch(L.resource('foxhole/loader.js')).then(r=>r.text());
         const Loader=Function('baseclass','E','L',loaderSource)(L.Class,window.E,L);
         const Type=Function('view','rpc','request','ui','E','L','pixelLoader',source)(L.view,rpc,L.Request,ui,window.E,L,new Loader());
-        // The stock View creates its loading surface, calls load/render and mounts the result.
+        // Stock View creates the loader and mounts the rendered view.
         new Type();
       },name);
     }

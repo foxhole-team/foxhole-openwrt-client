@@ -11,5 +11,5 @@ test('full engine-service module resolves API helper declarations in native ucod
   });
   assert.equal(result.error, undefined, 'Required Python/native ucode fixture must execute');
   assert.equal(result.status, 0, result.stdout + result.stderr);
-  assert.match(result.stdout, /Native engine service module cases: 26 passed, 0 failed/);
+  assert.match(result.stdout, /Native engine service module cases: 28 passed, 0 failed/);
 });

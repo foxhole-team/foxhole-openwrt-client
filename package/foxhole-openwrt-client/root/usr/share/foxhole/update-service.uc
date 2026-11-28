@@ -397,7 +397,7 @@ function perform_check(job) {
 	progress(job,'VERIFYING','VERIFYING_PACKAGE',35);
 	let comparison=native.compare(version,next.version);
 	if(comparison=='>') {
-		// The official signed BASE is older; there is no change to install or roll back.
+		// Keep the installed version if the signed BASE is older.
 		if(core_failure!=null)model.fail(core_failure);
 		if(!authorized(job)||!same(binding(ctx),binding(context()))||!same(selected,registry.read()))model.fail('STALE_PLAN');
 		transaction(()=>{let value=current_state();require_authorized(job);

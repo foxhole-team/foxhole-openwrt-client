@@ -140,7 +140,7 @@ test('Hysteria client inherits the server-aligned memory budget and still stops 
     ]);
     fixture.supervisor.kill('SIGTERM');
     assert.deepEqual(await fixture.exited, { code: 0, signal: null });
-    assert.equal((await fixture.events()).at(-1), 'down runtime_stopped');
+    assert.equal((await fixture.events()).at(-1), 'down runtime_stopped hysteria 143');
   });
 
 for (const childStatus of ['0', '7']) {
@@ -158,7 +158,7 @@ for (const childStatus of ['0', '7']) {
       assert.deepEqual(events.filter((line) => line.startsWith('log ')), [
         `log -t foxhole -p daemon.warn tunnel_exited engine=${reportEngine} stage=running exit_status=${childStatus}`
       ]);
-      assert.equal(events.at(-1), 'down tunnel_exited');
+      assert.equal(events.at(-1), `down tunnel_exited ${reportEngine} ${childStatus}`);
       assert.equal(events.some((line) => line.includes('private-profile-value')), false);
     });
 }
@@ -173,7 +173,7 @@ test('explicit Stop after connection does not log an unexpected exit',
     assert.deepEqual(await fixture.exited, { code: 0, signal: null });
     const events = await fixture.events();
     assert.equal(events.some((line) => line.startsWith('log ')), false);
-    assert.equal(events.at(-1), 'down runtime_stopped');
+    assert.equal(events.at(-1), 'down runtime_stopped hysteria 143');
   });
 
 test('TERM during prepare cannot start Hysteria afterwards',
@@ -185,7 +185,7 @@ test('TERM during prepare cannot start Hysteria afterwards',
     assert.deepEqual(await fixture.exited, { code: 0, signal: null });
     assert.equal(await fixture.started(), '');
     assert.deepEqual(await fixture.events(), [
-      'mode', 'prepare', 'down runtime_stopped'
+      'mode', 'prepare', 'down runtime_stopped unknown'
     ]);
   });
 
@@ -195,7 +195,7 @@ test('failed prepare runs the down controller before exiting',
     assert.deepEqual(await fixture.exited, { code: 1, signal: null });
     assert.equal(await fixture.started(), '');
     assert.deepEqual(await fixture.events(), [
-      'mode', 'prepare', 'down tunnel_start_failed'
+      'mode', 'prepare', 'down tunnel_start_failed unknown'
     ]);
   });
 
@@ -207,7 +207,7 @@ test('stopping blocked mode reaps its background sleep process',
     fixture.supervisor.kill('SIGTERM');
     assert.deepEqual(await fixture.exited, { code: 0, signal: null });
     assert.deepEqual(await fixture.events(), [
-      'mode', 'apply blocked', 'down runtime_stopped'
+      'mode', 'apply blocked', 'down runtime_stopped unknown'
     ]);
     assert.equal(alive(sleeper), false,
       'Blocked supervisor left its hourly sleep process running');

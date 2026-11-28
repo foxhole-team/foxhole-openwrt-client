@@ -59,6 +59,8 @@ test('traffic rates never average across known reboot, counter reset or device r
   const previous = { time: 1000, uptime: 20000, wan: { device: 'wan', rx: 100 } };
   const current = { time: 2000, uptime: 20001, wan: { device: 'wan', rx: 200 } };
   assert.equal(charts.rate(previous, current, 'wan', 'rx'), 100);
+  assert.equal(charts.rate(previous, null, 'wan', 'rx'), null);
+  assert.equal(charts.rate(undefined, current, 'wan', 'rx'), null);
   assert.equal(continuousSamples(previous, { ...current, uptime: 1 }), false);
   assert.equal(charts.rate(previous, { ...current, uptime: 1 }, 'wan', 'rx'), null);
   assert.equal(charts.rate(previous, { ...current, wan: { device: 'other', rx: 200 } }, 'wan', 'rx'), null);
@@ -75,7 +77,7 @@ test('paired desktop modal fits the table within bounded viewport margins', () =
   const css = readFileSync(new URL('../package/foxhole-openwrt-client/htdocs/luci-static/resources/foxhole/app.css', import.meta.url), 'utf8');
   const rule = css.match(/\.modal\.view-pairings \{ width: min\(calc\(100% - ([0-9]+)px\), ([0-9]+)px\); \}/);
   assert.ok(rule);
-  assert.match(css, /\.modal:is\(\.view-pairings, \.view-client-device\.has-client-export\)\[open\] \{ height: min\(32rem, calc\(var\(--viewport-height\) \* \.8\)\)/);
+  assert.match(css, /\.modal\.view-pairings\[open\] \{ height: fit-content; \}/);
   const margin = Number(rule[1]), maximum = Number(rule[2]);
   const minimumTable = Number(css.match(/\.pairing-table \{[^}]*min-width: ([0-9]+)rem/)[1]) * 16;
   for (const viewport of [721, 800, 1024, 1440, 2560]) {
@@ -94,12 +96,17 @@ function paintFixture(t, payload, width = 320) {
   globalThis.document = { documentElement: { classList: { contains: () => false } } };
   t.after(() => { globalThis.window = oldWindow; globalThis.document = oldDocument; });
   let path = [];
+  const curves = [];
   const ctx = {
     setTransform() {}, clearRect() {}, fillRect() {}, fillText() {}, fill() {}, arc() {},
     measureText: () => ({ width: 20 }),
     beginPath() { path = []; },
     moveTo(x, y) { path.push(['move', x, y]); },
     lineTo(x, y) { path.push(['line', x, y]); },
+    bezierCurveTo(x1, y1, x2, y2, x, y) {
+      curves.push({start:path.at(-1).slice(1),control:[x1,y1,x2,y2],end:[x,y]});
+      path.push(['line', x, y]);
+    },
     stroke() { paths.push({ color: this.strokeStyle, path: [...path] }); }
   };
   const card = { classList: { toggle(name, value) { if (value) classes.add(name); else classes.delete(name); } } };
@@ -114,7 +121,7 @@ function paintFixture(t, payload, width = 320) {
   const paint = () => { paths.length = 0; charts.render(canvas, 'wrt', end,
     { label: 'label', grid: 'grid', color: ['cpu', 'ram'] }); };
   paint();
-  return { end, paths, classes, charts, canvas, paint,
+  return { end, paths, curves, classes, charts, canvas, paint,
     cpu: () => paths.find(item => item.color === 'cpu').path };
 }
 
@@ -187,4 +194,29 @@ test('an observed outage dips the display line to baseline and recovers without 
   assert.ok(fixture.cpu().some(point => point[0] === 'line' && point[2] < 93));
   assert.deepEqual(history, original);
   assert.ok(fixture.charts.samples.some(point => point.cpu === null));
+});
+
+
+test('timeline metadata slice only includes the latest two samples inside the chart window', () => {
+  const chart = Object.assign(Object.create(Charts.prototype), {
+    samples: [10, 20, 30, 40, 50].map(time => ({time}))
+  });
+  assert.deepEqual(chart.pointsBetween(10, 40, 2).map(item => item.time), [30,40]);
+  assert.deepEqual(chart.pointsBetween(35, 42, 2).map(item => item.time), [40]);
+  assert.deepEqual(chart.pointsBetween(55, 60, 2), []);
+  assert.deepEqual(chart.pointsBetween(15, 40).map(item => item.time), [20,30,40]);
+});
+
+
+test('smooth chart curves keep both exact endpoints and never overshoot between samples', t => {
+  const time = 2000000000000;
+  const fixture = paintFixture(t, {history:[20,80,25,100,40].map((cpu,index) => ({
+    t: time - 60000 + index * 15000, cpu, ram: 60
+  }))});
+  assert.ok(fixture.curves.length > 0);
+  for (const {start,control,end} of fixture.curves) {
+    assert.ok(start[0] <= control[0] && control[0] <= control[2] && control[2] <= end[0]);
+    assert.equal(control[1], start[1]);
+    assert.equal(control[3], end[1]);
+  }
 });

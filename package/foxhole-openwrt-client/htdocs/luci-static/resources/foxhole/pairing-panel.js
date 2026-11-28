@@ -41,7 +41,7 @@ export class PairingPanel {
   current(sequence, scope) { return sequence === this.sequence && scope === this.scope(); }
   async open() {
     const sequence = ++this.sequence, scope = this.scope();
-    this.loading = true; this.failed = false; this.devices = null; this.render();
+    this.loading = true; this.failed = false; this.render();
     try {
       const devices = parsePairings(await this.call('pair.list'));
       if (!this.current(sequence, scope)) return;
@@ -67,6 +67,7 @@ export class PairingPanel {
     const button = document.querySelector('[data-paired-phone-button]');
     if (!button) return;
     const count = pairedCount(value), badge = button.querySelector('[data-paired-phone-count]');
+    this.knownCount = count;
     const label = count === null ? this.text('pairing.title') : this.text('pairing.count', { count });
     button.title = label; button.setAttribute('aria-label', label);
     button.classList.toggle('has-pairings', count !== null && count > 0);
@@ -83,8 +84,12 @@ export class PairingPanel {
       : !this.devices?.length ? this.text('pairing.empty') : '';
     status.className = this.loading ? 'muted foxhole-loading' : 'muted';
     status.hidden = !status.textContent;
-    root.hidden = !this.devices?.length || this.loading || this.failed;
+    root.hidden = !this.devices?.length || this.failed;
+    root.inert = this.loading;
+    root.parentElement.style.setProperty('--pair-count', String(this.devices?.length ?? this.knownCount ?? 1));
+    root.parentElement.classList.toggle('is-refreshing', this.loading && !root.hidden);
     if (root.hidden) { root.replaceChildren(); return; }
+    if (this.loading) return;
     const table = this.element('table', 'pairing-table');
     const head = this.element('thead'), header = this.element('tr');
     for (const key of ['device', 'client', 'version', 'authorized', 'actions']) {

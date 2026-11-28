@@ -6,8 +6,8 @@
     "x86/64",
     "mediatek/filogic"
   ],
-  "releaseTag": "v1.0.13",
-  "packageVersion": "1.0.13-r1",
+  "releaseTag": "v1.0.20",
+  "packageVersion": "1.0.20-r1",
   "supportedOpenWrt": [
     "25.12.5",
     "25.12.6"

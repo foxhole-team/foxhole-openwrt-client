@@ -15,7 +15,7 @@ const ACTIONS = [
 	'updates.deviceBegin', 'updates.deviceChunk', 'updates.deviceStatus', 'updates.deviceFinish',
 	'engines.status', 'engines.plan', 'engines.apply', 'engines.job',
 	'unlock', 'lock', 'state', 'telemetry', 'settings', 'package.status', 'setup.reset', 'diagnostics.logs', 'diagnostics.journal',
-	'server.test', 'server.save', 'server.get', 'server.start',
+	'routing.test', 'server.test', 'server.save', 'server.get', 'server.start',
 	'server.stop', 'server.delete',
 	'client.save', 'client.update', 'client.access', 'client.get', 'client.delete', 'client.status',
 	'pin.change', 'device.resolve', 'device.list',

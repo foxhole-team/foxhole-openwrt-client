@@ -1879,6 +1879,13 @@ const methods = {
 		request => { session(request); return telemetry(); }) },
 	settings: { args: { token: '', revision: 0, settings: {}, countries: [],
 		devices: [], sites: [] }, call: request => call('settings', request, settings_call) },
+	'routing.test': { args: { token: '', revision: 0, settings: {}, countries: [], devices: [], sites: [] },
+		call: request => call('routing.test', request, request => {
+			session(request);
+			if (state_record().revision != valid_revision(request.args.revision)) fail('revision_conflict');
+			model.validate_settings(request.args, address => resolve_mac(address));
+			return { valid: true };
+		}) },
 	'server.test': { args: { token: '', config: '', engine: '', reachability: false }, call: request =>
 		call('server.test', request, request => {
 			session(request);

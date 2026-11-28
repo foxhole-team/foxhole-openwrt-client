@@ -78,7 +78,8 @@ export function check(directory) {
   if(length(registry.legacy_protocols()))guard.fail('UNSUPPORTED_TARGET');
   return null;
  }
- // Pure RAM installations can have no host BASE APK. Only a managed Core cohort needs its transaction context.
+ // Pure RAM can have no host BASE APK. The managed Core cohort
+ // still requires a transaction context.
  let managed=transaction.context(),before=registry.snapshot_context(engine.update_state());
  let bound=binding(before),previous_reference=catalog.current();
  if(before.activeProfileId!=null && before.activeEngineId==null)

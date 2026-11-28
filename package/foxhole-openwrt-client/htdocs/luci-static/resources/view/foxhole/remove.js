@@ -17,7 +17,7 @@ const loadLocale = name => request.get(L.resource('foxhole/locales/' + name + '.
 async function readPlan() {
  let timer;
  try {
-  // Native mount verification may take tens of seconds on a RAM installation.
+  // Verifying RAM mounts may take tens of seconds.
   const timeout = Math.max(35000, ((Number(L.env?.rpctimeout) || 20) + 5) * 1000);
   return await Promise.race([getPlan(), new Promise(resolve => {
    timer = setTimeout(() => resolve({error:'UNAVAILABLE'}), timeout);
@@ -70,7 +70,7 @@ return view.extend({
    button.addEventListener('click',()=>{
     if(pending||button.disabled)return;
     let confirming=true;
-    const cancel=E('button',{type:'button',class:'cbi-button'},t('action.back'));
+    const cancel=E('button',{type:'button',class:'cbi-button','aria-label':t('action.close'),title:t('action.close')},'×');
     const confirm=E('button',{type:'button',class:'cbi-button cbi-button-negative'},t('action.confirm'));
     cancel.addEventListener('click',()=>{confirming=false;ui.hideModal();});
     confirm.addEventListener('click',async()=>{
@@ -88,7 +88,10 @@ return view.extend({
      } catch (_) {retry(t('remove.failed'));}
      finally {pending=false;ui.hideModal();}
     });
-    ui.showModal(t('remove.confirm_title'),[...details(),E('div',{class:'right'},[cancel,' ',confirm])]);
+    const heading=E('div',{style:'display:flex;align-items:center;justify-content:space-between;gap:1em'},[
+     E('h4',{},t('remove.confirm_title')),cancel
+    ]);
+    ui.showModal(null,[heading,...details(),E('div',{class:'right'},[confirm])]);
    });
    content.append(button);
   };

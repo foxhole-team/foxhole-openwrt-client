@@ -60,13 +60,15 @@ connections. Compact installations use a separate client module for each selecte
 
 <a id="whats-new"></a>
 
-> **🆕 What's new - 1.0.13 Beta (FLASH r1 · RAM r2)**
+> **🆕 What's new - 1.0.20 Beta (FLASH r1 · RAM r2)**
 >
-> - Install over SSH from macOS, Linux or Windows using the Bash installer. Fresh installs enable automatic package updates after setup, with an option to turn them off.
-> - Package updates check the router API and attempt to restore the previous version if the check fails. Fixed home VPN server management and creation of the first client.
-> - Import supported Hysteria 2, VLESS and WireGuard subscriptions in LuCI or send them from Guard or VPN. The router refreshes supported subscriptions automatically.
-> - Games without VPN has a standard switch in Settings. Routing opens from Add, and expand and collapse arrows have sharp corners.
-> - The Journal has a new refresh icon and shows the last ten VPN events in RAM. Software status lists standalone Hysteria 2.
+> - Minor interface bug fixes.
+> - The Light and Dark themes show the fox in color. Night uses a monochrome logo and controls.
+> - The Light theme now matches the Android apps. Settings use the same row dividers in all three themes.
+> - Server edits can be cancelled. Routing rules can be tested before saving. A wrong PIN highlights only the entry dots.
+> - About now shows a table. Font appears above Theme. Dialogs close from the header.
+> - The top bar blurs only while scrolling. Dark uses the FoxHole VPN palette. The black palette is now called Night.
+> - Frontend optimization.
 
 <a id="quickstart"></a>
 

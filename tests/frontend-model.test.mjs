@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   maskIpv4, maskMac, ModelError, normalizeMac, normalizeSitePattern,
-  normalizedState, validAddress, normalizeSettings, countryCode,
+  normalizedState, validAddress, normalizeSettings, countryCode, panelTheme, setPanelTheme,
   serverCountryCode, packageMetadata
 } from '../package/foxhole-openwrt-client/htdocs/luci-static/resources/foxhole/frontend-model.js';
 import {
@@ -212,4 +212,18 @@ test('router totals ignore missing counters and counter resets', (t) => {
   assert.deepEqual(stats.wan.tx, { total: 0, average: 0, peak: 0 });
   assert.deepEqual(stats.lan.rx, { total: null, average: null, peak: null });
   assert.equal(stats.latest, charts.samples.at(-1));
+});
+
+test('Night keeps the saved dark preference and all three palettes round-trip', () => {
+  const settings = normalizeSettings({ theme: 'dark' });
+  assert.equal(panelTheme(settings), 'dark');
+  for (const [choice, theme, darkStyle] of [
+    ['foxhole', 'dark', true], ['light', 'light', false], ['dark', 'dark', false]
+  ]) {
+    setPanelTheme(settings, choice);
+    assert.deepEqual([settings.theme, settings.darkStyle], [theme, darkStyle]);
+    assert.equal(panelTheme(normalizeSettings(settings)), choice);
+  }
+  setPanelTheme(settings, 'unexpected');
+  assert.equal(panelTheme(settings), 'dark');
 });

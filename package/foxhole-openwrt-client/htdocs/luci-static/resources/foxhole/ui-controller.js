@@ -1,4 +1,5 @@
 export async function waitForMotion(...elements) {
+  if (globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
   const animations = elements.flatMap((element) =>
     element?.getAnimations?.() || []).filter(animation =>
     animation.effect?.getComputedTiming?.()?.endTime !== Number.POSITIVE_INFINITY);
@@ -13,6 +14,24 @@ export async function waitForMotion(...elements) {
     await Promise.race([Promise.allSettled(animations.map(animation => animation.finished)),
       new Promise(resolve => { timer = setTimeout(resolve, Math.min(1000, Math.max(80, ...deadlines))); })]);
   } finally { clearTimeout(timer); }
+}
+
+export function bindVerticalDismiss(surface, direction, isAllowed, dismiss) {
+  let start = null;
+  surface.addEventListener('pointerdown', event => {
+    if (event.pointerType !== 'touch' || !event.isPrimary || !isAllowed(event)) return;
+    start = { id: event.pointerId, x: event.clientX, y: event.clientY };
+  });
+  surface.addEventListener('pointercancel', event => {
+    if (start?.id === event.pointerId) start = null;
+  });
+  surface.addEventListener('pointerup', event => {
+    if (start?.id !== event.pointerId) return;
+    const dx = Math.abs(event.clientX - start.x);
+    const distance = (event.clientY - start.y) * direction;
+    start = null;
+    if (distance >= 54 && distance > dx * 1.5 && isAllowed(event)) dismiss();
+  });
 }
 
 function rememberFocus() {
@@ -93,7 +112,7 @@ export class ModalFlow {
     } else if (direction !== 'initial') {
       next.classList.add('is-entering');
     }
-    if (direction === 'initial')
+    if (direction === 'initial' && globalThis.matchMedia?.('(max-width: 720px)').matches !== true)
       this.dialog.style.setProperty('--modal-session-height',
         `${this.dialog.offsetHeight}px`);
     this.title.focus({ preventScroll: true });

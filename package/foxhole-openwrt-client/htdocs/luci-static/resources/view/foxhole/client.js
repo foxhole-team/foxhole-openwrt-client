@@ -35,6 +35,7 @@ const parameters = {
 	'pair.revoke': ['token', 'id'],
 	telemetry: ['token'],
 	settings: ['token', 'revision', 'settings', 'countries', 'devices', 'sites'],
+	'routing.test': ['token', 'revision', 'settings', 'countries', 'devices', 'sites'],
 	'server.test': ['token', 'config', 'engine', 'reachability'],
 	'server.save': ['token', 'revision', 'config', 'id', 'name', 'engine', 'subscription'],
 	'server.get': ['token', 'id'],
@@ -91,7 +92,7 @@ function panelMetadata() {
 		['meta', 'meta[name="apple-mobile-web-app-title"]', { name: 'apple-mobile-web-app-title', content: 'FOXHOLE OPENWRT' }],
 		['link', 'link[rel="icon"]', { rel: 'icon', href: L.resource('foxhole/assets/foxhole-32.png'), type: 'image/png', sizes: '32x32' }],
 		['link', 'link[rel="apple-touch-icon"]', { rel: 'apple-touch-icon', href: L.resource('foxhole/assets/foxhole-180.png'), sizes: '180x180' }],
-		['link', 'link[rel="manifest"]', { rel: 'manifest', href: L.resource('foxhole/manifest.json') + '?v=1.0.13-r1-ui16' }]
+		['link', 'link[rel="manifest"]', { rel: 'manifest', href: L.resource('foxhole/manifest.json') + '?v=1.0.20-r1-ui23' }]
 	]) {
 		const existing = document.querySelector(selector);
 		const node = existing || document.createElement(tag);
@@ -122,7 +123,7 @@ return view.extend({
 		this._foxholeRestoreMetadata = panelMetadata();
 		const frame = E('iframe', {
 			'class': 'foxhole-luci-frame',
-			'src': L.resource('foxhole/shell.html') + '?v=1.0.13-r1-ui16',
+			'src': L.resource('foxhole/shell.html') + '?v=1.0.20-r1-ui23',
 			'title': 'FOXHOLE OPENWRT',
 			'referrerpolicy': 'no-referrer',
 			'loading': 'eager',

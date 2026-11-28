@@ -31,19 +31,25 @@ export async function checkSettingsHelp(browser, origin) {
    assert.equal(await page.locator('.pin-brand').textContent(),'FOXHOLE OPENWRT');
    assert.equal(await page.locator('.brand > span').textContent(),'FOXHOLE OPENWRT');
    const brand = await page.locator('.brand .brand-platform').evaluate(n=>getComputedStyle(n).color);
-   assert.equal(brand, mobile ? 'rgb(85, 85, 85)' : 'rgb(179, 179, 179)');
+   assert.equal(brand, mobile ? 'rgb(102, 84, 64)' : 'rgb(179, 179, 179)');
    assert.equal(await page.locator('.pin-brand .brand-platform').evaluate(n=>getComputedStyle(n).color),brand);
    const openSettings=()=>page.locator('[data-action="open-settings"]').click();
-   const back=()=>page.locator('dialog[open] [data-action="modal-back"]').click();
-   const close=()=>page.locator('dialog[open] [data-action="modal-close"]').click();
+   const back=()=>page.locator('dialog[open] [data-modal-close]').click();
+   const close=()=>page.locator('dialog[open] [data-modal-close]').click();
    await openSettings();
    const entry=page.locator('dialog[open] [data-settings-help-entry]');
+   await entry.evaluate(async el => {
+    const dialog = el.closest('dialog');
+    await Promise.allSettled(dialog.getAnimations().map(animation => animation.finished));
+   });
    const bounds=await entry.evaluate(e=>({w:e.offsetWidth,h:e.offsetHeight,right:e.getBoundingClientRect().right,
     end:e.closest('header').getBoundingClientRect().right}));
-   assert.ok(bounds.w>=44 && bounds.h>=44 && bounds.end-bounds.right<22);
+   assert.ok(bounds.w>=44 && bounds.h>=44);
+   const dismiss = await page.locator('dialog[open] [data-modal-close]').boundingBox();
+   assert.ok(dismiss.x >= bounds.right && bounds.end - dismiss.x - dismiss.width < 18);
    assert.equal(await entry.locator('use').getAttribute('href'),'#icon-question');
    assert.equal(await entry.evaluate(e=>getComputedStyle(e).borderTopWidth),'0px');
-   assert.equal((await entry.locator('svg').boundingBox()).width,24);
+   assert.equal(await entry.locator('svg').evaluate(el=>getComputedStyle(el).width),'16px');
    const normalToggle = await page.locator('#local-rules').evaluate(e=>e.closest('.setting-row').getBoundingClientRect().height);
    await page.getByText('Блокировка при потере VPN соединения',{exact:true}).waitFor();
    await entry.click();
@@ -88,17 +94,26 @@ export async function checkSettingsHelp(browser, origin) {
     assert.equal(await marks.count(),available?2:0);
     if(available){
      assert.deepEqual(await marks.allTextContents(),['Доступная версия','1.0.10-r1']);
+     await page.waitForFunction(() => {
+      const cells = document.querySelectorAll('dialog[open] .update-versions .is-update-available');
+      return cells.length === 2 && [...cells].every(el => Boolean(getComputedStyle(el).color));
+     });
      const colors=await marks.evaluateAll(nodes=>nodes.map(e=>getComputedStyle(e).color));
      const iconColor=await page.locator('dialog .download-mark').evaluate(e=>getComputedStyle(e).color);
-     assert.equal(colors[0],mobile?'rgb(18, 95, 159)':'rgb(114, 185, 255)');
+     assert.equal(colors[0],mobile?'rgb(18, 95, 159)':'rgb(181, 181, 181)');
      assert.deepEqual(colors,[iconColor,iconColor]);
      await page.getByText('Требуется обновление ПО',{exact:true}).waitFor();
     }else assert.equal(await page.getByText('Требуется обновление ПО',{exact:true}).count(),0);
     await back();
    }
    await close();
-   const boundsOfModal=()=>page.locator('dialog[open]').evaluate(d=>[
-    d.offsetHeight,d.querySelector('.modal-stage').clientHeight,d.querySelector('.modal-footer').offsetHeight]);
+   const boundsOfModal=()=>page.locator('dialog[open]').evaluate(async d=>{
+    await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+    const surfaces=[d,d.querySelector('.modal-stage'),d.querySelector('.modal-panel')].filter(Boolean);
+    await Promise.allSettled(surfaces.flatMap(node=>node.getAnimations()).filter(a=>a.effect?.getComputedTiming().endTime<Infinity).map(a=>a.finished));
+    await new Promise(resolve=>requestAnimationFrame(resolve));
+    return [d.offsetHeight,d.querySelector('.modal-stage').clientHeight,d.querySelector('.modal-footer').offsetHeight];
+   });
    const pairsDone=hold('pair.list');
    await page.locator('[data-paired-phone-button]').click();
    const pairStatus=page.locator('[data-pairing-status]');
@@ -110,7 +125,7 @@ export async function checkSettingsHelp(browser, origin) {
    assert.deepEqual(await boundsOfModal(),listBounds);
    await close();
    await page.locator('[data-action="open-client-control"]').click();
-   const profile=page.getByRole('button',{name:'Открыть профиль'});
+   const profile=page.locator('dialog .modal-footer [data-action="manage-client"]');
    assert.equal(await profile.locator('use').getAttribute('href'),'#icon-eye');
    const profileDone=hold('client.get');await profile.click();
    await page.locator('[data-client-pending]').waitFor();

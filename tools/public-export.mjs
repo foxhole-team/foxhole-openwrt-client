@@ -59,6 +59,12 @@ export function validatePublicFile(path, data) {
       key.asymmetricKeyDetails.namedCurve !== 'prime256v1')
       fail('Public APK key must use P-256');
   }
+  if (path === 'package/foxhole-openwrt-client/htdocs/luci-static/resources/foxhole/assets/fox-brand.webp') {
+    if (createHash('sha256').update(data).digest('hex') !==
+        '85bb9e23d42a514bdf9f40f296858ba2356cc151b49ed30addaf295cea1db656')
+      fail('Unexpected router fox artwork');
+    return;
+  }
   if (binaryExtensions.test(path)) return;
   if (data.includes(0)) fail('Public export contains an unexpected binary file');
 }

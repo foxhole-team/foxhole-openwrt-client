@@ -45,7 +45,9 @@ try {
       !path.includes('/uci-defaults/')) continue;
     const source = await readFile(resolve(root, path), 'utf8');
     if (/\.json$/.test(path)) JSON.parse(source);
-    else if (path.includes('/resources/view/')) new vm.Script(`(function() {${source}\n})`);
+    else if (path.includes('/resources/view/') || path.endsWith('/resources/foxhole/loader.js')) {
+      new vm.Script(`(function() {${source}\n})`, { filename: path });
+    }
     else if (/\.(?:js|mjs)$/.test(path)) run(process.execPath, ['--check', path]);
     else if (source.startsWith('#!/bin/sh')) run('/bin/sh', ['-n', path]);
     if (!/\.json$/.test(path)) {
@@ -60,7 +62,7 @@ try {
   process.stdout.write(`Syntax and comment checks: ${syntax} source files.\n`);
   run(process.execPath, ['tools/check-docs.mjs']);
   const tests = paths.filter((path) => path.startsWith('tests/') && path.endsWith('.test.mjs'));
-  run(process.execPath, ['--test', ...tests]);
+  run(process.execPath, ['--test', ...tests], { timeout: 240000 });
   const gitleaks = spawnSync('gitleaks', ['version'], { encoding: 'utf8' });
   if (gitleaks.error || gitleaks.status !== 0) throw new Error('gitleaks is required for public sanitization');
   const temporary = await mkdtemp(join(tmpdir(), 'foxhole-public-check-'));

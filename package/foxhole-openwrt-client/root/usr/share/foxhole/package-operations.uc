@@ -86,7 +86,8 @@ function repair_file(path,sha,mode) {
     if(st.type!='file'||st.uid!=0||st.nlink!=1||(st.mode&0o022))fail('PACKAGE_VERIFICATION_FAILED');
     return (st.mode&0o7777)==mode && st.size>0 && st.size<=134217728 && registry.hash_file(path)==sha;
 };
-// Hash every file in the verified, closed APK layout, including notices and the native file list.
+// Hash the complete verified APK layout, including notices
+ // and the native file list.
 export function repair_diagnosis(prepared) {
     let counts=[];
     for(let item in prepared) {

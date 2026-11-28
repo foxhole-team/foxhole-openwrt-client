@@ -8,6 +8,7 @@
           "lock",
           "state",
           "telemetry",
+          "routing.test",
           "server.test",
           "server.get",
           "client.get",

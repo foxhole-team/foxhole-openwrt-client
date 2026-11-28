@@ -52,7 +52,7 @@ export async function checkRouterSettingsReview(browser, origin) {
       assert.ok(foot.text.includes(String(foot.year)) && foot.text.includes('Все права защищены.'));
       assert.ok(foot.spaceAfter < 2, JSON.stringify(foot));
       const open = async (name) => { await page.locator('[data-action="open-'+name+'"]:visible').click(); await page.locator('dialog.view-'+name+'[open]').waitFor(); };
-      const back = async () => { await page.locator('dialog [data-action="modal-back"]').click(); await page.locator('dialog.view-settings-home[open]').waitFor(); };
+      const back = async () => { await page.locator('dialog [data-modal-close]').click(); await page.locator('dialog.view-settings-home[open]').waitFor(); };
       await page.locator('[data-action="open-settings"]').click();
       await open('engines');
       await page.locator('[data-engine-analysis]').waitFor();
@@ -88,4 +88,86 @@ export async function checkRouterSettingsReview(browser, origin) {
     } finally { await page.close(); }
   }
   return measurements;
+}
+
+export async function checkEditorActions(browser, origin) {
+  for (const width of [320, 1024]) {
+    const page = await browser.newPage({ viewport: { width, height: 850 }, reducedMotion: 'reduce' });
+    const server = { id: 'server-demo', name: 'Original', protocol: 'hysteria2', country: 'NO', metrics: {} };
+    const state = { schema: 1, revision: 1, settings: { language: 'ru', theme: 'dark' },
+      countries: [], devices: [], sites: [], clients: [], servers: [server] };
+    const writes = [], tests = [];
+    try {
+      await page.route('**/cgi-bin/foxhole', async route => {
+        const {action, payload} = route.request().postDataJSON();
+        let reply = {};
+        if (action === 'unlock') reply = payload.pin === '123456' ? {token: 'fixture', state} : {_foxhole_error: 'invalid_pin'};
+        if (action === 'state') reply = state;
+        if (action === 'server.get') reply = {...server, config: 'hy2://fixture@node.example.invalid:443/'};
+        if (action === 'server.save') { writes.push(action); server.name = payload.name; state.revision++; reply = state; }
+        if (action === 'routing.test') { tests.push(payload.sites); reply = {valid: true}; }
+        if (action === 'settings') { writes.push(action); state.sites = payload.sites; state.revision++; reply = state; }
+        await route.fulfill({json: reply});
+      });
+      await page.goto(origin + '/luci-static/resources/foxhole/shell.html');
+      const pin = page.locator('#pin-input');
+      await page.waitForFunction(() => !document.querySelector('#pin-input').disabled);
+      const colors = () => page.evaluate(() => ['.pin-brand', '.pin-brand b', '.pin-dots span'].map(query => {
+        const style = getComputedStyle(document.querySelector(query));
+        return query.endsWith('span') ? style.borderTopColor : style.color;
+      }));
+      const original = await colors();
+      await pin.fill('000000');
+      await page.locator('#pin-gate.pin-rejected').waitFor();
+      await page.waitForFunction(before => {
+        const dots = document.querySelectorAll('.pin-gate.pin-rejected [data-pin-dot]');
+        return dots.length === 6 && [...dots].every(dot => getComputedStyle(dot).borderTopColor !== before);
+      }, original[2]);
+      const rejected = await colors();
+      assert.deepEqual(rejected.slice(0, 2), original.slice(0, 2));
+      assert.notEqual(rejected[2], original[2]);
+      assert.equal(await pin.getAttribute('aria-invalid'), 'true');
+      await pin.fill('1');
+      assert.equal(await pin.getAttribute('aria-invalid'), null);
+      await pin.fill('123456');
+      const action = name => page.locator('[data-action="' + name + '"]:visible').first();
+      const footer = page.locator('dialog[open] .modal-footer');
+      const pair = async (first, second) => {
+        await footer.getByRole('button', {name: first, exact: true}).waitFor();
+        const buttons = footer.getByRole('button');
+        assert.deepEqual(await buttons.allTextContents(), [first, second]);
+        const [a,b] = await Promise.all([buttons.nth(0).boundingBox(),buttons.nth(1).boundingBox()]);
+        assert.ok(a && b && Math.abs(a.y-b.y)<1 && Math.abs(a.width-b.width)<=1);
+        await page.waitForFunction(() => {
+          const el = document.querySelector('dialog[open] .modal-footer');
+          return el && getComputedStyle(el).backgroundColor === 'rgba(0, 0, 0, 0)';
+        }, null, {timeout: 2000});
+      };
+      await action('open-server-control').click();
+      await action('edit-server').click();
+      await pair('Отмена', 'Сохранить');
+      await page.locator('[data-server-name]').fill('Discard');
+      await action('cancel-server-edit').click();
+      await action('edit-server').click();
+      assert.equal(await page.locator('[data-server-name]').inputValue(), 'Original');
+      assert.deepEqual(writes, []);
+      await page.locator('[data-server-name]').fill('Saved');
+      await action('save-server').click();
+      await page.locator('dialog[open]').waitFor({state: 'hidden'});
+      assert.equal(server.name, 'Saved');
+      await action('open-add').click();
+      await action('open-exceptions').click();
+      await pair('Тест', 'Сохранить');
+      await page.locator('[data-site-input]').fill('example.org');
+      await action('add-site').click();
+      await action('test-rules').click();
+      await page.getByText('Правила маршрутизации прошли проверку', {exact: true}).waitFor();
+      assert.deepEqual(writes, ['server.save']);
+      assert.equal(tests[0][0].pattern, 'example.org');
+      await action('save-rules').click();
+      await page.locator('dialog[open]').waitFor({state: 'hidden'});
+      assert.deepEqual(writes, ['server.save','settings']);
+      assert.deepEqual(state.sites, tests[0]);
+    } finally { await page.close(); }
+  }
 }

@@ -108,3 +108,13 @@ test('public APK key exception accepts only a P-256 public key', () => {
   assert.throws(() => validatePublicFile(path,
     Buffer.from(other.publicKey.export({ type: 'spki', format: 'pem' }))), /P-256/);
 });
+
+test('public artwork export binds the approved WebP bytes', async () => {
+  const name = 'package/foxhole-openwrt-client/htdocs/luci-static/resources/foxhole/assets/fox-brand.webp';
+  const data = await readFile(new URL('../' + name, import.meta.url));
+  assert.doesNotThrow(() => validatePublicFile(name, data));
+  const changed = Buffer.from(data);
+  changed[changed.length - 1] ^= 1;
+  assert.throws(() => validatePublicFile(name, changed), /Unexpected router fox artwork/);
+  assert.throws(() => validatePublicFile('media/unreviewed.webp', data), /unexpected binary file/);
+});

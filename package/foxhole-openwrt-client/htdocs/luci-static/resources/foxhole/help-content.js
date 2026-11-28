@@ -140,7 +140,8 @@ export class HelpPanel {
       }, 80);
     };
     details.addEventListener('pointerenter', cancelClose);
-    // Opening on pointer movement avoids new previews when layout alone moves under a stationary mouse.
+    // Wait for pointer movement before opening a preview.
+      // Layout can move underneath a stationary pointer.
     summary.addEventListener('pointermove', event => {
       if (event.pointerType !== 'mouse' || dismissed || !matchMedia('(any-hover: hover)').matches) return;
       cancelClose();
@@ -156,7 +157,7 @@ export class HelpPanel {
       if (event.defaultPrevented || event.button > 0) return;
       event.preventDefault();
       cancelClose();
-      // A mouse click on a hover preview pins it. Keyboard and touch toggle its visible state.
+      // A click pins the hover preview. Keyboard and touch toggle it.
       pinned = (!pinned && desired && event.detail > 0 && pointer === 'mouse') || !desired;
       dismissed = !pinned;
       if (pinned) this.expanded.add(id); else this.expanded.delete(id);

@@ -372,7 +372,7 @@ export function recover(id) {
                 if(fs.lstat('/tmp/foxhole-ram-active.json')||job.bootId!=boot()||!principal_current(job.principal))fail('RECOVERY_REQUIRED');
                 let old=job.previousRegistry;
                 repair_state(job,old);
-                // Revalidate the original private stage without allocating a second set of archives.
+                // Revalidate the private stage in place to reuse its archives.
                 let directory='/tmp/foxhole/'+id;
                 reinstall(job,old,prepare_packages(job,directory,true),directory,true);
                 return public_job(job);
